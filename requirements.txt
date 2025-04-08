@@ -1,0 +1,13 @@
+setuptools
+wheel
+twine
+torch
+torchvision
+ultralytics
+onnx
+numpy
+matplotlib
+opencv-python
+pillow
+texttable
+dominate
