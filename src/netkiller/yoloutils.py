@@ -34,13 +34,13 @@ except ImportError as err:
 
 class YoloUtils():
     def __init__(self):
-        self.basedir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        # self.basedir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         # sys.path.append(self.basedir)
 
         # 日志记录基本设置
         # logfile = os.path.join(self.basedir, 'logs', f"{os.path.splitext(os.path.basename(__file__))[0]}.{datetime.today().strftime('%Y-%m-%d.%H%M%S')}.log")
-        logfile = os.path.join(self.basedir, 'logs',
-                               f"{os.path.splitext(os.path.basename(__file__))[0]}.{datetime.today().strftime('%Y-%m-%d')}.log")
+        # logfile = os.path.join(self.basedir, 'logs', f"{os.path.splitext(os.path.basename(__file__))[0]}.{datetime.today().strftime('%Y-%m-%d')}.log")
+        logfile = f"{os.path.splitext(os.path.basename(__file__))[0]}.{datetime.today().strftime('%Y-%m-%d')}.log"
         logging.basicConfig(filename=logfile, level=logging.DEBUG, encoding="utf-8",
                             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
@@ -1492,10 +1492,12 @@ class Classify(Common):
             self.parser.print_help()
             exit()
 
-
-if __name__ == "__main__":
+def main():
     try:
         run = YoloUtils()
         run.main()
     except KeyboardInterrupt as e:
         print(e)
+
+if __name__ == "__main__":
+    main()

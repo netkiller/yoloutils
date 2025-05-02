@@ -1,10 +1,7 @@
-setuptools
-wheel
-twine
 torch
 torchvision
 ultralytics
-onnx
+# onnx
 numpy
 matplotlib
 opencv-python
