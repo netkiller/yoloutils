@@ -3,7 +3,7 @@
 #    "torch",
 #    "torchvision",
 #    "ultralytics",
-#    "onnx",
+##    "onnx",
 #    "numpy",
 #    "matplotlib",
 #    "opencv-python",
@@ -12,7 +12,7 @@
 #    "dominate", ]
 
 [project]
-name = "yoloutils"
+name = "netkiller-yoloutils"
 version = "0.0.1"
 authors = [
     { name = "Neo", email = "netkiller@msn.com" },
