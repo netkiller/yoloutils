@@ -13,7 +13,7 @@
 
 [project]
 name = "netkiller-yoloutils"
-version = "0.0.1"
+version = "0.0.2"
 authors = [
     { name = "Neo", email = "netkiller@msn.com" },
 ]
@@ -26,6 +26,15 @@ classifiers = [
 ]
 license = "MIT"
 license-files = ["LICEN[CS]E*"]
+
+dependencies = [
+    "pillow",
+    "opencv-python",
+    "pyyaml",
+    "tqdm",
+    "texttable",
+    "ultralytics",
+]
 
 [project.urls]
 Homepage = "https://www.netkiller.cn"
