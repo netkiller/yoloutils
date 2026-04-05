@@ -4,27 +4,27 @@
 # Home	: https://www.netkiller.cn
 # Author: Neo <netkiller@msn.com>
 # Upgrade: 2025-03-29
-# YOLO 标签处理工具：
+# Description：YOLO 标签处理工具
 # （标签删除/合并/修改/复制/图片尺寸/Labelimg2yolo）
 ##############################################
 
 try:
     import argparse
     import glob
+    import hashlib
     import logging
     import os
     import random
     import shutil
     import sys
     import uuid
-    import hashlib
-    import yaml
-    import cv2
     from datetime import datetime
+
+    import cv2
+    import yaml
     from PIL import Image, ImageOps
     from texttable import Texttable
     from tqdm import tqdm
-
     from ultralytics import YOLO
 
 except ImportError as err:
@@ -32,7 +32,7 @@ except ImportError as err:
     exit()
 
 
-class YoloUtils():
+class YoloUtils:
     def __init__(self):
         # self.basedir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         # sys.path.append(self.basedir)
@@ -41,63 +41,131 @@ class YoloUtils():
         # logfile = os.path.join(self.basedir, 'logs', f"{os.path.splitext(os.path.basename(__file__))[0]}.{datetime.today().strftime('%Y-%m-%d.%H%M%S')}.log")
         # logfile = os.path.join(self.basedir, 'logs', f"{os.path.splitext(os.path.basename(__file__))[0]}.{datetime.today().strftime('%Y-%m-%d')}.log")
         logfile = f"{os.path.splitext(os.path.basename(__file__))[0]}.{datetime.today().strftime('%Y-%m-%d')}.log"
-        logging.basicConfig(filename=logfile, level=logging.DEBUG, encoding="utf-8",
-                            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        logging.basicConfig(
+            filename=logfile,
+            level=logging.DEBUG,
+            encoding="utf-8",
+            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        )
 
-        parser = argparse.ArgumentParser(description='Yolo 标签工具',
-                                         epilog='Author: netkiller - https://www.netkiller.cn')
-        self.subparsers = parser.add_subparsers(title='subcommands', description='valid subcommands', dest='subcommand',
-                                                help='additional help')
+        parser = argparse.ArgumentParser(
+            description="Yolo 标签工具",
+            epilog="Author: netkiller - https://www.netkiller.cn",
+        )
+        self.subparsers = parser.add_subparsers(
+            title="subcommands",
+            description="valid subcommands",
+            dest="subcommand",
+            help="additional help",
+        )
 
         self.parent_parser = argparse.ArgumentParser(add_help=False)
         # parent_parser.add_argument('--parent', type=int)
-        common = self.parent_parser.add_argument_group(title='通用参数', description=None)
-        common.add_argument('--source', type=str, default=None, help='图片来源地址')
-        common.add_argument('--target', default=None, type=str, help='图片目标地址')
-        common.add_argument('--clean', action="store_true", default=False, help='清理之前的数据')
+        common = self.parent_parser.add_argument_group(
+            title="通用参数", description=None
+        )
+        common.add_argument("--source", type=str, default=None, help="图片来源地址")
+        common.add_argument("--target", default=None, type=str, help="图片目标地址")
+        common.add_argument(
+            "--clean", action="store_true", default=False, help="清理之前的数据"
+        )
 
-        self.label = self.subparsers.add_parser('label', help='标签处理工具')
-        self.label.add_argument('--source', type=str, default=None, help='目录', metavar="/tmp/dir1")
-        self.label.add_argument('--classes', action="store_true", default=False, help='查看 classes.txt 文件')
-        self.label.add_argument('--total', action="store_true", default=False, help='统计标签图数量')
-        self.label.add_argument('--index', action="store_true", default=False, help='统计标签索引数量')
-        self.label.add_argument('--search', nargs='+', default=None, help='搜索标签', metavar="1 2 3")
+        self.label = self.subparsers.add_parser("label", help="标签处理工具")
+        self.label.add_argument(
+            "--source", type=str, default=None, help="目录", metavar="/tmp/dir1"
+        )
+        self.label.add_argument(
+            "--classes",
+            action="store_true",
+            default=False,
+            help="查看 classes.txt 文件",
+        )
+        self.label.add_argument(
+            "--total", action="store_true", default=False, help="统计标签图数量"
+        )
+        self.label.add_argument(
+            "--index", action="store_true", default=False, help="统计标签索引数量"
+        )
+        self.label.add_argument(
+            "--search", nargs="+", default=None, help="搜索标签", metavar="1 2 3"
+        )
 
         # labelimg.add_argument('--baz', choices=('X', 'Y', 'Z'), help='baz help')
 
-        self.merge = self.subparsers.add_parser('merge', help='合并两个TXT文件中的标签到新TXT文件')
+        self.merge = self.subparsers.add_parser(
+            "merge", help="合并两个TXT文件中的标签到新TXT文件"
+        )
         # self.parser = argparse.ArgumentParser(description='合并YOLO标签工具')
-        self.merge.add_argument('--left', type=str, default=None, help='左侧目录', metavar="/tmp/dir1")
-        self.merge.add_argument('--right', default=None, type=str, help='右侧目录', metavar="/tmp/dir2")
-        self.merge.add_argument('--output', type=str, default=None, help='最终输出目录', metavar="/tmp/output")
-        self.merge.add_argument('--clean', action="store_true", default=False, help='清理之前的数据')
+        self.merge.add_argument(
+            "--left", type=str, default=None, help="左侧目录", metavar="/tmp/dir1"
+        )
+        self.merge.add_argument(
+            "--right", default=None, type=str, help="右侧目录", metavar="/tmp/dir2"
+        )
+        self.merge.add_argument(
+            "--output",
+            type=str,
+            default=None,
+            help="最终输出目录",
+            metavar="/tmp/output",
+        )
+        self.merge.add_argument(
+            "--clean", action="store_true", default=False, help="清理之前的数据"
+        )
 
         # subparsers = self.parser.add_subparsers(help='subcommand help')
 
-        self.copy = self.subparsers.add_parser('copy', help='从指定标签复制图片文件')
-        self.copy.add_argument('--source', type=str, default=None, help='图片来源地址')
-        self.copy.add_argument('--target', type=str, default=None, help='图片目标地址')
-        self.copy.add_argument('--label', type=str, default=None, help='逗号分割多个标签')
-        self.copy.add_argument('-u', '--uuid', action="store_true", default=False, help='UUID 文件名')
-        self.copy.add_argument('-c', '--clean', action="store_true", default=False, help='清理目标文件夹')
+        self.copy = self.subparsers.add_parser("copy", help="从指定标签复制图片文件")
+        self.copy.add_argument("--source", type=str, default=None, help="图片来源地址")
+        self.copy.add_argument("--target", type=str, default=None, help="图片目标地址")
+        self.copy.add_argument(
+            "--label", type=str, default=None, help="逗号分割多个标签"
+        )
+        self.copy.add_argument(
+            "-u", "--uuid", action="store_true", default=False, help="UUID 文件名"
+        )
+        self.copy.add_argument(
+            "-c", "--clean", action="store_true", default=False, help="清理目标文件夹"
+        )
 
-        self.remove = self.subparsers.add_parser('remove', help='从YOLO TXT文件中删除指定标签',
-                                                 parents=[self.parent_parser])
+        self.remove = self.subparsers.add_parser(
+            "remove", help="从YOLO TXT文件中删除指定标签", parents=[self.parent_parser]
+        )
         # self.parser = argparse.ArgumentParser(description='YOLO标签删除工具')
-        self.remove.add_argument('--classes', nargs='+', default=None, help='标签序号', metavar="1 2 3")
-        self.remove.add_argument('--label', nargs='+', default=None, help='标签名称', metavar="label1 label2")
+        self.remove.add_argument(
+            "--classes", nargs="+", default=None, help="标签序号", metavar="1 2 3"
+        )
+        self.remove.add_argument(
+            "--label", nargs="+", default=None, help="标签名称", metavar="label1 label2"
+        )
         # remove.add_argument('--output', type=str, default=None, help='输出目录', metavar="/tmp/output")
         # self.remove.add_argument('--clean', action="store_true", default=False, help='清理输出目录')
         # self.remove.add_argument('--show', action='store_true', help='查看 classes.txt 文件')
 
-        self.change = self.subparsers.add_parser('change', help='修改标签索引')
-        self.change.add_argument('--source', type=str, default=None, help='目录', metavar="/tmp/dir1")
-        self.change.add_argument('--search', nargs='+', default=None, help='标签序号', metavar="1 2 3")
-        self.change.add_argument('--replace', nargs='+', default=None, help='标签名称', metavar="4 5 6")
+        self.change = self.subparsers.add_parser("change", help="修改标签索引")
+        self.change.add_argument(
+            "--source", type=str, default=None, help="目录", metavar="/tmp/dir1"
+        )
+        self.change.add_argument(
+            "--search", nargs="+", default=None, help="标签序号", metavar="1 2 3"
+        )
+        self.change.add_argument(
+            "--replace", nargs="+", default=None, help="标签名称", metavar="4 5 6"
+        )
 
-        self.crop = self.subparsers.add_parser('crop', help='图片裁剪', parents=[self.parent_parser])
-        self.crop.add_argument('--model', type=str, default=None, metavar="best.pt", help='模型')
-        self.crop.add_argument('--output', type=str, default=None, help='Yolo 输出目录', metavar="/tmp/output")
+        self.crop = self.subparsers.add_parser(
+            "crop", help="图片裁剪", parents=[self.parent_parser]
+        )
+        self.crop.add_argument(
+            "--model", type=str, default=None, metavar="best.pt", help="模型"
+        )
+        self.crop.add_argument(
+            "--output",
+            type=str,
+            default=None,
+            help="Yolo 输出目录",
+            metavar="/tmp/output",
+        )
         # self.change.add_argument('--classes', action="store_true", default=False, help='查看 classes.txt 文件')
         # parser_b.add_argument('--baz', choices=('X', 'Y', 'Z'), help='baz help')
         #
@@ -120,42 +188,81 @@ class YoloUtils():
         # self.parser.add_argument('--crop', action="store_true", default=False, help='裁剪')
         # self.args = self.parser.parse_args()
 
-        self.labelimg = self.subparsers.add_parser('labelimg', help='labelimg 格式转换为 yolo 训练数据集',
-                                                   parents=[self.parent_parser])
+        self.labelimg = self.subparsers.add_parser(
+            "labelimg",
+            help="labelimg 格式转换为 yolo 训练数据集",
+            parents=[self.parent_parser],
+        )
         # self.labelimg.add_argument('--source', type=str, default=None, help='图片来源地址')
         # self.labelimg.add_argument('--target', default=None, type=str, help='图片目标地址')
-        self.labelimg.add_argument('--classes', type=str, default=None, help='classes.txt 文件')
-        self.labelimg.add_argument('--val', type=int, default=10, help='检验数量', metavar=10)
+        self.labelimg.add_argument(
+            "--classes", type=str, default=None, help="classes.txt 文件"
+        )
+        self.labelimg.add_argument(
+            "--val", type=int, default=10, help="检验数量", metavar=10
+        )
         # self.labelimg.add_argument('--clean', action="store_true", default=False, help='清理之前的数据')
         # self.labelimg.add_argument('--crop', action="store_true", default=False, help='裁剪')
-        self.labelimg.add_argument('--uuid', action="store_true", default=False, help='输出文件名使用UUID')
-        self.labelimg.add_argument('--check', action="store_true", default=False,
-                                   help='图片检查 corrupt JPEG restored and saved')
+        self.labelimg.add_argument(
+            "--uuid", action="store_true", default=False, help="输出文件名使用UUID"
+        )
+        self.labelimg.add_argument(
+            "--check",
+            action="store_true",
+            default=False,
+            help="图片检查 corrupt JPEG restored and saved",
+        )
         # self.labelimg.add_argument('-l', '--label', action="store_true", default=False, help='标签统计')
 
-        self.resize = self.subparsers.add_parser('resize', help='修改图片尺寸', parents=[self.parent_parser])
+        self.resize = self.subparsers.add_parser(
+            "resize", help="修改图片尺寸", parents=[self.parent_parser]
+        )
         # self.parser = argparse.ArgumentParser(description='自动切割学习数据')
         # self.resize.add_argument('--source', type=str, default=None, help='图片来源地址')
-        # self.resize.add_argument('--target', default=None, type=str, help='图片目标地址')
-        self.resize.add_argument('--imgsz', type=int, default=640, help='长边尺寸', metavar=640)
-        self.resize.add_argument('--output', type=str, default=None, help='输出识别图像', metavar="")
+        self.resize.add_argument(
+            "--imgsz", type=int, default=640, help="长边尺寸", metavar=640
+        )
+        self.resize.add_argument(
+            "--output", type=str, default=None, help="输出识别图像", metavar=""
+        )
         # self.resize.add_argument('--clean', action="store_true", default=False, help='清理之前的数据')
         # self.resize.add_argument('--md5sum', action="store_true", default=False, help='使用md5作为文件名')
         # self.resize.add_argument('--uuid', action="store_true", default=False, help='重命名图片为UUID')
         # self.resize.add_argument('--crop', action="store_true", default=False, help='裁剪')
         # self.args = self.parser.parse_args()
 
-        self.classify = self.subparsers.add_parser('classify', help='图像分类数据处理', parents=[self.parent_parser])
-        # self.classify.add_argument('--source', type=str, default=None, help='图片来源地址')
-        # self.classify.add_argument('--target', default=None, type=str, help='图片目标地址')
-        self.classify.add_argument('--output', type=str, default=None, help='输出识别图像', metavar="")
-        self.classify.add_argument('--checklist', type=str, default=None, help='输出识别图像', metavar="")
-        self.classify.add_argument('--test', type=int, default=10, help='测试数量', metavar=100)
+        self.classify = self.subparsers.add_parser(
+            "classify", help="图像分类数据处理", parents=[self.parent_parser]
+        )
+        self.classify.add_argument(
+            "--output", type=str, default=None, help="输出识别图像", metavar=""
+        )
+        self.classify.add_argument(
+            "--checklist", type=str, default=None, help="输出识别图像", metavar=""
+        )
+        self.classify.add_argument(
+            "--test", type=int, default=10, help="测试数量", metavar=100
+        )
         # self.classify.add_argument('--clean', action="store_true", default=False, help='清理之前的数据')
-        self.classify.add_argument('--crop', action="store_true", default=False, help='裁剪')
-        self.classify.add_argument('--model', type=str, default=None, help='裁剪模型', metavar="")
-        self.classify.add_argument('--uuid', action="store_true", default=False, help='重命名图片为UUID')
-        self.classify.add_argument('--verbose', action="store_true", default=False, help='过程输出')
+        self.classify.add_argument(
+            "--crop", action="store_true", default=False, help="裁剪"
+        )
+        self.classify.add_argument(
+            "--model", type=str, default=None, help="裁剪模型", metavar=""
+        )
+        self.classify.add_argument(
+            "--uuid", action="store_true", default=False, help="重命名图片为UUID"
+        )
+        self.classify.add_argument(
+            "--verbose", action="store_true", default=False, help="过程输出"
+        )
+
+        self.test = self.subparsers.add_parser(
+            "test", help="模型测试工具", parents=[self.parent_parser]
+        )
+        self.test.add_argument('--model', type=str, default=None, help='模型路径')
+        self.test.add_argument('--path', type=str,default=None,  help='测试图片路径')
+        self.test.add_argument('--output', type=str,default=None,  help='测试结果输出路径')
 
         self.parser = parser
 
@@ -164,23 +271,25 @@ class YoloUtils():
         args = self.parser.parse_args()
 
         # print(args, args.subcommand)
-        if args.subcommand == 'label':
+        if args.subcommand == "label":
             run = YoloLabel(self.label, args)
-        elif args.subcommand == 'copy':
+        elif args.subcommand == "copy":
             run = YoloLabelCopy(self.copy, args)
-        elif args.subcommand == 'remove':
+        elif args.subcommand == "remove":
             run = YoloLabelRemove(self.remove, args)
-        elif args.subcommand == 'change':
+        elif args.subcommand == "change":
             run = YoloLabelChange(self.change, args)
-        elif args.subcommand == 'change':
+        elif args.subcommand == "change":
             run = YoloLabelMerge(self.change, args)
-        elif args.subcommand == 'labelimg':
+        elif args.subcommand == "labelimg":
             run = YoloLabelimg(self.labelimg, args)
-        elif args.subcommand == 'resize':
+        elif args.subcommand == "resize":
             run = YoloResize(self.resize, args)
-        elif args.subcommand == 'crop':
+        elif args.subcommand == "crop":
             run = ImageCrop(self.crop, args)
-        elif args.subcommand == 'classify':
+        elif args.subcommand == "test":
+            run = YoloDetectTest(self.test, args)
+        elif args.subcommand == "classify":
             run = Classify(self.classify, args)
         else:
             self.parser.print_help()
@@ -189,7 +298,7 @@ class YoloUtils():
         run.main()
 
 
-class Common():
+class Common:
     # background = (22, 255, 39) # 绿幕RGB模式（R22 - G255 - B39），CMYK模式（C62 - M0 - Y100 - K0）
     background = (0, 0, 0)
 
@@ -208,7 +317,7 @@ class Common():
             if os.path.isfile(os.path.join(path, name)):
                 files.append(name)
 
-        return (files)
+        return files
 
     def scandir(self, path):
         files = []
@@ -216,7 +325,7 @@ class Common():
             if os.path.isdir(os.path.join(path, name)):
                 files.append(name)
 
-        return (files)
+        return files
 
     def walkdir(self, path):
         for dirpath, dirnames, filenames in os.walk(path):
@@ -225,7 +334,7 @@ class Common():
 
     def md5sum(self, filename):
         md5 = hashlib.md5()
-        with open(filename, 'rb') as f:
+        with open(filename, "rb") as f:
             md5.update(f.read())
             return md5.hexdigest()
 
@@ -241,9 +350,16 @@ class YoloLabelimg(Common):
         # sys.path.append(self.basedir)
 
         # 日志记录基本设置
-        logfile = os.path.join(self.basedir, 'logs', f"{os.path.splitext(os.path.basename(__file__))[0]}.log")
-        logging.basicConfig(filename=logfile, level=logging.DEBUG,
-                            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        logfile = os.path.join(
+            self.basedir,
+            "logs",
+            f"{os.path.splitext(os.path.basename(__file__))[0]}.log",
+        )
+        logging.basicConfig(
+            filename=logfile,
+            level=logging.DEBUG,
+            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        )
 
         self.parser = parser
         self.args = args
@@ -265,10 +381,15 @@ class YoloLabelimg(Common):
 
         self.mkdirs(os.path.join(self.args.target))
         directory = [
-            'train/labels', 'train/images', 'val/labels', 'val/images', 'test/labels', 'test/images'
+            "train/labels",
+            "train/images",
+            "val/labels",
+            "val/images",
+            "test/labels",
+            "test/images",
         ]
 
-        classes = os.path.join(self.args.source, 'classes.txt')
+        classes = os.path.join(self.args.source, "classes.txt")
         if not os.path.isfile(classes):
             print(f"classes.txt 文件不存在: {classes}")
             self.logger.error(f"classes.txt 文件不存在！")
@@ -278,7 +399,9 @@ class YoloLabelimg(Common):
                 for line in file:
                     self.classes.append(line.strip())
                     self.lables[line.strip()] = []
-                self.logger.info(f"classes len={len(self.classes)} labels={self.classes}")
+                self.logger.info(
+                    f"classes len={len(self.classes)} labels={self.classes}"
+                )
 
         with tqdm(total=len(directory), ncols=120) as progress:
             for dir in directory:
@@ -289,23 +412,29 @@ class YoloLabelimg(Common):
     def process(self):
         # images =  glob.glob('*.jpg', root_dir=self.args.source)
         # labels = glob.glob('*.txt', root_dir=self.args.source)
-        files = glob.glob(f'{self.args.source}/**/*.txt', recursive=True)
+        files = glob.glob(f"{self.args.source}/**/*.txt", recursive=True)
 
-        with tqdm(total=len(files), ncols=150) as images, tqdm(total=len(files), ncols=150) as train:
-
+        with (
+            tqdm(total=len(files), ncols=150) as images,
+            tqdm(total=len(files), ncols=150) as train,
+        ):
             for source in files:
-                if source.endswith('classes.txt'):
+                if source.endswith("classes.txt"):
                     train.update(1)
                     images.update(1)
                     continue
-                train.set_description(f'train/labels: {source}')
+                train.set_description(f"train/labels: {source}")
 
                 uuid4 = None
                 if self.args.uuid:
                     uuid4 = uuid.uuid4()
-                    target = os.path.join(self.args.target, 'train/labels', f"{uuid4}.txt")
+                    target = os.path.join(
+                        self.args.target, "train/labels", f"{uuid4}.txt"
+                    )
                 else:
-                    target = os.path.join(self.args.target, 'train/labels', os.path.basename(source))
+                    target = os.path.join(
+                        self.args.target, "train/labels", os.path.basename(source)
+                    )
                 name, extension = os.path.splitext(os.path.basename(target))
 
                 with open(source) as file:
@@ -324,18 +453,26 @@ class YoloLabelimg(Common):
                     self.logger.info(f"file={name} labels={lines}")
 
                 shutil.copy(source, target)
-                self.logger.debug(f"train/labels source={source} target={target} name={name}")
+                self.logger.debug(
+                    f"train/labels source={source} target={target} name={name}"
+                )
                 train.update(1)
-                images.set_description(f'train/images: {source}')
+                images.set_description(f"train/images: {source}")
 
-                for ext in ['.jpg', '.png']:
-                    source = source.replace('.txt', ext)
+                for ext in [".jpg", ".png"]:
+                    source = source.replace(".txt", ext)
                     if os.path.exists(source):
-                        target = os.path.join(self.args.target, 'train/images', f"{name}.jpg")
+                        target = os.path.join(
+                            self.args.target, "train/images", f"{name}.jpg"
+                        )
                         shutil.copy(source, target)
-                        self.logger.info(f"train/images source={source} target={target} name={name}")
+                        self.logger.info(
+                            f"train/images source={source} target={target} name={name}"
+                        )
                     else:
-                        self.logger.warning(f"train/images source={source} target={target} name={name}")
+                        self.logger.warning(
+                            f"train/images source={source} target={target} name={name}"
+                        )
                     break
                 images.update(1)
 
@@ -355,20 +492,34 @@ class YoloLabelimg(Common):
                     progress.set_description(f"val/label {label}")
                     name, extension = os.path.splitext(os.path.basename(file))
                     try:
-                        source = os.path.join(self.args.target, 'train/labels', f"{name}.txt")
-                        target = os.path.join(self.args.target, 'val/labels', f"{name}.txt")
+                        source = os.path.join(
+                            self.args.target, "train/labels", f"{name}.txt"
+                        )
+                        target = os.path.join(
+                            self.args.target, "val/labels", f"{name}.txt"
+                        )
                         if os.path.exists(target):
-                            self.logger.info(f"val/labels skip label={label} file={file}")
+                            self.logger.info(
+                                f"val/labels skip label={label} file={file}"
+                            )
                             progress.update(1)
                             continue
 
                         shutil.copy(source, target)
-                        self.logger.info(f"val/labels copy label={label} source={source} target={target}")
+                        self.logger.info(
+                            f"val/labels copy label={label} source={source} target={target}"
+                        )
 
-                        source = os.path.join(self.args.target, 'train/images', f"{name}.jpg")
-                        target = os.path.join(self.args.target, 'val/images', f"{name}.jpg")
+                        source = os.path.join(
+                            self.args.target, "train/images", f"{name}.jpg"
+                        )
+                        target = os.path.join(
+                            self.args.target, "val/images", f"{name}.jpg"
+                        )
                         shutil.copy(source, target)
-                        self.logger.info(f"val/images copy label={label} source={source} target={target}")
+                        self.logger.info(
+                            f"val/images copy label={label} source={source} target={target}"
+                        )
                     except Exception as e:
                         self.logger.error(f"val {repr(e)} name={name}")
                     progress.update(1)
@@ -376,14 +527,16 @@ class YoloLabelimg(Common):
     def output(self):
         names = {i: self.classes[i] for i in range(len(self.classes))}  # 标签类别
         data = {
-            'path': os.path.join(os.getcwd(), self.args.target),
-            'train': "train/images",
-            'val': "val/images",
-            'test': "test/images",
-            'names': names
+            "path": os.path.join(os.getcwd(), self.args.target),
+            "train": "train/images",
+            "val": "val/images",
+            "test": "test/images",
+            "names": names,
             # 'nc': len(self.classes)
         }
-        with open(os.path.join(self.args.target, 'data.yaml'), 'w', encoding="utf-8") as file:
+        with open(
+            os.path.join(self.args.target, "data.yaml"), "w", encoding="utf-8"
+        ) as file:
             yaml.dump(data, file, allow_unicode=True)
 
     def report(self):
@@ -408,20 +561,14 @@ class YoloLabelimg(Common):
             self.report()
             self.logger.info("Done")
         else:
-
-            self.parser.parse_args(['labelimg'])
+            self.parser.parse_args(["labelimg"])
 
             self.parser.print_help()
             exit()
 
 
 class YoloLabelRemove(Common):
-    total = {
-        'change': 0,
-        'remove': 0,
-        'skip': 0,
-        'error': 0
-    }
+    total = {"change": 0, "remove": 0, "skip": 0, "error": 0}
 
     def __init__(self, parser, args):
 
@@ -437,7 +584,7 @@ class YoloLabelRemove(Common):
             if os.path.isdir(os.path.join(path, name)):
                 files.append(name)
 
-        return (files)
+        return files
 
     def input(self):
         try:
@@ -448,10 +595,10 @@ class YoloLabelRemove(Common):
                 os.makedirs(self.args.target, exist_ok=True)
 
             # self.files = glob.glob(os.path.join(self.args.source, "*.txt"))
-            self.files = glob.glob(f'{self.args.source}/**/*.txt', recursive=True)
+            self.files = glob.glob(f"{self.args.source}/**/*.txt", recursive=True)
 
             if self.args.label:
-                classes = os.path.join(self.args.source, 'classes.txt')
+                classes = os.path.join(self.args.source, "classes.txt")
                 if not os.path.isfile(classes):
                     print(f"classes.txt 文件不存在: {classes}")
                     self.logger.error(f"classes.txt 文件不存在！")
@@ -466,7 +613,9 @@ class YoloLabelRemove(Common):
             if self.args.classes:
                 for index in self.args.classes:
                     self.indexs.append(int(index))
-            self.logger.info(f"remove classes len={len(self.indexs)} indexs={self.indexs}")
+            self.logger.info(
+                f"remove classes len={len(self.indexs)} indexs={self.indexs}"
+            )
             # print(self.files)
         except Exception as e:
             self.logger.error("input: ", repr(e))
@@ -478,9 +627,9 @@ class YoloLabelRemove(Common):
                 progress.set_description(file)
                 filename = os.path.basename(file)
                 try:
-                    if filename.lower() == 'classes.txt':
+                    if filename.lower() == "classes.txt":
                         progress.update(1)
-                        self.total['skip'] += 1
+                        self.total["skip"] += 1
                         self.logger.info(f"skip file={file}")
                         continue
                     else:
@@ -495,7 +644,9 @@ class YoloLabelRemove(Common):
                                 index = int(line.strip().split(" ")[0])
                                 if index in self.indexs:
                                     # if line.startswith(f"{self.args.label} "):
-                                    self.logger.info(f"index={index} indexs={self.indexs}")
+                                    self.logger.info(
+                                        f"index={index} indexs={self.indexs}"
+                                    )
                                     isChange = True
                                     continue
                                 lines.append(line)
@@ -503,23 +654,23 @@ class YoloLabelRemove(Common):
                             if isChange:
                                 with open(target, "w") as newfile:
                                     newfile.writelines(lines)
-                                self.total['change'] += 1
+                                self.total["change"] += 1
                                 self.logger.info(f"change target={target}")
                         else:
                             os.remove(target)
                             os.remove(target.replace(".txt", ".jpg"))
-                            self.total['remove'] += 1
+                            self.total["remove"] += 1
                             self.logger.info(f"remove target={target}")
 
                 except FileNotFoundError as e:
                     self.logger.error(str(e))
-                    self.total['error'] += 1
+                    self.total["error"] += 1
 
                 progress.update(1)
 
     def output(self):
         tables = [["操作", "处理"]]
-        tables.append(['count', len(self.files)])
+        tables.append(["count", len(self.files)])
         for k, v in self.total.items():
             tables.append([k, v])
         table = Texttable(max_width=100)
@@ -549,12 +700,24 @@ class YoloLabelMerge(Common):
         sys.path.append(self.basedir)
         # print(basedir)
 
-        self.parser = argparse.ArgumentParser(description='合并YOLO标签工具')
-        self.parser.add_argument('--left', type=str, default=None, help='左侧目录', metavar="/tmp/dir1")
-        self.parser.add_argument('--right', default=None, type=str, help='右侧目录', metavar="/tmp/dir2")
+        self.parser = argparse.ArgumentParser(description="合并YOLO标签工具")
+        self.parser.add_argument(
+            "--left", type=str, default=None, help="左侧目录", metavar="/tmp/dir1"
+        )
+        self.parser.add_argument(
+            "--right", default=None, type=str, help="右侧目录", metavar="/tmp/dir2"
+        )
         # self.parser.add_argument('--imgsz', type=int, default=640, help='长边尺寸',metavar=640)
-        self.parser.add_argument('--output', type=str, default=None, help='最终输出目录', metavar="/tmp/output")
-        self.parser.add_argument('--clean', action="store_true", default=False, help='清理之前的数据')
+        self.parser.add_argument(
+            "--output",
+            type=str,
+            default=None,
+            help="最终输出目录",
+            metavar="/tmp/output",
+        )
+        self.parser.add_argument(
+            "--clean", action="store_true", default=False, help="清理之前的数据"
+        )
         # self.parser.add_argument('--md5sum', action="store_true", default=False, help='使用md5作为文件名')
         # self.parser.add_argument('--uuid', action="store_true", default=False, help='重命名图片为UUID')
         # self.parser.add_argument('--crop', action="store_true", default=False, help='裁剪')
@@ -567,7 +730,7 @@ class YoloLabelMerge(Common):
         #         files.append(name)
         files = glob.glob(path)
 
-        return (files)
+        return files
 
     def scandir(self, path):
         files = []
@@ -575,7 +738,7 @@ class YoloLabelMerge(Common):
             if os.path.isdir(os.path.join(path, name)):
                 files.append(name)
 
-        return (files)
+        return files
 
     def input(self):
         try:
@@ -598,22 +761,31 @@ class YoloLabelMerge(Common):
                 progress.set_description(file)
                 filename = os.path.basename(file)
                 try:
-                    if filename.lower() == 'classes.txt':
+                    if filename.lower() == "classes.txt":
                         shutil.copyfile(file, os.path.join(self.args.output, filename))
                     else:
                         left = os.path.join(self.args.left, filename)
-                        right = os.path.join(self.args.right, filename.replace('_0.', '.'))
+                        right = os.path.join(
+                            self.args.right, filename.replace("_0.", ".")
+                        )
                         output = os.path.join(self.args.output, filename)
-                        image = filename.replace('.txt', '.jpg')
+                        image = filename.replace(".txt", ".jpg")
                         # print(f"left={left}, right={right}, output={output}")
 
-                        shutil.copyfile(os.path.join(self.args.left, image), os.path.join(self.args.output, image))
+                        shutil.copyfile(
+                            os.path.join(self.args.left, image),
+                            os.path.join(self.args.output, image),
+                        )
 
                         if not os.path.isfile(right):
                             shutil.copyfile(left, output)
                             # print(f"test={os.path.isdir(right)} right={right}")
                         else:
-                            with open(left, "r") as file1, open(right, "r") as file2, open(output, "w") as file:
+                            with (
+                                open(left, "r") as file1,
+                                open(right, "r") as file2,
+                                open(output, "w") as file,
+                            ):
                                 txt1 = file1.read()
                                 txt2 = file2.read()
 
@@ -655,7 +827,6 @@ class YoloLabelMerge(Common):
 
 
 class YoloLabelCopy(Common):
-
     def __init__(self, parser, args):
 
         self.parser = parser
@@ -677,7 +848,7 @@ class YoloLabelCopy(Common):
 
         os.makedirs(os.path.join(self.args.target), exist_ok=True)
 
-        classes = os.path.join(self.args.source, 'classes.txt')
+        classes = os.path.join(self.args.source, "classes.txt")
         if not os.path.isfile(classes):
             print(f"classes.txt 文件不存在: {classes}")
             self.logger.error(f"classes.txt 文件不存在！")
@@ -692,7 +863,7 @@ class YoloLabelCopy(Common):
                     n += 1
                 self.logger.info(f"classes len={len(self.classes)} dict={self.classes}")
             if self.args.label:
-                for label in self.args.label.split(','):
+                for label in self.args.label.split(","):
                     if label in self.classes.keys():
                         self.lables.append(self.classes[label])
                     else:
@@ -704,18 +875,18 @@ class YoloLabelCopy(Common):
         table.add_rows(tables)
         print(table.draw())
 
-        self.files = glob.glob(f'{self.args.source}/**/*.txt', recursive=True)
+        self.files = glob.glob(f"{self.args.source}/**/*.txt", recursive=True)
 
     def process(self):
 
-        with tqdm(total=len(self.files), ncols=150) as processBar, tqdm(total=len(self.files),
-                                                                        ncols=150) as processBarImage:
-
+        with (
+            tqdm(total=len(self.files), ncols=150) as processBar,
+            tqdm(total=len(self.files), ncols=150) as processBarImage,
+        ):
             for file in self.files:
+                processBar.set_description(f"{file}")
 
-                processBar.set_description(f'{file}')
-
-                if file.endswith('classes.txt'):
+                if file.endswith("classes.txt"):
                     processBar.update(1)
                     processBarImage.update(1)
                     self.logger.info(f"skip classes.txt")
@@ -728,11 +899,10 @@ class YoloLabelCopy(Common):
                 else:
                     target = os.path.join(self.args.target, os.path.basename(source))
 
-                image = file.replace('.txt', '.jpg', 1)
-                processBarImage.set_description(f'{image}')
+                image = file.replace(".txt", ".jpg", 1)
+                processBarImage.set_description(f"{image}")
 
                 if self.args.label:
-
                     with open(file) as txt:
                         # self.logger.debug(f"TXT {file} {txt.readlines()}")
                         for line in txt.readlines():
@@ -741,25 +911,31 @@ class YoloLabelCopy(Common):
                             # self.logger.info(index)
                             if index in self.lables:
                                 shutil.copy(source, target)
-                                self.logger.info(f"copy source={source} target={target}")
-                                source = source.replace('.txt', '.jpg')
-                                target = self.args.target.replace('.txt', '.jpg')
+                                self.logger.info(
+                                    f"copy source={source} target={target}"
+                                )
+                                source = source.replace(".txt", ".jpg")
+                                target = self.args.target.replace(".txt", ".jpg")
                                 shutil.copy(source, target)
-                                self.logger.info(f"copy source={source} target={target}")
+                                self.logger.info(
+                                    f"copy source={source} target={target}"
+                                )
                                 self.count += 1
                                 break
                 else:
                     shutil.copy(source, target)
                     self.logger.info(f"copy source={file} target={target}")
                 try:
-                    shutil.copy(image, target.replace('.txt', '.jpg', 1))
+                    shutil.copy(image, target.replace(".txt", ".jpg", 1))
                 except FileNotFoundError as e:
                     self.logger.error(e)
                 processBar.update(1)
                 processBarImage.update(1)
 
     def output(self):
-        shutil.copy(f"{self.args.source}/classes.txt", f"{self.args.target}/classes.txt")
+        shutil.copy(
+            f"{self.args.source}/classes.txt", f"{self.args.target}/classes.txt"
+        )
 
         tables = [["输出", "处理"]]
         tables.append([len(self.files), self.count])
@@ -801,11 +977,10 @@ class YoloLabelChange(Common):
             if os.path.isdir(os.path.join(path, name)):
                 files.append(name)
 
-        return (files)
+        return files
 
     def input(self):
         try:
-
             self.logger.info(f"search={self.args.search}")
             self.logger.info(f"replace={self.args.replace}")
 
@@ -814,7 +989,7 @@ class YoloLabelChange(Common):
 
             self.logger.info(f"editable={self.editable}")
 
-            self.files = glob.glob(f'{self.args.source}/**/*.txt', recursive=True)
+            self.files = glob.glob(f"{self.args.source}/**/*.txt", recursive=True)
             self.logger.info(f"files total={len(self.files)}")
         except Exception as e:
             self.logger.error("input: ", e)
@@ -827,7 +1002,7 @@ class YoloLabelChange(Common):
                 filename = os.path.basename(file)
                 self.logger.info(f"file={file}")
                 try:
-                    if filename.lower() == 'classes.txt':
+                    if filename.lower() == "classes.txt":
                         progress.update(1)
                         self.logger.info(f"skip file={file}")
                         continue
@@ -843,7 +1018,9 @@ class YoloLabelChange(Common):
                                 for s, r in self.editable.items():
                                     if line.startswith(f"{s} "):
                                         line = line.replace(f"{s} ", f"{r} ", 1)
-                                        self.logger.info(f"search={s} replace={r} line={line.strip()}")
+                                        self.logger.info(
+                                            f"search={s} replace={r} line={line.strip()}"
+                                        )
                                         break
 
                                 # if index > len(self.classes):
@@ -899,7 +1076,7 @@ class YoloLabel(Common):
         self.indexs = {}
 
     def classes(self):
-        classes = os.path.join(self.args.source, 'classes.txt')
+        classes = os.path.join(self.args.source, "classes.txt")
         if not os.path.isfile(classes):
             print(f"classes.txt 文件不存在: {classes}")
             self.logger.error(f"classes.txt 文件不存在！")
@@ -917,7 +1094,7 @@ class YoloLabel(Common):
             print(table.draw())
 
     def total(self):
-        self.files = glob.glob(f'{self.args.source}/**/*.txt', recursive=True)
+        self.files = glob.glob(f"{self.args.source}/**/*.txt", recursive=True)
         self.logger.info(f"files total={len(self.files)}")
         # progress = {}
         with tqdm(total=len(self.files), ncols=150) as progress:
@@ -926,7 +1103,7 @@ class YoloLabel(Common):
                 filename = os.path.basename(file)
                 self.logger.info(f"file={file}")
                 try:
-                    if filename.lower() == 'classes.txt':
+                    if filename.lower() == "classes.txt":
                         progress.update(1)
                         self.logger.info(f"skip file={file}")
                         continue
@@ -954,7 +1131,7 @@ class YoloLabel(Common):
             for k, v in self.indexs.items():
                 tables.append([k, v])
         else:
-            classes = os.path.join(self.args.source, 'classes.txt')
+            classes = os.path.join(self.args.source, "classes.txt")
             if not os.path.isfile(classes):
                 print(f"classes.txt 文件不存在: {classes}")
                 self.logger.error(f"classes.txt 文件不存在！")
@@ -976,18 +1153,17 @@ class YoloLabel(Common):
 
     def search(self):
 
-        self.files = glob.glob(f'{self.args.source}/**/*.txt', recursive=True)
+        self.files = glob.glob(f"{self.args.source}/**/*.txt", recursive=True)
         self.logger.info(f"files total={len(self.files)}")
         data = {}
 
         with tqdm(total=len(self.files), ncols=100) as progress:
-
             for file in self.files:
                 # progress.set_description(file)
                 filename = os.path.basename(file)
                 self.logger.info(f"file={file}")
                 try:
-                    if filename.lower() == 'classes.txt':
+                    if filename.lower() == "classes.txt":
                         self.logger.info(f"skip file={file}")
                         continue
                     else:
@@ -1065,19 +1241,20 @@ class YoloResize(Common):
 
     def images(self, source, target):
         try:
-
             original = Image.open(source)
             width, height = original.size
             # print(target)
             if max(width, height) < self.args.imgsz:
                 shutil.copyfile(source, target)
-                self.total['未处理'] += 1
+                self.total["未处理"] += 1
                 self.logger.info(f"skip source={source} target={target}")
             else:
                 image = self.resize(original)
                 image.save(target)
-                self.total['已处理'] += 1
-                self.logger.info(f"size={original.size} resize={image.size} source={source} target={target}")
+                self.total["已处理"] += 1
+                self.logger.info(
+                    f"size={original.size} resize={image.size} source={source} target={target}"
+                )
 
         except Exception as e:
             # log.error(e)
@@ -1101,7 +1278,7 @@ class YoloResize(Common):
             print("input: ", repr(e))
             exit()
 
-        self.files = glob.glob(f'{self.args.source}/**/*.jpg', recursive=True)
+        self.files = glob.glob(f"{self.args.source}/**/*.jpg", recursive=True)
         self.logger.info(f"files total={len(self.files)}")
 
         # print(self.files)
@@ -1113,7 +1290,9 @@ class YoloResize(Common):
                 progress.set_description(source)
 
                 # target = source.replace(self.args.source, self.args.target)
-                target = source.replace(os.path.join(self.args.source), os.path.join(self.args.target))
+                target = source.replace(
+                    os.path.join(self.args.source), os.path.join(self.args.target)
+                )
                 if not os.path.exists(os.path.dirname(target)):
                     os.makedirs(os.path.dirname(target), exist_ok=True)
                 self.images(source, target)
@@ -1193,9 +1372,14 @@ class ImageCrop(Common):
         width, height = tongue.size
         # width += self.border
         # height += self.border
-        image = Image.new('RGB', (width, height), self.background)
-        image.paste(tongue, (
-            int(width / 2) - int(tongue.size[0] / 2), int(height / 2) - int(tongue.size[1] / 2)))
+        image = Image.new("RGB", (width, height), self.background)
+        image.paste(
+            tongue,
+            (
+                int(width / 2) - int(tongue.size[0] / 2),
+                int(height / 2) - int(tongue.size[1] / 2),
+            ),
+        )
         return image
 
     def crop(self, source: str, target: str):
@@ -1203,7 +1387,6 @@ class ImageCrop(Common):
             return None
 
         try:
-
             image = cv2.imread(source)
             if image is None:
                 return None
@@ -1212,11 +1395,20 @@ class ImageCrop(Common):
 
             for result in results:
                 # 提取检测到的每个目标的边界框
-                boxes = result.boxes.data.cpu().numpy()  # YOLO 边界框格式：[x1, y1, x2, y2, confidence, class]
+                boxes = (
+                    result.boxes.data.cpu().numpy()
+                )  # YOLO 边界框格式：[x1, y1, x2, y2, confidence, class]
                 # print(result.boxes.data.tolist())
                 if self.args.output:
-                    result.save(filename=os.path.join(self.args.output, os.path.basename(source)))
-                    result.save_crop(save_dir=os.path.join(self.args.output, 'crop'), file_name="detection")
+                    result.save(
+                        filename=os.path.join(
+                            self.args.output, os.path.basename(source)
+                        )
+                    )
+                    result.save_crop(
+                        save_dir=os.path.join(self.args.output, "crop"),
+                        file_name="detection",
+                    )
                 # print(boxes)
 
                 # x1, y1, x2, y2, conf, cls = map(int, box[0][:6])
@@ -1227,13 +1419,15 @@ class ImageCrop(Common):
                 for idx, box in enumerate(boxes):
                     x1, y1, x2, y2, conf, cls = map(int, box[:6])
                     cropped = image[y1:y2, x1:x2]
-                    output = os.path.join(self.args.target,
-                                          f"{os.path.splitext(os.path.basename(source))[0]}_{idx}.jpg")
+                    output = os.path.join(
+                        self.args.target,
+                        f"{os.path.splitext(os.path.basename(source))[0]}_{idx}.jpg",
+                    )
                     cv2.imwrite(target, cropped)
-                    self.total['已处理'] += 1
+                    self.total["已处理"] += 1
                     self.logger.info(f"Saved cropped image: {target}")
                     return target
-            self.total['未处理'] += 1
+            self.total["未处理"] += 1
         except Exception as e:
             print(e)
             self.logger.error(e)
@@ -1256,7 +1450,7 @@ class ImageCrop(Common):
             print("input: ", repr(e))
             exit()
 
-        self.files = glob.glob(f'{self.args.source}/**/*.jpg', recursive=True)
+        self.files = glob.glob(f"{self.args.source}/**/*.jpg", recursive=True)
         self.logger.info(f"files total={len(self.files)}")
 
         # print(self.files)
@@ -1266,9 +1460,10 @@ class ImageCrop(Common):
     def process(self):
         with tqdm(total=len(self.files), ncols=120) as progress:
             for source in self.files:
-
                 source = os.path.join(source)
-                target = source.replace(os.path.join(self.args.source), os.path.join(self.args.target))
+                target = source.replace(
+                    os.path.join(self.args.source), os.path.join(self.args.target)
+                )
 
                 progress.set_description(source)
 
@@ -1302,6 +1497,98 @@ class ImageCrop(Common):
             self.parser.print_help()
             exit()
 
+class YoloDetectTest(Common):
+    path = None
+    model = None
+    output = None
+    tables = [["文件", "标签", "置信度"]]
+
+    def __init__(self,parser,args):
+        self.logger = logging.getLogger(__class__.__name__)
+        self.parser = parser
+        self.args = args
+        pass
+
+    def run(self):
+
+        files = self.scanfile(self.path)
+        if len(files) == 0:
+            return
+        self.total = len(files)
+        # Load a pretrained YOLO26 nano model
+        self.yolo = YOLO(self.model)
+        # self.log.info(f"detect model={model}, file={source}")
+        # count = 0
+        with tqdm(total=self.total, ncols=100) as progress:
+            for file in files:
+                if file.endswith(".txt") or file.endswith(".DS_Store"):
+                    progress.update(1)
+                    continue
+                progress.set_description("%s" % file)
+                # print(f"dirpath={dirpath}, dirnames={dirnames}, filenames={filenames}")
+                # print(filenames)
+
+                # Run inference on an image
+                source,label,conf = self.detect(os.path.join(self.path,file))
+                if conf is None:
+                    # count +=1
+                    conf = 0.0
+                # print(results)
+                self.tables.append([os.path.basename(source),label,conf])
+                progress.update(1)
+        # print(count)
+    def report(self):
+        table = Texttable(max_width=160)
+        table.add_rows(self.tables)
+        print(table.draw())
+        del(self.tables[0])
+        # print([t[2] for t in self.tables])
+        average =  sum([float(t[2]) for t in self.tables])/self.total
+        miss = sum([t.count(None) for t in self.tables])
+        print(f"Total: {self.total}, Not found: {miss}, Average: {'{:.2f}'.format(average)}")
+    def detect(self, source: str):
+
+        if not source:
+            return
+
+        try:
+            results = self.yolo.predict(source, verbose=False)  # , conf=0.45
+            for result in results:
+                boxes = result.boxes  # 获取边界框信息
+                # probs = result.probs  # 获取分类概率
+                names = result.names
+                # data = result.boxes.data
+                # log.info(boxes)
+                # print(boxes)
+                # log.info(probs)
+                if self.output:
+                    filename = os.path.basename(result.path)
+                    # output = os.path.join(os.path.dirname(source), "output", filename)
+                    output = os.path.join(self.output, filename)
+                    # self.log.info(f"output={output}")
+                    result.save(output)
+
+                if names is not None:
+                    for box in boxes:
+                        label = names[int(box.cls)]
+                        conf = '{:.2f}'.format(float(box.conf))
+                        # log.info(f"label={label} conf={conf}")
+                        # print(f"{source}: {label}={conf}")
+                        return (source,label,conf)
+        except Exception as e:
+            self.logger.error(repr(e))
+        return (source,None,None)
+
+    def main(self):
+        if self.args.path and self.args.model:
+            self.path = self.args.path
+            self.model = self.args.model
+            self.output = self.args.output
+            self.run()
+            self.report()
+        else:
+            self.parser.print_help()
+            exit()
 
 class Classify(Common):
     # background = (22, 255, 39) # 绿幕RGB模式（R22 - G255 - B39），CMYK模式（C62 - M0 - Y100 - K0）
@@ -1333,21 +1620,34 @@ class Classify(Common):
             # print(result)
 
             if self.args.output:
-                result.save(filename=os.path.join(self.args.output, os.path.basename(source)))
+                result.save(
+                    filename=os.path.join(self.args.output, os.path.basename(source))
+                )
             try:
-                boxes = result.boxes.data.cpu().numpy()  # YOLO 边界框格式：[x1, y1, x2, y2, confidence, class]
+                boxes = (
+                    result.boxes.data.cpu().numpy()
+                )  # YOLO 边界框格式：[x1, y1, x2, y2, confidence, class]
                 #     # print(result.boxes.data.tolist())
                 for idx, box in enumerate(boxes):
                     x1, y1, x2, y2, conf, cls = map(int, box[:6])
                     cropped = image[y1:y2, x1:x2]
-                    output = os.path.join(os.path.dirname(target), f"{filename}_{idx}{extension}")
+                    output = os.path.join(
+                        os.path.dirname(target), f"{filename}_{idx}{extension}"
+                    )
                     cv2.imwrite(output, cropped)
                     # print(f"Saved cropped image: {output}")
                 if len(boxes) > 1:
                     self.checklists.append(target)
                     if self.args.checklist:
-                        result.save_crop(save_dir=os.path.join(self.args.checklist, 'crop'), file_name=filename)
-                        result.save(filename=os.path.join(self.args.checklist, os.path.basename(source)))
+                        result.save_crop(
+                            save_dir=os.path.join(self.args.checklist, "crop"),
+                            file_name=filename,
+                        )
+                        result.save(
+                            filename=os.path.join(
+                                self.args.checklist, os.path.basename(source)
+                            )
+                        )
                     # print(boxes)
             except Exception as e:
                 # log.error(e)
@@ -1360,7 +1660,9 @@ class Classify(Common):
     def target(self, mode, label, filename):
         if self.args.uuid:
             extension = os.path.splitext(filename)[1]
-            path = os.path.join(self.args.target, f"{mode}", label, f"{uuid.uuid4()}{extension}")
+            path = os.path.join(
+                self.args.target, f"{mode}", label, f"{uuid.uuid4()}{extension}"
+            )
         else:
             path = os.path.join(self.args.target, f"{mode}", label, filename)
         return path
@@ -1374,7 +1676,7 @@ class Classify(Common):
                     try:
                         source = self.source(label, name)
                         # print(input)
-                        target = self.target('train', label, name)
+                        target = self.target("train", label, name)
                         # print(target)
                         if self.crop:
                             # self.crop(source,target)
@@ -1388,8 +1690,10 @@ class Classify(Common):
                         exit()
                     progress.update(1)
 
-        for cls in self.scandir(os.path.join(self.args.target, 'train')):
-            self.dataset[cls] = self.scanfile(os.path.join(self.args.target, 'train', cls))
+        for cls in self.scandir(os.path.join(self.args.target, "train")):
+            self.dataset[cls] = self.scanfile(
+                os.path.join(self.args.target, "train", cls)
+            )
         # print(self.dataset)
 
     def test(self):
@@ -1402,8 +1706,8 @@ class Classify(Common):
                 progress.set_description(f"test/{cls}")
                 for image in tests:
                     try:
-                        source = os.path.join(self.args.target, 'train', cls, image)
-                        target = self.target('test', cls, image)
+                        source = os.path.join(self.args.target, "train", cls, image)
+                        target = self.target("test", cls, image)
                         # print(f"source={source} target={target}")
                         shutil.copyfile(source, target)
                     except Exception as e:
@@ -1422,9 +1726,9 @@ class Classify(Common):
                 progress.set_description(f"val/{cls}")
                 for image in vals:
                     try:
-                        source = os.path.join(self.args.target, 'train', cls, image)
+                        source = os.path.join(self.args.target, "train", cls, image)
                         # print(input)
-                        target = self.target('val', cls, image)
+                        target = self.target("val", cls, image)
                         shutil.copyfile(source, target)
                     except Exception as e:
                         # log.error(e)
@@ -1448,9 +1752,7 @@ class Classify(Common):
         if self.args.checklist:
             self.mkdirs(os.path.join(self.args.checklist))
 
-        directory = [
-            'train', 'test', 'val'
-        ]
+        directory = ["train", "test", "val"]
 
         for cls in self.scandir(os.path.join(self.args.source)):
             self.dataset[cls] = self.scanfile(os.path.join(self.args.source, cls))
@@ -1492,12 +1794,14 @@ class Classify(Common):
             self.parser.print_help()
             exit()
 
+
 def main():
     try:
         run = YoloUtils()
         run.main()
     except KeyboardInterrupt as e:
         print(e)
+
 
 if __name__ == "__main__":
     main()

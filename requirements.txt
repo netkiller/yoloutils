@@ -1,11 +1,14 @@
-pyyaml
-torch
-torchvision
+# pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+# pip install setuptools wheel twine build
+#pyyaml
+#torch
+#torchvision
 ultralytics
-# onnx
+onnx
 numpy
-matplotlib
+#matplotlib
 opencv-python
 pillow
 texttable
-dominate
+tqdm
+#dominate
