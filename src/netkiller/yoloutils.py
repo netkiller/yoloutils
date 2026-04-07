@@ -280,8 +280,8 @@ class YoloUtils:
             run = YoloLabelRemove(self.remove, args)
         elif args.subcommand == "change":
             run = YoloLabelChange(self.change, args)
-        elif args.subcommand == "change":
-            run = YoloLabelMerge(self.change, args)
+        elif args.subcommand == "merge":
+            run = YoloLabelMerge(self.merge, args)
         elif args.subcommand == "labelimg":
             run = YoloLabelimg(self.labelimg, args)
         elif args.subcommand == "resize":
@@ -699,30 +699,6 @@ class YoloLabelMerge(Common):
 
         self.basedir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         sys.path.append(self.basedir)
-        # print(basedir)
-
-        self.parser = argparse.ArgumentParser(description="合并YOLO标签工具")
-        self.parser.add_argument(
-            "--left", type=str, default=None, help="左侧目录", metavar="/tmp/dir1"
-        )
-        self.parser.add_argument(
-            "--right", default=None, type=str, help="右侧目录", metavar="/tmp/dir2"
-        )
-        # self.parser.add_argument('--imgsz', type=int, default=640, help='长边尺寸',metavar=640)
-        self.parser.add_argument(
-            "--output",
-            type=str,
-            default=None,
-            help="最终输出目录",
-            metavar="/tmp/output",
-        )
-        self.parser.add_argument(
-            "--clean", action="store_true", default=False, help="清理之前的数据"
-        )
-        # self.parser.add_argument('--md5sum', action="store_true", default=False, help='使用md5作为文件名')
-        # self.parser.add_argument('--uuid', action="store_true", default=False, help='重命名图片为UUID')
-        # self.parser.add_argument('--crop', action="store_true", default=False, help='裁剪')
-        self.args = self.parser.parse_args()
 
     def scanfile(self, path):
         files = []
