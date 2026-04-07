@@ -7,6 +7,7 @@
 # Description：YOLO 标签处理工具
 # （标签删除/合并/修改/复制/图片尺寸/Labelimg2yolo）
 ##############################################
+import csv
 
 try:
     import argparse
@@ -261,7 +262,7 @@ class YoloUtils:
             "test", help="模型测试工具", parents=[self.parent_parser]
         )
         self.test.add_argument('--model', type=str, default=None, help='模型路径')
-        self.test.add_argument('--path', type=str,default=None,  help='测试图片路径')
+        self.test.add_argument('--csv', type=str,default=None,  help='保存测试结果',metavar="result.csv")
         self.test.add_argument('--output', type=str,default=None,  help='测试结果输出路径')
 
         self.parser = parser
@@ -1507,29 +1508,45 @@ class YoloDetectTest(Common):
         self.logger = logging.getLogger(__class__.__name__)
         self.parser = parser
         self.args = args
+        self.yolo = None
         pass
 
-    def run(self):
+    def input(self):
 
-        files = self.scanfile(self.path)
+        # files = self.scanfile(self.path)
+        files = glob.glob(f"{self.args.source}/**/*", recursive=True)
+        self.files = [f for f in files if not f.endswith(('.txt', '.DS_Store'))]
+
         if len(files) == 0:
             return
         self.total = len(files)
+
+    def process(self):
         # Load a pretrained YOLO26 nano model
-        self.yolo = YOLO(self.model)
+        try:
+            self.yolo = YOLO(self.args.model)
+        except FileNotFoundError as e:
+            self.logger.error(repr(e))
+            print(type(e).__name__,': ', e,f" {self.args.model}")
+            exit()
+        except Exception as e:
+            self.logger.error(repr(e))
+            print(type(e).__name__,': ', e)
+            exit()
+
         # self.log.info(f"detect model={model}, file={source}")
         # count = 0
         with tqdm(total=self.total, ncols=100) as progress:
-            for file in files:
-                if file.endswith(".txt") or file.endswith(".DS_Store"):
-                    progress.update(1)
-                    continue
+            for file in self.files:
+                # if file.endswith(".txt") or file.endswith(".DS_Store"):
+                #     progress.update(1)
+                #     continue
                 progress.set_description("%s" % file)
                 # print(f"dirpath={dirpath}, dirnames={dirnames}, filenames={filenames}")
                 # print(filenames)
 
                 # Run inference on an image
-                source,label,conf = self.detect(os.path.join(self.path,file))
+                source,label,conf = self.detect(os.path.join(self.args.source,file))
                 if conf is None:
                     # count +=1
                     conf = 0.0
@@ -1537,7 +1554,16 @@ class YoloDetectTest(Common):
                 self.tables.append([os.path.basename(source),label,conf])
                 progress.update(1)
         # print(count)
-    def report(self):
+    def output(self):
+        if self.args.csv:
+            # print(self.tables)
+            header = self.tables[0]
+            rows = self.tables[1:]
+            with open(self.args.csv, "w", encoding="utf-8", newline="") as file:
+                writer = csv.writer(file)
+                writer.writerow(header)  # 写表头
+                writer.writerows(rows)  # 写多行
+
         table = Texttable(max_width=160)
         table.add_rows(self.tables)
         print(table.draw())
@@ -1546,6 +1572,10 @@ class YoloDetectTest(Common):
         average =  sum([float(t[2]) for t in self.tables])/self.total
         miss = sum([t.count(None) for t in self.tables])
         print(f"Total: {self.total}, Not found: {miss}, Average: {'{:.2f}'.format(average)}")
+
+
+
+
     def detect(self, source: str):
 
         if not source:
@@ -1561,10 +1591,10 @@ class YoloDetectTest(Common):
                 # log.info(boxes)
                 # print(boxes)
                 # log.info(probs)
-                if self.output:
+                if self.args.output:
                     filename = os.path.basename(result.path)
                     # output = os.path.join(os.path.dirname(source), "output", filename)
-                    output = os.path.join(self.output, filename)
+                    output = os.path.join(self.args.output, filename)
                     # self.log.info(f"output={output}")
                     result.save(output)
 
@@ -1580,12 +1610,10 @@ class YoloDetectTest(Common):
         return (source,None,None)
 
     def main(self):
-        if self.args.path and self.args.model:
-            self.path = self.args.path
-            self.model = self.args.model
-            self.output = self.args.output
-            self.run()
-            self.report()
+        if self.args.source and self.args.model:
+            self.input()
+            self.process()
+            self.output()
         else:
             self.parser.print_help()
             exit()

@@ -1,5 +1,17 @@
-# yoloutils
-YOLO Utilities
+# yoloutils - YOLO Utilities
+
+YOLO 标签工具集 - 用于处理 YOLO 目标检测数据集的标签和图片。
+
+作者: Neo <netkiller@msn.com>
+官网: https://www.netkiller.cn
+
+## 从 PyPI 安装
+
+使用 pip 安装
+
+```shell
+pip install netkiller-yoloutils
+```
 
 ## 帮助信息
 
@@ -30,7 +42,7 @@ subcommands:
 Author: netkiller - https://www.netkiller.cn
 ```
 
-### 标签管理
+## 标签管理
 
 ```shell
 (.venv) neo@Neo-Mac-mini-M4 yoloutils % yoloutils label -h
@@ -46,7 +58,7 @@ options:
                         搜索标签
 ```
 
-### 合并标签
+## 合并标签
 
 ```shell
 (.venv) neo@Neo-Mac-mini-M4 yoloutils % yoloutils merge -h
@@ -62,7 +74,7 @@ options:
 
 ```
 
-### 复制标签
+## 复制标签
 
 ```shell
 (.venv) neo@Neo-Mac-mini-M4 yoloutils % yoloutils copy -h
@@ -79,7 +91,7 @@ options:
 
 ```
 
-### 删除标签
+## 删除标签
 
 ```shell
 (.venv) neo@Neo-Mac-mini-M4 yoloutils % yoloutils remove -h
@@ -100,7 +112,7 @@ options:
 
 ```
 
-### 修改标签 
+## 修改标签 
 
 ```shell
 (.venv) neo@Neo-Mac-mini-M4 yoloutils % yoloutils change -h
@@ -117,7 +129,7 @@ options:
 
 ```
 
-### 裁剪图片
+## 裁剪图片
 
 ```shell
 (.venv) neo@Neo-Mac-mini-M4 yoloutils % yoloutils crop -h  
@@ -135,7 +147,7 @@ options:
 
 ```
 
-### labelimg 转 yolo 训练数据集
+## labelimg 转 yolo 训练数据集
 
 ```shell
 (.venv) neo@Neo-Mac-mini-M4 yoloutils % yoloutils labelimg -h
@@ -154,7 +166,7 @@ options:
   --clean            清理之前的数据
 ```
 
-### 修改图片尺寸
+## 修改图片尺寸
 
 ```shell
 (.venv) neo@Neo-Mac-mini-M4 yoloutils % yoloutils resize -h  
@@ -171,7 +183,7 @@ options:
   --clean          清理之前的数据
 ```
 
-### 图像分类数据处理
+## 图像分类数据处理
 
 ```shell
 (.venv) neo@Neo-Mac-mini-M4 yoloutils % yoloutils classify -h
@@ -192,4 +204,22 @@ options:
   --source SOURCE  图片来源地址
   --target TARGET  图片目标地址
   --clean          清理之前的数据
+```
+
+## 模型测试
+
+```shell
+(.venv) neo@netkiller yoloutils % yoloutils test -h
+usage: yoloutils.py test [-h] [--source SOURCE] [--target TARGET] [--clean] [--model MODEL] [--csv result.csv] [--output OUTPUT]
+
+options:
+  -h, --help        show this help message and exit
+  --model MODEL     模型路径
+  --csv result.csv  保存测试结果
+  --output OUTPUT   测试结果输出路径
+
+通用参数:
+  --source SOURCE   图片来源地址
+  --target TARGET   图片目标地址
+  --clean           清理之前的数据
 ```
