@@ -10,7 +10,7 @@ description: 基于 yoloutils 的命令级技能。用户需要执行 yoloutils 
 ## 1. 入口与总原则
 
 1. 入口命令优先使用 `yoloutils <subcommand> ...`。
-2. 若本地未安装入口脚本，可使用 `python src/netkiller/yoloutils.py <subcommand> ...`。
+2. 若本地未安装入口脚本，可使用 `python -m netkiller.yoloutils <subcommand> ...`。
 3. 子命令共有 10 个：`label`、`merge`、`copy`、`remove`、`change`、`crop`、`labelimg`、`resize`、`classify`、`test`。
 4. 涉及目录批处理时，优先先在小样本目录试跑，再全量执行。
 

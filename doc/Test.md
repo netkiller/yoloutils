@@ -1,7 +1,7 @@
 # Test 例子
 
 ```shell
-(.venv) neo@netkiller yoloutils % python src/netkiller/yoloutils.py test --mode /Users/neo/PycharmProjects/Saas/models/Cordyceps/weights/last.pt --path /Volumes/netkiller/test --output /tmp/
+(.venv) neo@netkiller yoloutils % python -m netkiller.yoloutils test --mode /Users/neo/PycharmProjects/Saas/models/Cordyceps/weights/last.pt --path /Volumes/netkiller/test --output /tmp/
 DSC_0113.JPG: 100%|█████████████████████████████████████████████████| 81/81 [00:24<00:00,  3.27it/s]
 +--------------+----------+--------+
 |     文件     |   标签   | 置信度 |
