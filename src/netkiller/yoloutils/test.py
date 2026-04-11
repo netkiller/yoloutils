@@ -63,6 +63,7 @@ class YoloTest:
         header = ["文件", "标签"]
         models = {}
         scores = {}
+        labels = {}
         try:
             for model in self.args.models:
                 models[model] = YOLO(model)
@@ -79,32 +80,56 @@ class YoloTest:
             exit()
 
         files = [os.path.abspath(file) for file in self.files]
-        with tqdm(total=len(models), ncols=150) as progress:
-            for name, model in models.items():
-                progress.set_description(f"model={name}")
-                try:
-                    for result in model.predict(files, verbose=False, stream=True):
-                        source = os.path.abspath(result.path)
-                        conf = 0.0
+        labels = {file: set() for file in files}
+        model_items = list(models.items())
+        model_total = len(model_items)
+        file_total = len(files)
+        total_tasks = model_total * file_total
+        with tqdm(total=total_tasks, ncols=150, unit="task", mininterval=0.0) as progress:
+            for model_index, (name, model) in enumerate(model_items, start=1):
+                model_name = os.path.basename(name)
+                progress.set_description(
+                    f"model={model_index}/{model_total}({model_name})"
+                )
+                for file_index, file in enumerate(files, start=1):
+                    filename = os.path.basename(file)
+                    conf = 0.0
+                    found_labels = set()
+                    progress.set_postfix_str(
+                        f"file={file_index}/{file_total} {filename}"
+                    )
 
-                        if self.args.output:
-                            filename = os.path.basename(result.path)
-                            output = os.path.join(self.args.output, filename)
-                            result.save(output)
+                    try:
+                        results = model.predict(file, verbose=False)
+                        for result in results:
+                            if self.args.output:
+                                output = os.path.join(self.args.output, filename)
+                                result.save(output)
 
-                        names = result.names
-                        boxes = result.boxes
-                        if names is not None:
-                            for box in boxes:
-                                conf = "{:.2f}".format(float(box.conf))
-                                break
-                        scores[name][source] = conf
-                except Exception as e:
-                    self.logger.error(repr(e))
-                progress.update(1)
+                            names = result.names
+                            boxes = result.boxes
+                            if names is not None:
+                                for box in boxes:
+                                    label = names[int(box.cls)]
+                                    if self.args.label and label != self.args.label:
+                                        continue
+                                    found_labels.add(label)
+                                    conf = max(conf, float(box.conf))
+                    except Exception as e:
+                        self.logger.error(repr(e))
+
+                    if found_labels:
+                        labels[file].update(found_labels)
+                    scores[name][file] = "{:.2f}".format(conf)
+                    progress.update(1)
 
         for file in files:
-            column = [os.path.basename(file), self.args.label]
+            found = sorted(labels.get(file, set()))
+            if found:
+                label_text = ",".join(found)
+            else:
+                label_text = ""
+            column = [os.path.basename(file), label_text]
             for name in models:
                 column.append(scores[name].get(file, 0.0))
             self.tables.append(column)
@@ -129,11 +154,28 @@ class YoloTest:
         print(table.draw())
         rows = self.tables[1:]
         if not rows:
-            print("Total: 0, Not found: 0, Average: 0.00")
+            if self.args.diff:
+                summary = ["Total: 0"]
+                for model in self.tables[0][2:]:
+                    summary.append(f"Average({os.path.basename(model)}): 0.00")
+                print(", ".join(summary))
+            else:
+                print("Total: 0, Not found: 0, Average: 0.00")
             return
 
         if self.args.diff:
-            scores = [float(conf) for row in rows for conf in row[2:]]
+            summary = [f"Total: {self.total}"]
+            for index, model in enumerate(self.tables[0][2:], start=2):
+                scores = []
+                for row in rows:
+                    try:
+                        scores.append(float(row[index]))
+                    except (TypeError, ValueError):
+                        scores.append(0.0)
+                average = sum(scores) / len(scores)
+                summary.append(f"Average({os.path.basename(model)}): {average:.2f}")
+            print(", ".join(summary))
+            return
         else:
             scores = [float(t[2]) for t in rows]
         average = sum(scores) / len(scores)

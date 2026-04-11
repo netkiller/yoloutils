@@ -6,6 +6,7 @@ import shutil
 import uuid
 import csv
 
+import cv2
 import yaml
 from texttable import Texttable
 from tqdm import tqdm
@@ -239,7 +240,6 @@ class YoloLabelimg(Common):
             self.report()
             self.logger.info("Done")
         else:
-            self.parser.parse_args(["labelimg"])
             self.parser.print_help()
             exit()
 
@@ -273,16 +273,53 @@ class YoloLabelimgAutomatic(Common):
             "标注框总数": 0
         }
 
+    def _clean_paths(self):
+        paths = []
+        for path in (self.args.target, self.args.output):
+            if path and path not in paths:
+                paths.append(path)
+        return paths
+
+    def _confirm_clean(self, paths):
+        if not paths:
+            return True
+
+        print("检测到 --clean，将删除以下目录：")
+        for path in paths:
+            print(f"- {path}")
+        try:
+            answer = input("是否继续？[y/N]: ").strip().lower()
+        except EOFError:
+            answer = ""
+
+        if answer in ("y", "yes"):
+            return True
+
+        print("已取消清理操作")
+        self.logger.info("cancel clean operation by user")
+        return False
+
     def input(self):
         if not os.path.isdir(self.args.source):
             print(f"source 目录不存在: {self.args.source}")
             self.logger.error(f"source 目录不存在: {self.args.source}")
             exit()
+        if self.args.conf is not None and not (0.0 <= self.args.conf <= 1.0):
+            print(f"--conf 超出范围: {self.args.conf}，必须在 0~1 之间")
+            self.logger.error(f"--conf out of range: {self.args.conf}")
+            exit()
 
         try:
-            if self.args.clean and os.path.exists(self.args.target):
-                shutil.rmtree(self.args.target)
+            if self.args.clean:
+                clean_paths = self._clean_paths()
+                if not self._confirm_clean(clean_paths):
+                    exit()
+                for path in clean_paths:
+                    if os.path.exists(path):
+                        shutil.rmtree(path)
             os.makedirs(self.args.target, exist_ok=True)
+            if self.args.output:
+                os.makedirs(self.args.output, exist_ok=True)
         except Exception as e:
             self.logger.error(f"auto input: {repr(e)}")
             print("auto input: ", repr(e))
@@ -328,6 +365,24 @@ class YoloLabelimgAutomatic(Common):
             return result
         return []
 
+    def _save_visualized_image(self, source, relpath, results):
+        if not self.args.output:
+            return
+
+        output_image = os.path.join(self.args.output, relpath)
+        os.makedirs(os.path.dirname(output_image), exist_ok=True)
+
+        try:
+            if results:
+                plotted = results[0].plot()
+                if plotted is not None and cv2.imwrite(output_image, plotted):
+                    return
+            shutil.copy2(source, output_image)
+        except Exception as e:
+            self.logger.error(
+                f"save visualized image failed source={source} target={output_image} err={repr(e)}"
+            )
+
     def process(self):
         with tqdm(total=len(self.files), ncols=140) as progress:
             for source in self.files:
@@ -340,8 +395,12 @@ class YoloLabelimgAutomatic(Common):
                 shutil.copy2(source, target_image)
 
                 lines = []
+                results = []
                 try:
-                    results = self.model.predict(source, verbose=False)
+                    predict_kwargs = {"verbose": False}
+                    if self.args.conf is not None:
+                        predict_kwargs["conf"] = self.args.conf
+                    results = self.model.predict(source, **predict_kwargs)
                     for result in results:
                         boxes = result.boxes
                         if boxes is None or boxes.cls is None or boxes.xywhn is None:
@@ -349,13 +408,23 @@ class YoloLabelimgAutomatic(Common):
 
                         classes = boxes.cls.cpu().tolist()
                         coords = boxes.xywhn.cpu().tolist()
+                        confs = (
+                            boxes.conf.cpu().tolist()
+                            if boxes.conf is not None
+                            else [None] * len(coords)
+                        )
                         for idx, xywh in enumerate(coords):
+                            if self.args.conf is not None:
+                                conf_value = confs[idx] if idx < len(confs) else None
+                                if conf_value is None or conf_value <= self.args.conf:
+                                    continue
                             cls_id = int(classes[idx])
                             lines.append(
                                 f"{cls_id} {xywh[0]:.6f} {xywh[1]:.6f} {xywh[2]:.6f} {xywh[3]:.6f}"
                             )
                 except Exception as e:
                     self.logger.error(f"auto process {source}: {repr(e)}")
+                self._save_visualized_image(source, relpath, results)
 
                 with open(target_label, "w", encoding="utf-8") as file:
                     if lines:
@@ -370,12 +439,13 @@ class YoloLabelimgAutomatic(Common):
 
     def _print_summary(self):
         self.auto_stats["未标注"] = len(self.unlabeled_files)
-        tables = [["统计", "数量"]]
-        for key in ("图片总数", "已标注", "未标注", "标注框总数"):
-            tables.append([key, self.auto_stats[key]])
-        table = Texttable(max_width=160)
-        table.add_rows(tables)
-        print(table.draw())
+        print(
+            "统计结果 "
+            f"图片总数：{self.auto_stats['图片总数']}，"
+            f"已标注：{self.auto_stats['已标注']}，"
+            f"未标注：{self.auto_stats['未标注']}，"
+            f"标注框总数：{self.auto_stats['标注框总数']}"
+        )
 
     def _print_unlabeled_files(self):
         tables = [["未标注文件名"]]
@@ -400,11 +470,6 @@ class YoloLabelimgAutomatic(Common):
 
         with open(report_path, "w", newline="", encoding="utf-8-sig") as file:
             writer = csv.writer(file)
-            writer.writerow(["统计", "数量"])
-            for key in ("图片总数", "已标注", "未标注", "标注框总数"):
-                writer.writerow([key, self.auto_stats[key]])
-
-            writer.writerow([])
             writer.writerow(["未标注文件名"])
             unlabeled = sorted(self.unlabeled_files)
             if unlabeled:
@@ -424,8 +489,8 @@ class YoloLabelimgAutomatic(Common):
             if classes:
                 file.write("\n".join(classes) + "\n")
 
-        self._print_summary()
         self._print_unlabeled_files()
+        self._print_summary()
         self._write_report_csv()
 
     def main(self):

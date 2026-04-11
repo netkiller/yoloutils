@@ -248,7 +248,7 @@ class YoloUtils:
         #     description='Yolo 工具 V3.0 - Design by netkiller - https://www.netkiller.cn')
         # self.parser.add_argument('--source', type=str, default=None, help='图片来源地址')
         # self.parser.add_argument('--target', default=None, type=str, help='图片目标地址')
-        # self.parser.add_argument('--classes', type=str, default=None, help='classes.txt 文件')
+
         # self.parser.add_argument('--val', type=int, default=10, help='检验数量', metavar=10)
         # self.parser.add_argument('--crop', action="store_true", default=False, help='裁剪')
         # self.args = self.parser.parse_args()
@@ -259,7 +259,6 @@ class YoloUtils:
             parents=[self.parent_parser],
             formatter_class=nowrap_formatter,
         )
-        # self.labelimg.add_argument('--source', type=str, default=None, help='图片来源地址')
 
         self.labelimg.add_argument(
             "--classes", type=str, default=None, help="classes.txt 文件"
@@ -282,7 +281,9 @@ class YoloUtils:
         autolabel = self.labelimg.add_argument_group(title="自动打标", description="用载入的模型自动给目录中的文件打标")
         autolabel.add_argument('--auto', action="store_true", default=False, help='自动标注')
         autolabel.add_argument('--model', type=str, default=None, help='载入模型',metavar="best.pt")
-        autolabel.add_argument('--report', default=None, type=str, help='报告输出，哪些文件已经标准，哪些没有标注', metavar="report.csv")
+        autolabel.add_argument('--conf', type=float, default=None, help='置信度阈值',metavar=0.5)
+        autolabel.add_argument('--csv', default=None, type=str, help='报告输出，哪些文件已经标准，哪些没有标注', metavar="report.csv")
+        autolabel.add_argument('--output', type=str, default=None, help='输出标注效果')
 
         self.resize = self.subparsers.add_parser(
             "resize", help="修改图片尺寸", parents=[self.parent_parser]
@@ -331,7 +332,7 @@ class YoloUtils:
             "test", help="模型测试工具", parents=[self.parent_parser]
         )
         self.test.add_argument('--model', type=str, default=None, help='模型路径')
-        self.test.add_argument('--csv', type=str,default=None,  help='保存测试结果',metavar="result.csv")
+        self.test.add_argument('--csv', type=str,default=None,  help='保存结果',metavar="result.csv")
         self.test.add_argument('--output', type=str,default=None,  help='测试结果输出路径')
         testGroup = self.test.add_argument_group(            title="对比模型", description="对比多个模型识别率")
         testGroup.add_argument('--diff', action="store_true", default=False, help='对比模型')

@@ -1,0 +1,1 @@
+(.venv) neo@netkiller yoloutils % python src/netkiller/yoloutils/yoloutils.py labelimg --auto --model /Users/neo/PycharmProjects/Saas/models/Cordyceps/weights/best.pt --source /Volumes/ESD-USB/dabiao4.11 --target /Users/neo/tmp/111  --output /Users/neo/tmp/aaa --report /Users/neo/tmp/aaa.csv --clean --conf 0.8
