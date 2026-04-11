@@ -83,9 +83,22 @@ except ImportError:
     else:
         raise
 
+try:
+    from .labelimg import YoloLabelimg, YoloLabelimgAutomatic
+except ImportError:
+    # Support direct script execution (python yoloutils.py ...)
+    if __name__ == "__main__":
+        from labelimg import YoloLabelimg, YoloLabelimgAutomatic
+    else:
+        raise
+
 
 class YoloUtils:
     def __init__(self):
+        nowrap_formatter = lambda prog: argparse.HelpFormatter(
+            prog, max_help_position=32, width=4096
+        )
+
         # self.basedir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         # sys.path.append(self.basedir)
 
@@ -244,9 +257,10 @@ class YoloUtils:
             "labelimg",
             help="labelimg 格式转换为 yolo 训练数据集",
             parents=[self.parent_parser],
+            formatter_class=nowrap_formatter,
         )
         # self.labelimg.add_argument('--source', type=str, default=None, help='图片来源地址')
-        # self.labelimg.add_argument('--target', default=None, type=str, help='图片目标地址')
+
         self.labelimg.add_argument(
             "--classes", type=str, default=None, help="classes.txt 文件"
         )
@@ -254,7 +268,7 @@ class YoloUtils:
             "--val", type=int, default=10, help="检验数量", metavar=10
         )
         # self.labelimg.add_argument('--clean', action="store_true", default=False, help='清理之前的数据')
-        # self.labelimg.add_argument('--crop', action="store_true", default=False, help='裁剪')
+
         self.labelimg.add_argument(
             "--uuid", action="store_true", default=False, help="输出文件名使用UUID"
         )
@@ -265,11 +279,16 @@ class YoloUtils:
             help="图片检查 corrupt JPEG restored and saved",
         )
 
+        autolabel = self.labelimg.add_argument_group(title="自动打标", description="用载入的模型自动给目录中的文件打标")
+        autolabel.add_argument('--auto', action="store_true", default=False, help='自动标注')
+        autolabel.add_argument('--model', type=str, default=None, help='载入模型')
+        autolabel.add_argument('--report', default=None, type=str, help='报告输出，哪些文件已经标准，哪些没有标注')
+
         self.resize = self.subparsers.add_parser(
             "resize", help="修改图片尺寸", parents=[self.parent_parser]
         )
         # self.parser = argparse.ArgumentParser(description='自动切割学习数据')
-        # self.resize.add_argument('--source', type=str, default=None, help='图片来源地址')
+
         self.resize.add_argument(
             "--imgsz", type=int, default=640, help="长边尺寸", metavar=640
         )
@@ -337,7 +356,10 @@ class YoloUtils:
         elif args.subcommand == "merge":
             run = YoloLabelMerge(self.merge, args)
         elif args.subcommand == "labelimg":
-            run = YoloLabelimg(self.labelimg, args)
+            if args.auto:
+                run = YoloLabelimgAutomatic(self.labelimg, args)
+            else:
+                run = YoloLabelimg(self.labelimg, args)
         elif args.subcommand == "resize":
             run = YoloImageResize(self.resize, args)
         elif args.subcommand == "crop":
@@ -352,234 +374,6 @@ class YoloUtils:
 
         run.main()
 
-
-
-class YoloLabelimg(Common):
-    # background = (22, 255, 39) # 绿幕RGB模式（R22 - G255 - B39），CMYK模式（C62 - M0 - Y100 - K0）
-    background = (0, 0, 0)
-
-    def __init__(self, parser, args):
-        self.basedir = BASE_DIR
-        # print(self.basedir)
-        # print(logfile)
-        # sys.path.append(self.basedir)
-
-        # 日志记录基本设置
-        logfile = os.path.join(
-            self.basedir,
-            "logs",
-            f"{os.path.splitext(os.path.basename(__file__))[0]}.log",
-        )
-        logging.basicConfig(
-            filename=logfile,
-            level=logging.DEBUG,
-            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        )
-
-        self.parser = parser
-        self.args = args
-
-        self.classes = []
-        self.lables = {}
-        self.missed = []
-
-        self.logger = logging.getLogger("LabelimgToYolo")
-
-    def mkdirs(self, path):
-        if not os.path.exists(path):
-            os.makedirs(path)
-
-    def input(self):
-        if self.args.clean:
-            if os.path.exists(self.args.target):
-                shutil.rmtree(self.args.target)
-
-        self.mkdirs(os.path.join(self.args.target))
-        directory = [
-            "train/labels",
-            "train/images",
-            "val/labels",
-            "val/images",
-            "test/labels",
-            "test/images",
-        ]
-
-        classes = os.path.join(self.args.source, "classes.txt")
-        if not os.path.isfile(classes):
-            print(f"classes.txt 文件不存在: {classes}")
-            self.logger.error(f"classes.txt 文件不存在！")
-            exit()
-        else:
-            with open(classes) as file:
-                for line in file:
-                    self.classes.append(line.strip())
-                    self.lables[line.strip()] = []
-                self.logger.info(
-                    f"classes len={len(self.classes)} labels={self.classes}"
-                )
-
-        with tqdm(total=len(directory), ncols=120) as progress:
-            for dir in directory:
-                progress.set_description(f"init {dir}")
-                self.mkdirs(os.path.join(self.args.target, dir))
-                progress.update(1)
-
-    def process(self):
-        # images =  glob.glob('*.jpg', root_dir=self.args.source)
-        # labels = glob.glob('*.txt', root_dir=self.args.source)
-        files = glob.glob(f"{self.args.source}/**/*.txt", recursive=True)
-
-        with (
-            tqdm(total=len(files), ncols=150) as images,
-            tqdm(total=len(files), ncols=150) as train,
-        ):
-            for source in files:
-                if source.endswith("classes.txt"):
-                    train.update(1)
-                    images.update(1)
-                    continue
-                train.set_description(f"train/labels: {source}")
-
-                uuid4 = None
-                if self.args.uuid:
-                    uuid4 = uuid.uuid4()
-                    target = os.path.join(
-                        self.args.target, "train/labels", f"{uuid4}.txt"
-                    )
-                else:
-                    target = os.path.join(
-                        self.args.target, "train/labels", os.path.basename(source)
-                    )
-                name, extension = os.path.splitext(os.path.basename(target))
-
-                with open(source) as file:
-                    lines = []
-                    for line in file:
-                        index = line.strip().split(" ")[0]
-                        try:
-                            label = self.classes[int(index)]
-                            # if label not in self.lables:
-                            #     self.lables[label] = []
-                            self.lables[label].append(name)
-                            lines.append(label)
-                        # self.logger.debug(f"label={label} count={len(self.lables[label])} index={index} file={name} line={line.strip()} ")
-                        except IndexError as e:
-                            self.logger.error(f"{repr(e)}, {index}")
-                    self.logger.info(f"file={name} labels={lines}")
-
-                shutil.copy(source, target)
-                self.logger.debug(
-                    f"train/labels source={source} target={target} name={name}"
-                )
-                train.update(1)
-                images.set_description(f"train/images: {source}")
-
-                for ext in [".jpg", ".png"]:
-                    source = source.replace(".txt", ext)
-                    if os.path.exists(source):
-                        target = os.path.join(
-                            self.args.target, "train/images", f"{name}.jpg"
-                        )
-                        shutil.copy(source, target)
-                        self.logger.info(
-                            f"train/images source={source} target={target} name={name}"
-                        )
-                    else:
-                        self.logger.warning(
-                            f"train/images source={source} target={target} name={name}"
-                        )
-                    break
-                images.update(1)
-
-        for label, files in self.lables.items():
-            if len(files) == 0:
-                continue
-            if len(files) < self.args.val:
-                valnumber = len(files)
-            else:
-                valnumber = self.args.val
-
-            vals = random.sample(files, valnumber)
-            # print(f"label={label} files={len(files)} val={len(vals)}")
-
-            with tqdm(total=len(vals), ncols=120) as progress:
-                for file in vals:
-                    progress.set_description(f"val/label {label}")
-                    name, extension = os.path.splitext(os.path.basename(file))
-                    try:
-                        source = os.path.join(
-                            self.args.target, "train/labels", f"{name}.txt"
-                        )
-                        target = os.path.join(
-                            self.args.target, "val/labels", f"{name}.txt"
-                        )
-                        if os.path.exists(target):
-                            self.logger.info(
-                                f"val/labels skip label={label} file={file}"
-                            )
-                            progress.update(1)
-                            continue
-
-                        shutil.copy(source, target)
-                        self.logger.info(
-                            f"val/labels copy label={label} source={source} target={target}"
-                        )
-
-                        source = os.path.join(
-                            self.args.target, "train/images", f"{name}.jpg"
-                        )
-                        target = os.path.join(
-                            self.args.target, "val/images", f"{name}.jpg"
-                        )
-                        shutil.copy(source, target)
-                        self.logger.info(
-                            f"val/images copy label={label} source={source} target={target}"
-                        )
-                    except Exception as e:
-                        self.logger.error(f"val {repr(e)} name={name}")
-                    progress.update(1)
-
-    def output(self):
-        names = {i: self.classes[i] for i in range(len(self.classes))}  # 标签类别
-        data = {
-            "path": os.path.join(os.getcwd(), self.args.target),
-            "train": "train/images",
-            "val": "val/images",
-            "test": "test/images",
-            "names": names,
-            # 'nc': len(self.classes)
-        }
-        with open(
-            os.path.join(self.args.target, "data.yaml"), "w", encoding="utf-8"
-        ) as file:
-            yaml.dump(data, file, allow_unicode=True)
-
-    def report(self):
-        tables = [["标签", "数量"]]
-        for label, files in self.lables.items():
-            # if len(files) == 0:
-            #     continue
-            tables.append([label, len(files)])
-        table = Texttable(max_width=160)
-        table.add_rows(tables)
-        print(table.draw())
-        for file in self.missed:
-            self.logger.warning(f"丢失文件 {file}")
-
-    def main(self):
-
-        if self.args.source and self.args.target:
-            self.logger.info("Start")
-            self.input()
-            self.process()
-            self.output()
-            self.report()
-            self.logger.info("Done")
-        else:
-            self.parser.parse_args(["labelimg"])
-
-            self.parser.print_help()
-            exit()
 
 
 

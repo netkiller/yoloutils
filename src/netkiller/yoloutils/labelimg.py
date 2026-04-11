@@ -1,0 +1,440 @@
+import glob
+import logging
+import os
+import random
+import shutil
+import uuid
+import csv
+
+import yaml
+from texttable import Texttable
+from tqdm import tqdm
+from ultralytics import YOLO
+
+try:
+    from . import BASE_DIR, Common
+except ImportError:
+    # Support direct script execution (python labelimg.py ...)
+    from __init__ import BASE_DIR, Common
+
+
+class YoloLabelimg(Common):
+    # background = (22, 255, 39) # 绿幕RGB模式（R22 - G255 - B39），CMYK模式（C62 - M0 - Y100 - K0）
+    background = (0, 0, 0)
+
+    def __init__(self, parser, args):
+        self.basedir = BASE_DIR
+        # print(self.basedir)
+        # print(logfile)
+        # sys.path.append(self.basedir)
+
+        # 日志记录基本设置
+        logfile = os.path.join(
+            self.basedir,
+            "logs",
+            f"{os.path.splitext(os.path.basename(__file__))[0]}.log",
+        )
+        logging.basicConfig(
+            filename=logfile,
+            level=logging.DEBUG,
+            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        )
+
+        self.parser = parser
+        self.args = args
+
+        self.classes = []
+        self.lables = {}
+        self.missed = []
+
+        self.logger = logging.getLogger("LabelimgToYolo")
+
+    def mkdirs(self, path):
+        if not os.path.exists(path):
+            os.makedirs(path)
+
+    def input(self):
+        if self.args.clean:
+            if os.path.exists(self.args.target):
+                shutil.rmtree(self.args.target)
+
+        self.mkdirs(os.path.join(self.args.target))
+        directory = [
+            "train/labels",
+            "train/images",
+            "val/labels",
+            "val/images",
+            "test/labels",
+            "test/images",
+        ]
+
+        classes = os.path.join(self.args.source, "classes.txt")
+        if not os.path.isfile(classes):
+            print(f"classes.txt 文件不存在: {classes}")
+            self.logger.error(f"classes.txt 文件不存在！")
+            exit()
+        else:
+            with open(classes) as file:
+                for line in file:
+                    self.classes.append(line.strip())
+                    self.lables[line.strip()] = []
+                self.logger.info(
+                    f"classes len={len(self.classes)} labels={self.classes}"
+                )
+
+        with tqdm(total=len(directory), ncols=120) as progress:
+            for dir in directory:
+                progress.set_description(f"init {dir}")
+                self.mkdirs(os.path.join(self.args.target, dir))
+                progress.update(1)
+
+    def process(self):
+        # images =  glob.glob('*.jpg', root_dir=self.args.source)
+        # labels = glob.glob('*.txt', root_dir=self.args.source)
+        files = glob.glob(f"{self.args.source}/**/*.txt", recursive=True)
+
+        with (
+            tqdm(total=len(files), ncols=150) as images,
+            tqdm(total=len(files), ncols=150) as train,
+        ):
+            for source in files:
+                if source.endswith("classes.txt"):
+                    train.update(1)
+                    images.update(1)
+                    continue
+                train.set_description(f"train/labels: {source}")
+
+                uuid4 = None
+                if self.args.uuid:
+                    uuid4 = uuid.uuid4()
+                    target = os.path.join(
+                        self.args.target, "train/labels", f"{uuid4}.txt"
+                    )
+                else:
+                    target = os.path.join(
+                        self.args.target, "train/labels", os.path.basename(source)
+                    )
+                name, extension = os.path.splitext(os.path.basename(target))
+
+                with open(source) as file:
+                    lines = []
+                    for line in file:
+                        index = line.strip().split(" ")[0]
+                        try:
+                            label = self.classes[int(index)]
+                            # if label not in self.lables:
+                            #     self.lables[label] = []
+                            self.lables[label].append(name)
+                            lines.append(label)
+                        # self.logger.debug(f"label={label} count={len(self.lables[label])} index={index} file={name} line={line.strip()} ")
+                        except IndexError as e:
+                            self.logger.error(f"{repr(e)}, {index}")
+                    self.logger.info(f"file={name} labels={lines}")
+
+                shutil.copy(source, target)
+                self.logger.debug(
+                    f"train/labels source={source} target={target} name={name}"
+                )
+                train.update(1)
+                images.set_description(f"train/images: {source}")
+
+                for ext in [".jpg", ".png"]:
+                    source = source.replace(".txt", ext)
+                    if os.path.exists(source):
+                        target = os.path.join(
+                            self.args.target, "train/images", f"{name}.jpg"
+                        )
+                        shutil.copy(source, target)
+                        self.logger.info(
+                            f"train/images source={source} target={target} name={name}"
+                        )
+                    else:
+                        self.logger.warning(
+                            f"train/images source={source} target={target} name={name}"
+                        )
+                    break
+                images.update(1)
+
+        for label, files in self.lables.items():
+            if len(files) == 0:
+                continue
+            if len(files) < self.args.val:
+                valnumber = len(files)
+            else:
+                valnumber = self.args.val
+
+            vals = random.sample(files, valnumber)
+            # print(f"label={label} files={len(files)} val={len(vals)}")
+
+            with tqdm(total=len(vals), ncols=120) as progress:
+                for file in vals:
+                    progress.set_description(f"val/label {label}")
+                    name, extension = os.path.splitext(os.path.basename(file))
+                    try:
+                        source = os.path.join(
+                            self.args.target, "train/labels", f"{name}.txt"
+                        )
+                        target = os.path.join(
+                            self.args.target, "val/labels", f"{name}.txt"
+                        )
+                        if os.path.exists(target):
+                            self.logger.info(
+                                f"val/labels skip label={label} file={file}"
+                            )
+                            progress.update(1)
+                            continue
+
+                        shutil.copy(source, target)
+                        self.logger.info(
+                            f"val/labels copy label={label} source={source} target={target}"
+                        )
+
+                        source = os.path.join(
+                            self.args.target, "train/images", f"{name}.jpg"
+                        )
+                        target = os.path.join(
+                            self.args.target, "val/images", f"{name}.jpg"
+                        )
+                        shutil.copy(source, target)
+                        self.logger.info(
+                            f"val/images copy label={label} source={source} target={target}"
+                        )
+                    except Exception as e:
+                        self.logger.error(f"val {repr(e)} name={name}")
+                    progress.update(1)
+
+    def output(self):
+        names = {i: self.classes[i] for i in range(len(self.classes))}  # 标签类别
+        data = {
+            "path": os.path.join(os.getcwd(), self.args.target),
+            "train": "train/images",
+            "val": "val/images",
+            "test": "test/images",
+            "names": names,
+            # 'nc': len(self.classes)
+        }
+        with open(
+            os.path.join(self.args.target, "data.yaml"), "w", encoding="utf-8"
+        ) as file:
+            yaml.dump(data, file, allow_unicode=True)
+
+    def report(self):
+        tables = [["标签", "数量"]]
+        for label, files in self.lables.items():
+            # if len(files) == 0:
+            #     continue
+            tables.append([label, len(files)])
+        table = Texttable(max_width=160)
+        table.add_rows(tables)
+        print(table.draw())
+        for file in self.missed:
+            self.logger.warning(f"丢失文件 {file}")
+
+    def main(self):
+        if self.args.source and self.args.target:
+            self.logger.info("Start")
+            self.input()
+            self.process()
+            self.output()
+            self.report()
+            self.logger.info("Done")
+        else:
+            self.parser.parse_args(["labelimg"])
+            self.parser.print_help()
+            exit()
+
+
+class YoloLabelimgAutomatic(Common):
+    image_exts = (".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff")
+
+    def __init__(self, parser, args):
+        self.basedir = BASE_DIR
+        logfile = os.path.join(
+            self.basedir,
+            "logs",
+            f"{os.path.splitext(os.path.basename(__file__))[0]}.log",
+        )
+        logging.basicConfig(
+            filename=logfile,
+            level=logging.DEBUG,
+            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        )
+
+        self.parser = parser
+        self.args = args
+        self.logger = logging.getLogger("LabelimgAutomatic")
+        self.model = None
+        self.files = []
+        self.unlabeled_files = []
+        self.auto_stats = {
+            "图片总数": 0,
+            "已标注": 0,
+            "未标注": 0,
+            "标注框总数": 0
+        }
+
+    def input(self):
+        if not os.path.isdir(self.args.source):
+            print(f"source 目录不存在: {self.args.source}")
+            self.logger.error(f"source 目录不存在: {self.args.source}")
+            exit()
+
+        try:
+            if self.args.clean and os.path.exists(self.args.target):
+                shutil.rmtree(self.args.target)
+            os.makedirs(self.args.target, exist_ok=True)
+        except Exception as e:
+            self.logger.error(f"auto input: {repr(e)}")
+            print("auto input: ", repr(e))
+            exit()
+
+        try:
+            self.model = YOLO(self.args.model)
+        except FileNotFoundError as e:
+            self.logger.error(repr(e))
+            print(type(e).__name__, ": ", e, f" {self.args.model}")
+            exit()
+        except Exception as e:
+            self.logger.error(repr(e))
+            print(type(e).__name__, ": ", e)
+            exit()
+
+        files = glob.glob(f"{self.args.source}/**/*", recursive=True)
+        self.files = sorted(
+            [
+                f
+                for f in files
+                if os.path.isfile(f) and os.path.splitext(f)[1].lower() in self.image_exts
+            ]
+        )
+        self.auto_stats["图片总数"] = len(self.files)
+        self.logger.info(f"auto files total={len(self.files)}")
+
+    def _classes_from_model(self):
+        names = self.model.names
+        if isinstance(names, (list, tuple)):
+            return [str(name) for name in names]
+        if isinstance(names, dict):
+            result = []
+
+            def sort_key(value):
+                try:
+                    return (0, int(value))
+                except (TypeError, ValueError):
+                    return (1, str(value))
+
+            for key in sorted(names.keys(), key=sort_key):
+                result.append(str(names.get(key)))
+            return result
+        return []
+
+    def process(self):
+        with tqdm(total=len(self.files), ncols=140) as progress:
+            for source in self.files:
+                progress.set_description(source)
+                relpath = os.path.relpath(source, self.args.source)
+                target_image = os.path.join(self.args.target, relpath)
+                target_label = f"{os.path.splitext(target_image)[0]}.txt"
+
+                os.makedirs(os.path.dirname(target_image), exist_ok=True)
+                shutil.copy2(source, target_image)
+
+                lines = []
+                try:
+                    results = self.model.predict(source, verbose=False)
+                    for result in results:
+                        boxes = result.boxes
+                        if boxes is None or boxes.cls is None or boxes.xywhn is None:
+                            continue
+
+                        classes = boxes.cls.cpu().tolist()
+                        coords = boxes.xywhn.cpu().tolist()
+                        for idx, xywh in enumerate(coords):
+                            cls_id = int(classes[idx])
+                            lines.append(
+                                f"{cls_id} {xywh[0]:.6f} {xywh[1]:.6f} {xywh[2]:.6f} {xywh[3]:.6f}"
+                            )
+                except Exception as e:
+                    self.logger.error(f"auto process {source}: {repr(e)}")
+
+                with open(target_label, "w", encoding="utf-8") as file:
+                    if lines:
+                        file.write("\n".join(lines) + "\n")
+
+                if lines:
+                    self.auto_stats["已标注"] += 1
+                    self.auto_stats["标注框总数"] += len(lines)
+                else:
+                    self.unlabeled_files.append(relpath)
+                progress.update(1)
+
+    def _print_summary(self):
+        self.auto_stats["未标注"] = len(self.unlabeled_files)
+        tables = [["统计", "数量"]]
+        for key in ("图片总数", "已标注", "未标注", "标注框总数"):
+            tables.append([key, self.auto_stats[key]])
+        table = Texttable(max_width=160)
+        table.add_rows(tables)
+        print(table.draw())
+
+    def _print_unlabeled_files(self):
+        tables = [["未标注文件名"]]
+        unlabeled = sorted(self.unlabeled_files)
+        if unlabeled:
+            for filename in unlabeled:
+                tables.append([filename])
+        else:
+            tables.append(["（无）"])
+        table = Texttable(max_width=160)
+        table.add_rows(tables)
+        print(table.draw())
+
+    def _write_report_csv(self):
+        if not self.args.report:
+            return
+
+        report_path = self.args.report
+        report_dir = os.path.dirname(report_path)
+        if report_dir:
+            os.makedirs(report_dir, exist_ok=True)
+
+        with open(report_path, "w", newline="", encoding="utf-8-sig") as file:
+            writer = csv.writer(file)
+            writer.writerow(["统计", "数量"])
+            for key in ("图片总数", "已标注", "未标注", "标注框总数"):
+                writer.writerow([key, self.auto_stats[key]])
+
+            writer.writerow([])
+            writer.writerow(["未标注文件名"])
+            unlabeled = sorted(self.unlabeled_files)
+            if unlabeled:
+                for filename in unlabeled:
+                    writer.writerow([filename])
+            else:
+                writer.writerow(["（无）"])
+
+        self.logger.info(f"report csv: {report_path}")
+        print(f"report csv: {report_path}")
+
+    def output(self):
+        classes = self._classes_from_model()
+        with open(
+            os.path.join(self.args.target, "classes.txt"), "w", encoding="utf-8"
+        ) as file:
+            if classes:
+                file.write("\n".join(classes) + "\n")
+
+        self._print_summary()
+        self._print_unlabeled_files()
+        self._write_report_csv()
+
+    def main(self):
+        if self.args.source and self.args.target and self.args.model:
+            self.logger.info("Start auto labelimg")
+            self.input()
+            self.process()
+            self.output()
+            self.logger.info("Done auto labelimg")
+        else:
+            self.parser.print_help()
+            exit()
