@@ -411,39 +411,50 @@ yoloutils classify --source ./source --target ./dataset --crop --model ./best.pt
 
 ### 3.10 `test`
 
-用途：批量推理目录中的图片，并输出表格/CSV/可视化图。
+用途：批量推理目录中的图片，支持单模型测试和多模型对比（`--diff`）。
 
 命令原型：
 
 ```bash
 yoloutils test --source <src> --model <pt> [--csv <result.csv>] [--output <dir>]
+yoloutils test --diff --source <src> --models <pt1> <pt2> ... [-l <label>] [--csv <diff.csv>] [--output <dir>]
 ```
 
 参数：
 
 - `--source`：输入目录（必需）。
-- `--model`：模型路径（必需）。
+- `--model`：单模型模式必需。
+- `--diff`：启用对比模式。
+- `--models`：对比模式必需，多个模型路径。
+- `-l/--label`：对比模式表格中的“标签”列固定值。
 - `--csv`：保存结果到 CSV。
 - `--output`：保存推理可视化图片。
 
 执行行为（源码）：
 
 1. 扫描 `source/**/*`，过滤 `.txt` 和 `.DS_Store`。
-2. 每个输入只记录首个检测框的 `label/conf`。
-3. 输出文本表：`文件 / 标签 / 置信度`。
-4. 可选写入 CSV。
-5. 末尾打印汇总：总数、未检出数量、平均置信度。
+2. 单模型模式：
+3. 加载 `--model`，每图仅取首个检测框，输出 `文件/标签/置信度`。
+4. 对比模式（`--diff`）：
+5. 依次加载 `--models` 中的模型；对每个模型、每张图记录首个检测框置信度。
+6. 输出列为：`文件/标签/<模型1>/<模型2>/...`，其中“标签”列来自 `--label` 参数。
+7. 无检测结果时置信度记 `0.0`。
+8. `--csv` 导出当前表格；`--output` 保存带框可视化图。
+9. 汇总统计依然输出 `Total / Not found / Average`。
 
 示例：
 
 ```bash
 yoloutils test --source ./images --model ./best.pt
 yoloutils test --source ./images --model ./best.pt --csv ./result.csv --output ./predict
+yoloutils test --diff --source ./images --models ./best1.pt ./best2.pt ./best3.pt -l person --csv ./diff.csv
+yoloutils test --diff --source ./images --models ./best1.pt ./best2.pt --output ./predict_diff
 ```
 
 注意：
 
 - 当前实现的总数基于原始扫描列表，可能包含非图片项，汇总统计会受影响。
+- 对比模式中 `--label` 不会自动识别真实标签，仅用于展示列。
 
 ## 4. Agent 执行模板
 

@@ -156,6 +156,16 @@ options:
                         搜索标签
 ```
 
+详细使用说明（推荐流程）：
+
+1. 准备数据目录：确保 `--source` 目录存在，且包含 `classes.txt` 与若干 `*.txt` 标注文件。
+2. 先执行 `--classes`：确认标签索引和标签名称对应关系，避免后续按索引分析时看错类别。
+3. 按目标选择统计方式：
+   - 看标签总量用 `--total`；
+   - 看纯索引计数用 `--index`；
+   - 查特定索引落在哪些文件用 `--search`。
+4. 核验结果：随机打开 `--search` 输出的若干文件，确认首列索引与表格统计一致。
+
 常用示例：
 
 ```shell
@@ -206,6 +216,13 @@ options:
   --output /tmp/output  最终输出目录
   --clean               清理之前的数据
 ```
+
+详细使用说明（推荐流程）：
+
+1. 准备左右目录：`left` 和 `right` 都应包含 YOLO 标签文件，且两边使用可匹配的文件名规则。
+2. 先在小样本目录验证：建议先拷贝 5-10 组样本到临时目录验证合并规则，再全量执行。
+3. 正式执行时指定 `--output`，若需要覆盖旧结果再加 `--clean`。
+4. 核验输出：检查 `output` 中图片是否来自左侧目录，标签文件是否为“左+右”拼接结果。
 
 使用前提：
 
@@ -268,6 +285,13 @@ options:
   -u, --uuid       UUID 文件名
   -c, --clean      清理目标文件夹
 ```
+
+详细使用说明（推荐流程）：
+
+1. 先确认 `source/classes.txt` 标签名称，`--label` 必须和文件里的名称完全一致。
+2. 若只提取某些类别，传入 `--label person,dog`；若不传 `--label`，按源码行为会复制全部标签文件。
+3. 如需避免重名覆盖，建议加 `--uuid`；如需覆盖旧结果，加 `--clean`。
+4. 核验结果：在 `target` 中检查是否同时有同名 `jpg/txt`，并确认 `classes.txt` 已复制。
 
 常用示例：
 
@@ -332,6 +356,15 @@ options:
   --clean               清理之前的数据
 ```
 
+详细使用说明（推荐流程）：
+
+1. 明确删除方式：
+   - 已知索引用 `--classes 0 3 5`；
+   - 已知标签名用 `--label cat dog`（会自动从 `classes.txt` 映射索引）。
+2. 先做安全试跑：优先指定 `--target` 输出新目录，不建议第一次就原地修改。
+3. 确认结果目录：有变更的标签文件会写入目标目录；删除后为空的文件会连同对应图片一起移除。
+4. 核验：执行后用 `yoloutils label --source <target> --index` 复查删除是否生效。
+
 实现说明：
 
 - `--classes` 接收标签索引列表。
@@ -382,6 +415,13 @@ options:
                         标签名称
 ```
 
+详细使用说明（推荐流程）：
+
+1. 先确定映射关系：`--search` 与 `--replace` 按位置一一对应，例如 `0->5, 1->6`。
+2. 先备份源目录：该命令是原地改写，不提供 `--target`。
+3. 执行替换后，立即用 `yoloutils label --source <dir> --index` 对比前后计数变化。
+4. 若替换关系较多，建议先在小目录验证，确认没有错位映射再跑全量。
+
 实现说明：
 
 - `--search` 与 `--replace` 按位置一一对应。
@@ -426,6 +466,15 @@ options:
   --target TARGET       图片目标地址
   --clean               清理之前的数据
 ```
+
+详细使用说明（推荐流程）：
+
+1. 准备模型与输入：确认 `--model` 文件可用，`--source` 下图片建议统一为 `.jpg`。
+2. 明确输出目标：
+   - `--target` 存放裁剪结果（保留相对目录）；
+   - `--output` 可选，用于保存带框图和 `save_crop` 产物。
+3. 首次运行建议带 `--clean`，避免旧结果干扰统计和核对。
+4. 核验：随机打开 `target` 与 `output` 中对应文件，确认裁剪区域与检测框一致。
 
 实现说明：
 
@@ -493,6 +542,17 @@ options:
   --model MODEL      载入模型
   --report REPORT    报告输出，哪些文件已经标准，哪些没有标注
 ```
+
+详细使用说明（推荐流程）：
+
+1. 先选模式：
+   - 数据整理场景用默认模式（不加 `--auto`）；
+   - 直接模型打标用自动模式（必须加 `--auto --model`）。
+2. 默认模式建议流程：准备 `source/classes.txt` 与成对 `jpg/txt`，先跑小样本确认目录结构，再全量执行。
+3. 自动模式建议流程：准备好 `--model` 和源图目录，执行 `--clean` 清理目标目录，必要时加 `--report` 导出报表。
+4. 核验输出：
+   - 默认模式检查 `data.yaml`、`train/val` 目录是否完整；
+   - 自动模式检查 `classes.txt`、同名 `txt` 是否生成，以及未标注清单是否合理。
 
 默认模式输出目录结构：
 
@@ -594,6 +654,13 @@ options:
   --clean          清理之前的数据
 ```
 
+详细使用说明（推荐流程）：
+
+1. 选择目标尺寸：`--imgsz` 表示长边阈值，常见取值 `640/1280/1920`。
+2. 指定输入输出目录，首次建议加 `--clean`，保证结果目录干净可复现。
+3. 运行后关注统计表：`已处理` 表示发生缩放，`未处理` 表示直接复制。
+4. 核验：随机检查几张大图与小图，确认大图已缩放、小图保持原样。
+
 实现说明：
 
 - 递归扫描 `source` 下的 `.jpg` 文件。
@@ -667,6 +734,15 @@ dataset/
     └── class_b/
 ```
 
+详细使用说明（推荐流程）：
+
+1. 准备分类目录：`source/<类别名>/*.jpg`，类别名就是最终目录名。
+2. 先决定是否启用裁剪：
+   - 纯分类数据整理：不加 `--crop`；
+   - 先检测再入库：加 `--crop --model <pt>`。
+3. 设置抽样数量：`--test` 会同时作用于 `test` 和 `val` 的每类抽样数量。
+4. 核验：检查 `train/test/val` 每个类别子目录是否存在，并抽查图片是否符合预期（原图或裁剪图）。
+
 实现说明：
 
 - 首先把所有源图片复制或裁剪到 `train`。
@@ -699,16 +775,26 @@ yoloutils classify \
 
 ### 4.10 `test`
 
-用 YOLO 模型批量推理目录中的图片，并输出表格结果，可选保存 CSV 和可视化图片。
+用 YOLO 模型批量推理目录中的图片。支持单模型测试和多模型对比（`--diff`），可选保存 CSV 和可视化图片。
 
 命令格式：
 
 ```shell
+# 单模型测试
 yoloutils test \
     --source ./images \
     --model ./best.pt \
     --csv ./result.csv \
     --output ./predict
+
+# 多模型对比
+yoloutils test \
+    --diff \
+    --source ./images \
+    --models ./best1.pt ./best2.pt ./best3.pt \
+    --label person \
+    --csv ./diff.csv \
+    --output ./predict_diff
 ```
 
 帮助信息：
@@ -716,6 +802,9 @@ yoloutils test \
 ```shell
 usage: yoloutils.py test [-h] [--source SOURCE] [--target TARGET] [--clean]
                          [--model MODEL] [--csv result.csv] [--output OUTPUT]
+                         [--diff]
+                         [--models best1.pt best2.pt best3.pt [best1.pt best2.pt best3.pt ...]]
+                         [-l ]
 
 options:
   -h, --help        show this help message and exit
@@ -727,15 +816,39 @@ options:
   --source SOURCE   图片来源地址
   --target TARGET   图片目标地址
   --clean           清理之前的数据
+
+对比模型:
+  对比多个模型识别率
+
+  --diff                对比模型
+  --models best1.pt best2.pt best3.pt [best1.pt best2.pt best3.pt ...]
+                        模型
+  -l, --label           标签统计
 ```
+
+详细使用说明（推荐流程）：
+
+1. 先选测试模式：
+   - 单模型：传 `--model`；
+   - 多模型对比：传 `--diff --models ...`，可选 `-l/--label` 作为展示列。
+2. 准备输入目录：把要评估的图片统一放到 `--source`，避免混入无关文件。
+3. 需要复盘时加 `--output` 保存可视化图，需要归档时加 `--csv` 导出结果表。
+4. 核验：关注终端 `Total/Not found/Average`，并结合 CSV 按文件名回查异常样本。
 
 实现说明：
 
-- 会递归扫描 `source` 下除 `.txt` 和 `.DS_Store` 之外的文件。
-- 每张图只记录首个检测结果的标签和置信度。
-- 推理完成后会输出表格，并计算总数、未检出数量和平均置信度。
-- `--csv` 会把结果保存为 CSV。
-- `--output` 会保存带检测框的结果图片。
+- 输入扫描：递归读取 `source/**/*`，过滤 `.txt` 和 `.DS_Store`。
+- 单模型模式（默认）：
+  - 必填 `--model`。
+  - 每张图片仅记录首个检测框的 `标签/置信度`。
+  - 表格列为：`文件, 标签, 置信度`。
+- 对比模式（`--diff`）：
+  - 必填 `--models`（可传多个模型）。
+  - 表格头为：`文件, 标签, <模型1>, <模型2>, ...`。
+  - `-l/--label` 仅作为“标签”列的固定展示值，不参与真实推理标签判定。
+  - 每个模型对每张图仅记录首个检测框置信度；无结果时为 `0.0`。
+- `--csv` 在两种模式下都会按当前表格结构输出 CSV。
+- `--output` 在两种模式下都会保存带框结果图（按原文件名写入输出目录）。
 - 该命令虽然继承了通用参数中的 `--target`、`--clean`，但当前实现没有使用它们。
 
 常用示例：
@@ -746,6 +859,12 @@ yoloutils test --source ./images --model ./best.pt --csv ./result.csv
 
 # 同时保存可视化结果
 yoloutils test --source ./images --model ./best.pt --output ./predict
+
+# 对比三个模型，并导出对比 CSV
+yoloutils test --diff --source ./images --models ./best1.pt ./best2.pt ./best3.pt -l person --csv ./diff.csv
+
+# 对比模型并导出可视化图
+yoloutils test --diff --source ./images --models ./best1.pt ./best2.pt --output ./predict_diff
 ```
 
 ---
