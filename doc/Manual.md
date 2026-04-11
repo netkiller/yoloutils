@@ -19,7 +19,7 @@
 | `remove` | 删除指定标签索引或标签名称 |
 | `change` | 批量替换标签索引 |
 | `crop` | 使用 YOLO 模型检测并裁剪图片 |
-| `labelimg` | 将 labelimg 风格数据整理为 YOLO 训练目录 |
+| `labelimg` | 手工整理 labelimg 数据，或自动模型打标并输出 YOLO 标签 |
 | `resize` | 按长边尺寸缩放图片 |
 | `classify` | 处理分类数据集并划分 `train/test/val` |
 | `test` | 用模型批量推理并输出表格或 CSV |
@@ -443,25 +443,36 @@ yoloutils crop --source ./images --target ./cropped --model ./best.pt
 
 ### 4.7 `labelimg`
 
-把 labelimg 风格的数据整理成 YOLO 训练目录结构，并生成 `data.yaml`。
+`labelimg` 现在包含两种模式：
+
+- 默认模式：把 labelimg 风格的数据整理成 YOLO 训练目录结构，并生成 `data.yaml`。
+- 自动模式（`--auto`）：使用模型识别图片并生成 YOLO `.txt` 标签，同时复制图片到目标目录，保持原有目录结构。
 
 命令格式：
 
 ```shell
+# 默认模式（labelimg -> yolo 训练目录）
 yoloutils labelimg \
     --source ./labelimg_data \
     --target ./yolo_data \
     --val 10 \
     --uuid \
     --clean
+
+# 自动模式（模型自动打标）
+yoloutils labelimg \
+    --auto \
+    --model ./best.pt \
+    --source ./source \
+    --target ./target \
+    --clean \
+    --report ./target/report.csv
 ```
 
 帮助信息：
 
 ```shell
-usage: yoloutils.py labelimg [-h] [--source SOURCE] [--target TARGET]
-                             [--clean] [--classes CLASSES] [--val 10] [--uuid]
-                             [--check]
+usage: yoloutils labelimg [-h] [--source SOURCE] [--target TARGET] [--clean] [--classes CLASSES] [--val 10] [--uuid] [--check] [--auto] [--model MODEL] [--report REPORT]
 
 options:
   -h, --help         show this help message and exit
@@ -474,9 +485,16 @@ options:
   --source SOURCE    图片来源地址
   --target TARGET    图片目标地址
   --clean            清理之前的数据
+
+自动打标:
+  用载入的模型自动给目录中的文件打标
+
+  --auto             自动标注
+  --model MODEL      载入模型
+  --report REPORT    报告输出，哪些文件已经标准，哪些没有标注
 ```
 
-输出目录结构：
+默认模式输出目录结构：
 
 ```text
 yolo_data/
@@ -492,15 +510,42 @@ yolo_data/
 └── data.yaml
 ```
 
-实现说明：
+自动模式输出目录结构示例：
+
+```text
+target/
+├── classes.txt
+├── report.csv                  # 仅在传入 --report 时生成
+├── a/
+│   ├── 001.jpg
+│   └── 001.txt
+└── b/sub/
+    ├── 123.png
+    └── 123.txt
+```
+
+默认模式实现说明：
 
 - 程序实际读取的是 `source/classes.txt`。
 - `--val` 表示每个标签随机抽取多少个样本进入 `val`，不是百分比。
 - 所有样本会先进入 `train`，再从中抽样复制到 `val`。
 - `test` 目录会创建，但当前实现不会自动填充测试集。
 - `--uuid` 会把输出的图片和标签文件名改为 UUID。
-- 当前源码中声明了 `--classes` 和 `--check` 参数，但这两个参数在实现里尚未真正生效。
+- 当前源码中声明了 `--classes` 和 `--check` 参数，但在默认模式里这两个参数尚未真正生效。
 - 图片配对逻辑主要按同名 `.jpg` 处理，准备数据时建议统一使用 `.jpg`。
+
+自动模式实现说明：
+
+- 必须提供 `--auto --model --source --target`。
+- 支持的图片扩展名：`.jpg .jpeg .png .bmp .webp .tif .tiff`。
+- 会递归扫描 `source`，把每张图片复制到 `target` 对应相对路径下（保持目录结构）。
+- 每张图片都会生成同名 `.txt` 标签文件：
+  - 检测到目标：写入 YOLO 标准格式 `class x_center y_center width height`（归一化坐标）。
+  - 未检测到目标：会创建空 `txt` 文件。
+- `target/classes.txt` 从模型 `model.names` 生成。
+- 统计项固定为：`图片总数`、`已标注`、`未标注`、`标注框总数`。
+- 会输出未标注文件名表格。
+- 传入 `--report` 时会写 CSV，内容为统计表 + 未标注文件名列表。
 
 常用示例：
 
@@ -513,6 +558,9 @@ yoloutils labelimg --source ./labelimg_data --target ./yolo_data --val 20
 
 # 生成 UUID 文件名
 yoloutils labelimg --source ./labelimg_data --target ./yolo_data --uuid
+
+# 自动打标（保持目录结构，输出报告）
+yoloutils labelimg --auto --model ./best.pt --source ./source --target ./target --clean --report ./target/report.csv
 ```
 
 ### 4.8 `resize`

@@ -258,18 +258,25 @@ yoloutils crop --source ./images --target ./cropped --model ./best.pt --output .
 
 ### 3.7 `labelimg`
 
-用途：把 labelimg 风格数据整理为 YOLO 训练目录，并生成 `data.yaml`。
+用途：`labelimg` 分为两种模式。
+
+- 默认模式：把 labelimg 风格数据整理为 YOLO 训练目录，并生成 `data.yaml`。
+- 自动模式：使用模型自动打标，输出 YOLO 标签文件，复制图片并保持目录结构。
 
 命令原型：
 
 ```bash
 yoloutils labelimg --source <src> --target <dst> [--val <n>] [--uuid] [--check] [--clean]
+yoloutils labelimg --auto --model <best.pt> --source <src> --target <dst> [--clean] [--report <report.csv>]
 ```
 
 参数：
 
 - `--source`：源目录（必需）。
 - `--target`：目标目录（必需）。
+- `--auto`：启用自动打标模式（走 `YoloLabelimgAutomatic`）。
+- `--model`：自动模式必需，YOLO 模型路径。
+- `--report`：自动模式可选，输出 CSV 报告（统计 + 未标注列表）。
 - `--val`：每个标签抽样到验证集的数量，默认 `10`。
 - `--uuid`：训练集输出标签名使用 UUID。
 - `--check`：参数存在，但当前实现未使用。
@@ -278,24 +285,41 @@ yoloutils labelimg --source <src> --target <dst> [--val <n>] [--uuid] [--check] 
 
 执行行为（源码）：
 
-1. 创建目录：`train/labels`、`train/images`、`val/labels`、`val/images`、`test/labels`、`test/images`。
-2. 读取 `source/classes.txt` 初始化类别。
-3. 递归扫描 `source/**/*.txt`（跳过 `classes.txt`），复制到 `train/labels`。
-4. 图片按同名复制到 `train/images`，输出扩展名固定为 `.jpg`。
-5. 按标签样本列表随机抽样到 `val`。
-6. 生成 `target/data.yaml`（含 `train/val/test` 与 `names`）。
+1. CLI 分发：`labelimg` 子命令中，`args.auto=True` 时实例化 `YoloLabelimgAutomatic`，否则实例化 `YoloLabelimg`。
+2. 默认模式执行原有整理流程：
+3. 创建目录：`train/labels`、`train/images`、`val/labels`、`val/images`、`test/labels`、`test/images`。
+4. 读取 `source/classes.txt` 初始化类别。
+5. 递归扫描 `source/**/*.txt`（跳过 `classes.txt`），复制到 `train/labels`。
+6. 图片按同名复制到 `train/images`，输出扩展名固定为 `.jpg`。
+7. 按标签样本列表随机抽样到 `val`。
+8. 生成 `target/data.yaml`（含 `train/val/test` 与 `names`）。
+
+自动模式执行流程：
+
+1. 校验 `source` 目录，按需 `--clean` 清理 `target`。
+2. 加载 `YOLO(--model)`。
+3. 扫描 `source/**/*` 并过滤图片扩展名：`.jpg .jpeg .png .bmp .webp .tif .tiff`。
+4. 对每张图片执行推理，复制原图到 `target/<相对路径>`，并在同路径写入同名 `.txt`。
+5. 即使未检测到目标，也会复制图片并创建空 `txt`。
+6. 统计字段固定为：`图片总数`、`已标注`、`未标注`、`标注框总数`。
+7. 终端输出两个 Texttable：统计表 + 未标注文件名表。
+8. 在 `target/classes.txt` 写入模型类别名（来自 `model.names`）。
+9. 若传入 `--report`，写出 CSV（统计表 + 未标注文件名）。
 
 示例：
 
 ```bash
 yoloutils labelimg --source ./labelimg_data --target ./yolo_data --clean
 yoloutils labelimg --source ./labelimg_data --target ./yolo_data --val 20 --uuid
+yoloutils labelimg --auto --model ./best.pt --source ./source --target ./target --clean
+yoloutils labelimg --auto --model ./best.pt --source ./source --target ./target --clean --report ./target/report.csv
 ```
 
 注意：
 
 - `test` 目录会创建，但流程不会自动填充测试样本。
 - 图片匹配逻辑主要围绕 `.jpg`。
+- 自动模式会完整保留目录结构，且未检出样本不会丢失。
 
 ---
 

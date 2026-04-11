@@ -281,8 +281,8 @@ class YoloUtils:
 
         autolabel = self.labelimg.add_argument_group(title="自动打标", description="用载入的模型自动给目录中的文件打标")
         autolabel.add_argument('--auto', action="store_true", default=False, help='自动标注')
-        autolabel.add_argument('--model', type=str, default=None, help='载入模型')
-        autolabel.add_argument('--report', default=None, type=str, help='报告输出，哪些文件已经标准，哪些没有标注')
+        autolabel.add_argument('--model', type=str, default=None, help='载入模型',metavar="best.pt")
+        autolabel.add_argument('--report', default=None, type=str, help='报告输出，哪些文件已经标准，哪些没有标注', metavar="report.csv")
 
         self.resize = self.subparsers.add_parser(
             "resize", help="修改图片尺寸", parents=[self.parent_parser]
