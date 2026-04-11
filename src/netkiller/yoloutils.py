@@ -7,7 +7,6 @@
 # Description：YOLO 标签处理工具
 # （标签删除/合并/修改/复制/图片尺寸/Labelimg2yolo）
 ##############################################
-import csv
 
 try:
     import argparse
@@ -20,7 +19,7 @@ try:
     import sys
     import uuid
     from datetime import datetime
-
+    import csv
     import cv2
     import yaml
     from PIL import Image, ImageOps
@@ -71,7 +70,7 @@ class YoloUtils:
             "--clean", action="store_true", default=False, help="清理之前的数据"
         )
 
-        self.label = self.subparsers.add_parser("label", help="标签处理工具")
+        self.label = self.subparsers.add_parser("label", help="标签统计、索引统计、标签搜索")
         self.label.add_argument(
             "--source", type=str, default=None, help="目录", metavar="/tmp/dir1"
         )
@@ -213,7 +212,6 @@ class YoloUtils:
             default=False,
             help="图片检查 corrupt JPEG restored and saved",
         )
-        # self.labelimg.add_argument('-l', '--label', action="store_true", default=False, help='标签统计')
 
         self.resize = self.subparsers.add_parser(
             "resize", help="修改图片尺寸", parents=[self.parent_parser]
@@ -228,8 +226,8 @@ class YoloUtils:
         )
         # self.resize.add_argument('--clean', action="store_true", default=False, help='清理之前的数据')
         # self.resize.add_argument('--md5sum', action="store_true", default=False, help='使用md5作为文件名')
-        # self.resize.add_argument('--uuid', action="store_true", default=False, help='重命名图片为UUID')
-        # self.resize.add_argument('--crop', action="store_true", default=False, help='裁剪')
+
+
         # self.args = self.parser.parse_args()
 
         self.classify = self.subparsers.add_parser(
@@ -257,13 +255,17 @@ class YoloUtils:
         self.classify.add_argument(
             "--verbose", action="store_true", default=False, help="过程输出"
         )
-
+        # ---------- 测试 ----------
         self.test = self.subparsers.add_parser(
             "test", help="模型测试工具", parents=[self.parent_parser]
         )
         self.test.add_argument('--model', type=str, default=None, help='模型路径')
         self.test.add_argument('--csv', type=str,default=None,  help='保存测试结果',metavar="result.csv")
         self.test.add_argument('--output', type=str,default=None,  help='测试结果输出路径')
+        testGroup = self.test.add_argument_group(            title="对比模型", description="对比多个模型识别率")
+        testGroup.add_argument('--diff', action="store_true", default=False, help='对比模型')
+        testGroup.add_argument("--models", nargs = "+", default = None, help = "模型", metavar = "best1.pt best2.pt best3.pt")
+        testGroup.add_argument('-l', '--label', type=str,default=None, help='标签统计',metavar="")
 
         self.parser = parser
 
@@ -1478,7 +1480,7 @@ class YoloDetectTest(Common):
     path = None
     model = None
     output = None
-    tables = [["文件", "标签", "置信度"]]
+    tables = []
 
     def __init__(self,parser,args):
         self.logger = logging.getLogger(__class__.__name__)
@@ -1488,6 +1490,9 @@ class YoloDetectTest(Common):
         pass
 
     def input(self):
+        if self.args.clean and self.args.output:
+            if os.path.exists(self.args.output):
+                shutil.rmtree(self.args.output)
 
         # files = self.scanfile(self.path)
         files = glob.glob(f"{self.args.source}/**/*", recursive=True)
@@ -1497,10 +1502,12 @@ class YoloDetectTest(Common):
             return
         self.total = len(files)
 
-    def process(self):
+    def test(self):
+        self.tables = [["文件", "标签", "置信度"]]
         # Load a pretrained YOLO26 nano model
+        model = None
         try:
-            self.yolo = YOLO(self.args.model)
+            model = YOLO(self.args.model)
         except FileNotFoundError as e:
             self.logger.error(repr(e))
             print(type(e).__name__,': ', e,f" {self.args.model}")
@@ -1522,7 +1529,7 @@ class YoloDetectTest(Common):
                 # print(filenames)
 
                 # Run inference on an image
-                source,label,conf = self.detect(os.path.join(self.args.source,file))
+                source,label,conf = self.detect(model, os.path.join(self.args.source,file))
                 if conf is None:
                     # count +=1
                     conf = 0.0
@@ -1530,6 +1537,47 @@ class YoloDetectTest(Common):
                 self.tables.append([os.path.basename(source),label,conf])
                 progress.update(1)
         # print(count)
+    def diff(self):
+        header = ["文件","标签"]
+        # Load a pretrained YOLO26 nano model
+        models = {}
+        try:
+            for model in self.args.models:
+                models[model]= YOLO(model)
+                header.append(model)
+            self.tables.append(header)
+        except FileNotFoundError as e:
+            self.logger.error(repr(e))
+            print(type(e).__name__,': ', e,f" {self.args.model}")
+            exit()
+        except Exception as e:
+            self.logger.error(repr(e))
+            print(type(e).__name__,': ', e)
+            exit()
+
+        # self.log.info(f"detect model={model}, file={source}")
+
+        with tqdm(total=self.total, ncols=150) as progress:
+            for file in self.files:
+
+                # print(f"dirpath={dirpath}, dirnames={dirnames}, filenames={filenames}")
+                # print(filenames)
+
+                column = [file,self.args.label]
+                for name,model in models.items():
+                    progress.set_description(f"{file} - {name}")
+                    source,label,conf = self.detect(model,os.path.join(self.args.source,file))
+                    if conf is None:
+                        # count +=1
+                        conf = 0.0
+                    column.append(conf)
+                self.tables.append(column)
+                progress.update(1)
+    def process(self):
+        if self.args.diff:
+            self.diff()
+        else:
+            self.test()
     def output(self):
         if self.args.csv:
             # print(self.tables)
@@ -1549,16 +1597,13 @@ class YoloDetectTest(Common):
         miss = sum([t.count(None) for t in self.tables])
         print(f"Total: {self.total}, Not found: {miss}, Average: {'{:.2f}'.format(average)}")
 
-
-
-
-    def detect(self, source: str):
+    def detect(self,model, source: str):
 
         if not source:
             return
 
         try:
-            results = self.yolo.predict(source, verbose=False)  # , conf=0.45
+            results = model.predict(source, verbose=False)  # , conf=0.45
             for result in results:
                 boxes = result.boxes  # 获取边界框信息
                 # probs = result.probs  # 获取分类概率
@@ -1586,7 +1631,11 @@ class YoloDetectTest(Common):
         return (source,None,None)
 
     def main(self):
-        if self.args.source and self.args.model:
+        if self.args.diff and self.args.source and self.args.models.__len__ > 0:
+            self.input()
+            self.process()
+            self.output()
+        elif self.args.source and self.args.model:
             self.input()
             self.process()
             self.output()
