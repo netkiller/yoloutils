@@ -79,6 +79,11 @@ class YoloLabelimg(Common):
                 if source.endswith("classes.txt"):
                     progress.update(1)
                     continue
+                if os.path.getsize(source) == 0:
+                    self.missed.append(source)
+                    self.logger.warning(f"标注文件为空: {source}")
+                    progress.update(1)
+                    continue
                 for ext in Common.image_exts:
                     if os.path.exists(f"{os.path.splitext(source)[0]}{ext}"):
                         self.files[source] = f"{os.path.splitext(source)[0]}{ext}"
