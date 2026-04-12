@@ -77,15 +77,15 @@ class YoloLabelimg(Common):
                 progress.set_description("files")
                 progress.set_postfix_str(f"file={os.path.basename(source)[:36]:<36}")
                 if source.endswith("classes.txt"):
+                    progress.update(1)
                     continue
                 for ext in Common.image_exts:
                     if os.path.exists(f"{os.path.splitext(source)[0]}{ext}"):
                         self.files.append(source)
                         break
                 else:
-                    print(f"标注文件缺少配对图片: {source}")
+                    self.missed.append(source)
                     self.logger.warning(f"标注文件缺少配对图片: {source}")
-                    continue
                 progress.update(1)
 
 
@@ -102,12 +102,12 @@ class YoloLabelimg(Common):
             tqdm(
                 total=len(self.files),
                 ncols=150,
-                bar_format="{desc}: {percentage:3.0f}%|{bar:58}| {n:>4.0f}/{total:>4.0f} {postfix}",
+                bar_format="{desc} {percentage:3.0f}%|{bar:58}| {n:>4.0f}/{total:>4.0f} {postfix}",
             ) as images,
             tqdm(
                 total=len(self.files),
                 ncols=150,
-                bar_format="{desc}: {percentage:3.0f}%|{bar:58}| {n:>4.0f}/{total:>4.0f} {postfix}",
+                bar_format="{desc} {percentage:3.0f}%|{bar:58}| {n:>4.0f}/{total:>4.0f} {postfix}",
             ) as train,
         ):
             for source in self.files:
@@ -231,6 +231,21 @@ class YoloLabelimg(Common):
             yaml.dump(data, file, allow_unicode=True)
 
     def report(self):
+
+        tables = [["丢失图像"]]
+        if self.missed:
+            for file in self.missed:
+                tables.append([os.path.relpath(file, self.args.source)])
+        else:
+            tables.append(["（无）"])
+        table = Texttable(max_width=160)
+        table.add_rows(tables)
+        print(table.draw())
+        print(f"Total: {len(self.files) + len(self.missed)}, Lost: {len(self.missed)}")
+
+        for file in self.missed:
+            self.logger.warning(f"丢失文件 {file}")
+
         tables = [["标签", "数量"]]
         for label, files in self.lables.items():
             # if len(files) == 0:
@@ -239,8 +254,6 @@ class YoloLabelimg(Common):
         table = Texttable(max_width=160)
         table.add_rows(tables)
         print(table.draw())
-        for file in self.missed:
-            self.logger.warning(f"丢失文件 {file}")
 
     def main(self):
         if self.args.source and self.args.target:
