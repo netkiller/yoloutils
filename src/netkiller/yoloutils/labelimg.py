@@ -35,7 +35,7 @@ class YoloLabelimg(Common):
         self.classes = []
         self.lables = {}
         self.missed = []
-        self.files = []
+        self.files = {}
         self.logger = logging.getLogger(__class__.__name__)
 
     def mkdirs(self, path):
@@ -73,15 +73,15 @@ class YoloLabelimg(Common):
 
         files = glob.glob(f"{self.args.source}/**/*.txt", recursive=True)
         with tqdm(total=len(files), ncols=120) as progress:
+            progress.set_description("file scanning")
             for source in files:
-                progress.set_description("files")
                 progress.set_postfix_str(f"file={os.path.basename(source)[:36]:<36}")
                 if source.endswith("classes.txt"):
                     progress.update(1)
                     continue
                 for ext in Common.image_exts:
                     if os.path.exists(f"{os.path.splitext(source)[0]}{ext}"):
-                        self.files.append(source)
+                        self.files[source] = f"{os.path.splitext(source)[0]}{ext}"
                         break
                 else:
                     self.missed.append(source)
@@ -90,8 +90,9 @@ class YoloLabelimg(Common):
 
 
         with tqdm(total=len(directory), ncols=120) as progress:
+            progress.set_description(f"yolo init")
             for dir in directory:
-                progress.set_description(f"init {dir}")
+                progress.set_postfix_str(f"dir={dir[:36]:<36}")
                 self.mkdirs(os.path.join(self.args.target, dir))
                 progress.update(1)
 
@@ -110,7 +111,7 @@ class YoloLabelimg(Common):
                 bar_format="{desc} {percentage:3.0f}%|{bar:58}| {n:>4.0f}/{total:>4.0f} {postfix}",
             ) as train,
         ):
-            for source in self.files:
+            for source in self.files.keys():
 
                 train.set_description("train/labels")
                 train.set_postfix_str(f"file={os.path.basename(source)[:36]:<36}")
@@ -148,23 +149,16 @@ class YoloLabelimg(Common):
                 )
                 train.update(1)
                 images.set_description("train/images")
-                images.set_postfix_str(f"file={os.path.basename(source)[:36]:<36}")
+                image = self.files[source]
+                images.set_postfix_str(f"file={os.path.basename(image)[:36]:<36}")
 
-                for ext in [".jpg", ".png"]:
-                    source = source.replace(".txt", ext)
-                    if os.path.exists(source):
-                        target = os.path.join(
-                            self.args.target, "train/images", f"{name}.jpg"
-                        )
-                        shutil.copy(source, target)
-                        self.logger.info(
-                            f"train/images source={source} target={target} name={name}"
-                        )
-                    else:
-                        self.logger.warning(
-                            f"train/images source={source} target={target} name={name}"
-                        )
-                    break
+                target = os.path.join(
+                    self.args.target, "train/images", image
+                )
+                shutil.copy(image, target)
+                self.logger.info(
+                    f"train/images source={image} target={target} name={name}"
+                )
                 images.update(1)
 
         for label, files in self.lables.items():
@@ -201,16 +195,23 @@ class YoloLabelimg(Common):
                             f"val/labels copy label={label} source={source} target={target}"
                         )
 
-                        source = os.path.join(
-                            self.args.target, "train/images", f"{name}.jpg"
-                        )
-                        target = os.path.join(
-                            self.args.target, "val/images", f"{name}.jpg"
-                        )
-                        shutil.copy(source, target)
-                        self.logger.info(
-                            f"val/images copy label={label} source={source} target={target}"
-                        )
+                        for ext in Common.image_exts:
+                            source = os.path.join(
+                                self.args.target, "train/images", f"{name}{ext}"
+                            )
+                            if os.path.exists(source):
+                                target = os.path.join(
+                                    self.args.target, "val/images", f"{name}{ext}"
+                                )
+                                shutil.copy(source, target)
+                                self.logger.info(
+                                    f"val/images copy label={label} source={source} target={target}"
+                                )
+                                break
+                        else:
+                            self.logger.warning(
+                                f"val/images missing train image label={label} name={name}"
+                            )
                     except Exception as e:
                         self.logger.error(f"val {repr(e)} name={name}")
                     progress.update(1)
