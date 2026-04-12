@@ -148,13 +148,21 @@ class YoloLabelimg(Common):
                     f"train/labels source={source} target={target} name={name}"
                 )
                 train.update(1)
+                # 图片复制
                 images.set_description("train/images")
                 image = self.files[source]
                 images.set_postfix_str(f"file={os.path.basename(image)[:36]:<36}")
 
-                target = os.path.join(
-                    self.args.target, "train/images", image
-                )
+                if self.args.uuid:
+                    target = os.path.join(
+                        self.args.target,
+                        "train/images",
+                        f"{name}{os.path.splitext(image)[1]}",
+                    )
+                else:
+                    target = os.path.join(
+                        self.args.target, "train/images", os.path.basename(image)
+                    )
                 shutil.copy(image, target)
                 self.logger.info(
                     f"train/images source={image} target={target} name={name}"
