@@ -36,11 +36,11 @@ except ImportError:
     from __init__ import BASE_DIR, Common
 
 try:
-    from .test import YoloTest
+    from .test import YoloTest, YoloTestDiff
 except ImportError:
     # Support direct script execution (python yoloutils.py ...)
     if __name__ == "__main__":
-        from test import YoloTest
+        from test import YoloTest, YoloTestDiff
     else:
         raise
 
@@ -365,7 +365,10 @@ class YoloUtils:
         elif args.subcommand == "crop":
             run = YoloImageCrop(self.crop, args)
         elif args.subcommand == "test":
-            run = YoloTest(self.test, args)
+            if args.diff:
+                run = YoloTestDiff(self.test, args)
+            else:
+                run = YoloTest(self.test, args)
         elif args.subcommand == "classify":
             run = YoloClassify(self.classify, args)
         else:
