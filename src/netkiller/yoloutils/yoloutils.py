@@ -112,7 +112,6 @@ class YoloUtils:
             encoding="utf-8",
             format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         )
-
         parser = argparse.ArgumentParser(
             description="Yolo 标签工具",
             epilog="Author: netkiller - https://www.netkiller.cn",

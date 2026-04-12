@@ -29,18 +29,6 @@ class YoloLabelimg(Common):
         # print(logfile)
         # sys.path.append(self.basedir)
 
-        # 日志记录基本设置
-        logfile = os.path.join(
-            self.basedir,
-            "logs",
-            f"{os.path.splitext(os.path.basename(__file__))[0]}.log",
-        )
-        logging.basicConfig(
-            filename=logfile,
-            level=logging.DEBUG,
-            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        )
-
         self.parser = parser
         self.args = args
 
@@ -48,7 +36,7 @@ class YoloLabelimg(Common):
         self.lables = {}
         self.missed = []
 
-        self.logger = logging.getLogger("LabelimgToYolo")
+        self.logger = logging.getLogger(__class__.__name__)
 
     def mkdirs(self, path):
         if not os.path.exists(path):
@@ -83,6 +71,19 @@ class YoloLabelimg(Common):
                     f"classes len={len(self.classes)} labels={self.classes}"
                 )
 
+        files = glob.glob(f"{self.args.source}/**/*.txt", recursive=True)
+        for source in files:
+            if source.endswith("classes.txt"):
+                continue
+            for ext in Common.image_exts:
+                if os.path.exists(f"{os.path.splitext(source)[0]}{ext}"):
+                    break
+            else:
+                print(f"标注文件缺少配对图片: {source}")
+                self.logger.warning(f"标注文件缺少配对图片: {source}")
+                continue
+        self.files = files
+
         with tqdm(total=len(directory), ncols=120) as progress:
             for dir in directory:
                 progress.set_description(f"init {dir}")
@@ -92,13 +93,11 @@ class YoloLabelimg(Common):
     def process(self):
         # images =  glob.glob('*.jpg', root_dir=self.args.source)
         # labels = glob.glob('*.txt', root_dir=self.args.source)
-        files = glob.glob(f"{self.args.source}/**/*.txt", recursive=True)
-
         with (
-            tqdm(total=len(files), ncols=150) as images,
-            tqdm(total=len(files), ncols=150) as train,
+            tqdm(total=len(self.files), ncols=150) as images,
+            tqdm(total=len(self.files), ncols=150) as train,
         ):
-            for source in files:
+            for source in self.files:
                 if source.endswith("classes.txt"):
                     train.update(1)
                     images.update(1)
