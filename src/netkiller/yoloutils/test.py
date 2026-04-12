@@ -1,4 +1,5 @@
 import csv
+import concurrent.futures
 import glob
 import logging
 import os
@@ -174,45 +175,30 @@ class YoloTestDiff:
         labels = {file: set() for file in files}
         model_items = list(models.items())
         model_total = len(model_items)
-        file_total = len(files)
-        total_tasks = model_total * file_total
-        with tqdm(total=total_tasks, ncols=150, unit="task", mininterval=0.0) as progress:
-            for model_index, (name, model) in enumerate(model_items, start=1):
-                model_name = os.path.basename(name)
-                progress.set_description(
-                    f"model={model_index}/{model_total}({model_name})"
-                )
-                for file_index, file in enumerate(files, start=1):
-                    filename = os.path.basename(file)
-                    conf = 0.0
-                    found_labels = set()
-                    progress.set_postfix_str(
-                        f"file={file_index}/{file_total} {filename}"
+        save_model = self.args.models[-1] if self.args.models else None
+        workers = max(1, model_total)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = []
+            for position, (name, model) in enumerate(model_items):
+                futures.append(
+                    executor.submit(
+                        self._process_model,
+                        name,
+                        model,
+                        files,
+                        position,
+                        model_total,
+                        save_model,
                     )
+                )
 
-                    try:
-                        results = model.predict(file, verbose=False)
-                        for result in results:
-                            if self.args.output:
-                                output = os.path.join(self.args.output, filename)
-                                result.save(output)
-
-                            names = result.names
-                            boxes = result.boxes
-                            if names is not None:
-                                for box in boxes:
-                                    label = names[int(box.cls)]
-                                    if self.args.label and label != self.args.label:
-                                        continue
-                                    found_labels.add(label)
-                                    conf = max(conf, float(box.conf))
-                    except Exception as e:
-                        self.logger.error(repr(e))
-
-                    if found_labels:
-                        labels[file].update(found_labels)
-                    scores[name][file] = "{:.2f}".format(conf)
-                    progress.update(1)
+            for future in concurrent.futures.as_completed(futures):
+                name, model_scores, model_labels = future.result()
+                scores[name] = model_scores
+                for file, found in model_labels.items():
+                    if found:
+                        labels[file].update(found)
 
         for file in files:
             found = sorted(labels.get(file, set()))
@@ -224,6 +210,54 @@ class YoloTestDiff:
             for name in models:
                 column.append(scores[name].get(file, 0.0))
             self.tables.append(column)
+
+    def _process_model(self, name, model, files, position, model_total, save_model):
+        model_scores = {}
+        model_labels = {file: set() for file in files}
+        file_total = len(files)
+        model_name = os.path.basename(name)
+
+        with tqdm(
+            total=file_total,
+            ncols=120,
+            unit="file",
+            mininterval=0.0,
+            position=position,
+            desc=f"model={model_name}",
+            leave=True,
+        ) as progress:
+            for file_index, file in enumerate(files, start=1):
+                filename = os.path.basename(file)
+                conf = 0.0
+                found_labels = set()
+                progress.set_postfix_str(f"file={file_index}/{file_total} {filename}")
+
+                try:
+                    results = model.predict(file, verbose=False)
+                    for result in results:
+                        # 顺序版本最终会被最后一个模型覆盖，这里只保留最后一个模型的可视化输出，避免并发写同一路径。
+                        if self.args.output and name == save_model:
+                            output = os.path.join(self.args.output, filename)
+                            result.save(output)
+
+                        names = result.names
+                        boxes = result.boxes
+                        if names is not None:
+                            for box in boxes:
+                                label = names[int(box.cls)]
+                                if self.args.label and label != self.args.label:
+                                    continue
+                                found_labels.add(label)
+                                conf = max(conf, float(box.conf))
+                except Exception as e:
+                    self.logger.error(repr(e))
+
+                if found_labels:
+                    model_labels[file].update(found_labels)
+                model_scores[file] = "{:.2f}".format(conf)
+                progress.update(1)
+
+        return name, model_scores, model_labels
 
     def output(self):
         if self.args.csv:
@@ -245,7 +279,7 @@ class YoloTestDiff:
             print(", ".join(summary))
             return
 
-        summary = [f"Total: {self.total}"]
+        averages = []
         for index, model in enumerate(self.tables[0][2:], start=2):
             model_scores = []
             for row in rows:
@@ -254,8 +288,8 @@ class YoloTestDiff:
                 except (TypeError, ValueError):
                     model_scores.append(0.0)
             average = sum(model_scores) / len(model_scores)
-            summary.append(f"Average({os.path.basename(model)}): {average:.2f}")
-        print(", ".join(summary))
+            averages.append(f"{os.path.basename(model)}={average:.2f}")
+        print(f"Total: {self.total} Average: {', '.join(averages)}")
 
     def main(self):
         if self.args.source and self.args.models and len(self.args.models) > 0:
