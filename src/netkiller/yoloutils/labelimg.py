@@ -35,7 +35,7 @@ class YoloLabelimg(Common):
         self.classes = []
         self.lables = {}
         self.missed = []
-
+        self.files = []
         self.logger = logging.getLogger(__class__.__name__)
 
     def mkdirs(self, path):
@@ -72,17 +72,22 @@ class YoloLabelimg(Common):
                 )
 
         files = glob.glob(f"{self.args.source}/**/*.txt", recursive=True)
-        for source in files:
-            if source.endswith("classes.txt"):
-                continue
-            for ext in Common.image_exts:
-                if os.path.exists(f"{os.path.splitext(source)[0]}{ext}"):
-                    break
-            else:
-                print(f"标注文件缺少配对图片: {source}")
-                self.logger.warning(f"标注文件缺少配对图片: {source}")
-                continue
-        self.files = files
+        with tqdm(total=len(files), ncols=120) as progress:
+            for source in files:
+                progress.set_description("files")
+                progress.set_postfix_str(f"file={os.path.basename(source)[:36]:<36}")
+                if source.endswith("classes.txt"):
+                    continue
+                for ext in Common.image_exts:
+                    if os.path.exists(f"{os.path.splitext(source)[0]}{ext}"):
+                        self.files.append(source)
+                        break
+                else:
+                    print(f"标注文件缺少配对图片: {source}")
+                    self.logger.warning(f"标注文件缺少配对图片: {source}")
+                    continue
+                progress.update(1)
+
 
         with tqdm(total=len(directory), ncols=120) as progress:
             for dir in directory:
@@ -94,15 +99,21 @@ class YoloLabelimg(Common):
         # images =  glob.glob('*.jpg', root_dir=self.args.source)
         # labels = glob.glob('*.txt', root_dir=self.args.source)
         with (
-            tqdm(total=len(self.files), ncols=150) as images,
-            tqdm(total=len(self.files), ncols=150) as train,
+            tqdm(
+                total=len(self.files),
+                ncols=150,
+                bar_format="{desc}: {percentage:3.0f}%|{bar:58}| {n:>4.0f}/{total:>4.0f} {postfix}",
+            ) as images,
+            tqdm(
+                total=len(self.files),
+                ncols=150,
+                bar_format="{desc}: {percentage:3.0f}%|{bar:58}| {n:>4.0f}/{total:>4.0f} {postfix}",
+            ) as train,
         ):
             for source in self.files:
-                if source.endswith("classes.txt"):
-                    train.update(1)
-                    images.update(1)
-                    continue
-                train.set_description(f"train/labels: {source}")
+
+                train.set_description("train/labels")
+                train.set_postfix_str(f"file={os.path.basename(source)[:36]:<36}")
 
                 uuid4 = None
                 if self.args.uuid:
@@ -136,7 +147,8 @@ class YoloLabelimg(Common):
                     f"train/labels source={source} target={target} name={name}"
                 )
                 train.update(1)
-                images.set_description(f"train/images: {source}")
+                images.set_description("train/images")
+                images.set_postfix_str(f"file={os.path.basename(source)[:36]:<36}")
 
                 for ext in [".jpg", ".png"]:
                     source = source.replace(".txt", ext)
