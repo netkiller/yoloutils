@@ -213,13 +213,21 @@ options:
 usage: yoloutils.py test [-h] [--source SOURCE] [--target TARGET] [--clean] [--model MODEL] [--csv result.csv] [--output OUTPUT]
 
 options:
-  -h, --help        show this help message and exit
-  --model MODEL     模型路径
-  --csv result.csv  保存测试结果
-  --output OUTPUT   测试结果输出路径
+  -h, --help            show this help message and exit
+  --model MODEL         模型路径
+  --csv result.csv      保存结果
+  --output OUTPUT       测试结果输出路径
 
 通用参数:
-  --source SOURCE   图片来源地址
-  --target TARGET   图片目标地址
-  --clean           清理之前的数据
+  --source SOURCE       图片来源地址
+  --target TARGET       图片目标地址
+  --clean               清理之前的数据
+
+对比模型:
+  对比多个模型识别率
+
+  --diff                对比模型
+  --models best1.pt best2.pt best3.pt [best1.pt best2.pt best3.pt ...]
+                        模型
+  -l, --label           标签统计
 ```
