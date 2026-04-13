@@ -29,6 +29,16 @@ except ImportError as err:
     print("Import Error: %s" % (err))
     exit()
 
+
+class HelpOnErrorParser(argparse.ArgumentParser):
+    def error(self, message):
+        self.print_usage(sys.stderr)
+        # self._print_message(f"{self.prog}: 参数错误: {message}\n\n", sys.stderr)
+        self._print_message(f"参数错误: {message}\n\n", sys.stderr)
+        # self.print_help(sys.stderr)
+        self.exit(2)
+
+
 try:
     from . import BASE_DIR, Common
 except ImportError:
@@ -112,13 +122,13 @@ class YoloUtils:
             encoding="utf-8",
             format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         )
-        parser = argparse.ArgumentParser(
+        parser = HelpOnErrorParser(
             description="Yolo 标签工具",
             epilog="Author: netkiller - https://www.netkiller.cn",
         )
         self.subparsers = parser.add_subparsers(
-            title="subcommands",
-            description="valid subcommands",
+            title="子命令",
+            description="工具含标签类处理和图像类处理工具",
             dest="subcommand",
             help="additional help",
         )

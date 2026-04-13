@@ -223,14 +223,14 @@ class YoloTestDiff:
             unit="file",
             mininterval=0.0,
             position=position,
-            desc=f"model={model_name}",
+            desc=f"{model_name}",
             leave=True,
         ) as progress:
             for file_index, file in enumerate(files, start=1):
                 filename = os.path.basename(file)
                 conf = 0.0
                 found_labels = set()
-                progress.set_postfix_str(f"file={file_index}/{file_total} {filename}")
+                progress.set_postfix_str(f"file={file_index}/{file_total}")
 
                 try:
                     results = model.predict(file, verbose=False)
