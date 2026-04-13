@@ -22,9 +22,31 @@ class YoloClassify:
     model = None
 
     def __init__(self, parser, args):
+        parser.add_argument(
+            "--output", type=str, default=None, help="输出识别图像", metavar=""
+        )
+        parser.add_argument(
+            "--checklist", type=str, default=None, help="输出识别图像", metavar=""
+        )
+        parser.add_argument(
+            "--test", type=int, default=10, help="测试数量", metavar=100
+        )
+        # self.classify.add_argument('--clean', action="store_true", default=False, help='清理之前的数据')
+        parser.add_argument(
+            "--crop", action="store_true", default=False, help="裁剪"
+        )
+        parser.add_argument(
+            "--model", type=str, default=None, help="裁剪模型", metavar=""
+        )
+        parser.add_argument(
+            "--uuid", action="store_true", default=False, help="重命名图片为UUID"
+        )
+        parser.add_argument(
+            "--verbose", action="store_true", default=False, help="过程输出"
+        )
         self.parser = parser
         self.args = args
-        self.logger = logging.getLogger("classify")
+        self.logger = logging.getLogger(__class__.__name__)
 
         self.basedir = BASE_DIR
         sys.path.append(self.basedir)

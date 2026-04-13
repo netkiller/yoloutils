@@ -33,9 +33,8 @@ except ImportError as err:
 class HelpOnErrorParser(argparse.ArgumentParser):
     def error(self, message):
         self.print_usage(sys.stderr)
-        # self._print_message(f"{self.prog}: 参数错误: {message}\n\n", sys.stderr)
-        self._print_message(f"参数错误: {message}\n\n", sys.stderr)
-        # self.print_help(sys.stderr)
+        self._print_message(f"{self.prog}: error: {message}\n\n", sys.stderr)
+        self.print_help(sys.stderr)
         self.exit(2)
 
 
@@ -130,7 +129,7 @@ class YoloUtils:
             title="子命令",
             description="工具含标签类处理和图像类处理工具",
             dest="subcommand",
-            help="additional help",
+            help="风险提示：当使用 --clean 参数时会删除目标目录和输出目录 ",
         )
 
         self.parent_parser = argparse.ArgumentParser(add_help=False)
@@ -145,24 +144,7 @@ class YoloUtils:
         )
 
         self.label = self.subparsers.add_parser("label", help="标签统计、索引统计、标签搜索")
-        self.label.add_argument(
-            "--source", type=str, default=None, help="目录", metavar="/tmp/dir1"
-        )
-        self.label.add_argument(
-            "--classes",
-            action="store_true",
-            default=False,
-            help="查看 classes.txt 文件",
-        )
-        self.label.add_argument(
-            "--total", action="store_true", default=False, help="统计标签图数量"
-        )
-        self.label.add_argument(
-            "--index", action="store_true", default=False, help="统计标签索引数量"
-        )
-        self.label.add_argument(
-            "--search", nargs="+", default=None, help="搜索标签", metavar="1 2 3"
-        )
+
 
         # labelimg.add_argument('--baz', choices=('X', 'Y', 'Z'), help='baz help')
 
@@ -170,76 +152,25 @@ class YoloUtils:
             "merge", help="合并两个TXT文件中的标签到新TXT文件"
         )
         # self.parser = argparse.ArgumentParser(description='合并YOLO标签工具')
-        self.merge.add_argument(
-            "--left", type=str, default=None, help="左侧目录", metavar="/tmp/dir1"
-        )
-        self.merge.add_argument(
-            "--right", default=None, type=str, help="右侧目录", metavar="/tmp/dir2"
-        )
-        self.merge.add_argument(
-            "--output",
-            type=str,
-            default=None,
-            help="最终输出目录",
-            metavar="/tmp/output",
-        )
-        self.merge.add_argument(
-            "--clean", action="store_true", default=False, help="清理之前的数据"
-        )
+
 
         # subparsers = self.parser.add_subparsers(help='subcommand help')
 
         self.copy = self.subparsers.add_parser("copy", help="从指定标签复制图片文件")
-        self.copy.add_argument("--source", type=str, default=None, help="图片来源地址")
-        self.copy.add_argument("--target", type=str, default=None, help="图片目标地址")
-        self.copy.add_argument(
-            "--label", type=str, default=None, help="逗号分割多个标签"
-        )
-        self.copy.add_argument(
-            "-u", "--uuid", action="store_true", default=False, help="UUID 文件名"
-        )
-        self.copy.add_argument(
-            "-c", "--clean", action="store_true", default=False, help="清理目标文件夹"
-        )
-
         self.remove = self.subparsers.add_parser(
             "remove", help="从YOLO TXT文件中删除指定标签", parents=[self.parent_parser]
         )
         # self.parser = argparse.ArgumentParser(description='YOLO标签删除工具')
-        self.remove.add_argument(
-            "--classes", nargs="+", default=None, help="标签序号", metavar="1 2 3"
-        )
-        self.remove.add_argument(
-            "--label", nargs="+", default=None, help="标签名称", metavar="label1 label2"
-        )
+
         # remove.add_argument('--output', type=str, default=None, help='输出目录', metavar="/tmp/output")
         # self.remove.add_argument('--clean', action="store_true", default=False, help='清理输出目录')
         # self.remove.add_argument('--show', action='store_true', help='查看 classes.txt 文件')
 
         self.change = self.subparsers.add_parser("change", help="修改标签索引")
-        self.change.add_argument(
-            "--source", type=str, default=None, help="目录", metavar="/tmp/dir1"
-        )
-        self.change.add_argument(
-            "--search", nargs="+", default=None, help="标签序号", metavar="1 2 3"
-        )
-        self.change.add_argument(
-            "--replace", nargs="+", default=None, help="标签名称", metavar="4 5 6"
-        )
-
         self.crop = self.subparsers.add_parser(
             "crop", help="图片裁剪", parents=[self.parent_parser]
         )
-        self.crop.add_argument(
-            "--model", type=str, default=None, metavar="best.pt", help="模型"
-        )
-        self.crop.add_argument(
-            "--output",
-            type=str,
-            default=None,
-            help="Yolo 输出目录",
-            metavar="/tmp/output",
-        )
+
         # self.change.add_argument('--classes', action="store_true", default=False, help='查看 classes.txt 文件')
         # parser_b.add_argument('--baz', choices=('X', 'Y', 'Z'), help='baz help')
         #
@@ -269,125 +200,72 @@ class YoloUtils:
             formatter_class=nowrap_formatter,
         )
 
-        self.labelimg.add_argument(
-            "--classes", type=str, default=None, help="classes.txt 文件"
+        self.auto = self.subparsers.add_parser(
+            "auto",
+            help="用现有模型自动给训练图像打标签",
+            parents=[self.parent_parser],
+            formatter_class=nowrap_formatter,
         )
-        self.labelimg.add_argument(
-            "--val", type=int, default=10, help="检验数量", metavar=10
-        )
-        # self.labelimg.add_argument('--clean', action="store_true", default=False, help='清理之前的数据')
-
-        self.labelimg.add_argument(
-            "--uuid", action="store_true", default=False, help="输出文件名使用UUID"
-        )
-        self.labelimg.add_argument(
-            "--check",
-            action="store_true",
-            default=False,
-            help="图片检查 corrupt JPEG restored and saved",
-        )
-
-        autolabel = self.labelimg.add_argument_group(title="自动打标", description="用载入的模型自动给目录中的文件打标")
-        autolabel.add_argument('--auto', action="store_true", default=False, help='自动标注')
-        autolabel.add_argument('--model', type=str, default=None, help='载入模型',metavar="best.pt")
-        autolabel.add_argument('--conf', type=float, default=None, help='置信度阈值',metavar=0.5)
-        autolabel.add_argument('--csv', default=None, type=str, help='报告输出，哪些文件已经标准，哪些没有标注', metavar="report.csv")
-        autolabel.add_argument('--output', type=str, default=None, help='输出标注效果')
 
         self.resize = self.subparsers.add_parser(
             "resize", help="修改图片尺寸", parents=[self.parent_parser]
         )
         # self.parser = argparse.ArgumentParser(description='自动切割学习数据')
-
-        self.resize.add_argument(
-            "--imgsz", type=int, default=640, help="长边尺寸", metavar=640
-        )
-        self.resize.add_argument(
-            "--output", type=str, default=None, help="输出识别图像", metavar=""
-        )
         # self.resize.add_argument('--clean', action="store_true", default=False, help='清理之前的数据')
         # self.resize.add_argument('--md5sum', action="store_true", default=False, help='使用md5作为文件名')
-
-
         # self.args = self.parser.parse_args()
 
         self.classify = self.subparsers.add_parser(
             "classify", help="图像分类数据处理", parents=[self.parent_parser]
         )
-        self.classify.add_argument(
-            "--output", type=str, default=None, help="输出识别图像", metavar=""
-        )
-        self.classify.add_argument(
-            "--checklist", type=str, default=None, help="输出识别图像", metavar=""
-        )
-        self.classify.add_argument(
-            "--test", type=int, default=10, help="测试数量", metavar=100
-        )
-        # self.classify.add_argument('--clean', action="store_true", default=False, help='清理之前的数据')
-        self.classify.add_argument(
-            "--crop", action="store_true", default=False, help="裁剪"
-        )
-        self.classify.add_argument(
-            "--model", type=str, default=None, help="裁剪模型", metavar=""
-        )
-        self.classify.add_argument(
-            "--uuid", action="store_true", default=False, help="重命名图片为UUID"
-        )
-        self.classify.add_argument(
-            "--verbose", action="store_true", default=False, help="过程输出"
-        )
+
         # ---------- 测试 ----------
         self.test = self.subparsers.add_parser(
             "test", help="模型测试工具", parents=[self.parent_parser]
         )
-        self.test.add_argument('--model', type=str, default=None, help='模型路径')
-        self.test.add_argument('--csv', type=str,default=None,  help='保存结果',metavar="result.csv")
-        self.test.add_argument('--output', type=str,default=None,  help='测试结果输出路径')
-        testGroup = self.test.add_argument_group(            title="对比模型", description="对比多个模型识别率")
-        testGroup.add_argument('--diff', action="store_true", default=False, help='对比模型')
-        testGroup.add_argument("--models", nargs = "+", default = None, help = "模型", metavar = "best1.pt best2.pt best3.pt")
-        testGroup.add_argument('-l', '--label', type=str,default=None, help='标签统计',metavar="")
+        self.diff = self.subparsers.add_parser(
+            "diff", help="模型比较工具", parents=[self.parent_parser]
+        )
 
         self.parser = parser
 
-    def main(self):
-
-        args = self.parser.parse_args()
-
-        # print(args, args.subcommand)
+    def _build_runner(self, args):
         if args.subcommand == "label":
-            run = YoloLabel(self.label, args)
+            return YoloLabel(self.label, args)
         elif args.subcommand == "copy":
-            run = YoloLabelCopy(self.copy, args)
+            return YoloLabelCopy(self.copy, args)
         elif args.subcommand == "remove":
-            run = YoloLabelRemove(self.remove, args)
+            return YoloLabelRemove(self.remove, args)
         elif args.subcommand == "change":
-            run = YoloLabelChange(self.change, args)
+            return YoloLabelChange(self.change, args)
         elif args.subcommand == "merge":
-            run = YoloLabelMerge(self.merge, args)
+            return YoloLabelMerge(self.merge, args)
         elif args.subcommand == "labelimg":
-            if args.auto:
-                run = YoloLabelimgAutomatic(self.labelimg, args)
-            else:
-                run = YoloLabelimg(self.labelimg, args)
+            return YoloLabelimg(self.labelimg, args)
+        elif args.subcommand == "auto":
+            return YoloLabelimgAutomatic(self.auto, args)
         elif args.subcommand == "resize":
-            run = YoloImageResize(self.resize, args)
+            return YoloImageResize(self.resize, args)
         elif args.subcommand == "crop":
-            run = YoloImageCrop(self.crop, args)
+            return YoloImageCrop(self.crop, args)
         elif args.subcommand == "test":
-            if args.diff:
-                run = YoloTestDiff(self.test, args)
-            else:
-                run = YoloTest(self.test, args)
+            return YoloTest(self.test, args)
+        elif args.subcommand == "diff":
+            return YoloTestDiff(self.diff, args)
         elif args.subcommand == "classify":
-            run = YoloClassify(self.classify, args)
-        else:
+            return YoloClassify(self.classify, args)
+        return None
+
+    def main(self):
+        argv = sys.argv[1:]
+        bootstrap_args, _ = self.parser.parse_known_args(argv)
+        run = self._build_runner(bootstrap_args)
+        if not run:
             self.parser.print_help()
             exit()
-
+        args = self.parser.parse_args(argv)
+        run.args = args
         run.main()
-
-
 
 
 def main():

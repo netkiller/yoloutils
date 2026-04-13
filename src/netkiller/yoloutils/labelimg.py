@@ -25,9 +25,24 @@ class YoloLabelimg(Common):
 
     def __init__(self, parser, args):
         self.basedir = BASE_DIR
-        # print(self.basedir)
-        # print(logfile)
-        # sys.path.append(self.basedir)
+
+        parser.add_argument(
+            "--classes", type=str, default=None, help="classes.txt 文件"
+        )
+        parser.add_argument(
+            "--val", type=int, default=10, help="检验数量", metavar=10
+        )
+        # self.labelimg.add_argument('--clean', action="store_true", default=False, help='清理之前的数据')
+
+        parser.add_argument(
+            "--uuid", action="store_true", default=False, help="输出文件名使用UUID"
+        )
+        parser.add_argument(
+            "--check",
+            action="store_true",
+            default=False,
+            help="图片检查 corrupt JPEG restored and saved",
+        )
 
         self.parser = parser
         self.args = args
@@ -287,20 +302,17 @@ class YoloLabelimgAutomatic(Common):
 
     def __init__(self, parser, args):
         self.basedir = BASE_DIR
-        logfile = os.path.join(
-            self.basedir,
-            "logs",
-            f"{os.path.splitext(os.path.basename(__file__))[0]}.log",
-        )
-        logging.basicConfig(
-            filename=logfile,
-            level=logging.DEBUG,
-            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        )
+
+        # autolabel = parser.add_argument_group(title="自动打标", description="用载入的模型自动给目录中的文件打标")
+        # parser.add_argument('--auto', action="store_true", default=False, help='自动标注')
+        parser.add_argument('--model', type=str, default=None, help='载入模型', metavar="best.pt")
+        parser.add_argument('--conf', type=float, default=None, help='置信度阈值', metavar=0.5)
+        parser.add_argument('--csv', default=None, type=str, help='报告输出，哪些文件已经标准，哪些没有标注', metavar="report.csv")
+        parser.add_argument('--output', type=str, default=None, help='输出标注效果', metavar="/path/to/output")
 
         self.parser = parser
         self.args = args
-        self.logger = logging.getLogger("LabelimgAutomatic")
+        self.logger = logging.getLogger(__class__.__name__)
         self.model = None
         self.files = []
         self.unlabeled_files = []
@@ -498,10 +510,10 @@ class YoloLabelimgAutomatic(Common):
         print(table.draw())
 
     def _write_report_csv(self):
-        if not self.args.report:
+        if not self.args.csv:
             return
 
-        report_path = self.args.report
+        report_path = self.args.csv
         report_dir = os.path.dirname(report_path)
         if report_dir:
             os.makedirs(report_dir, exist_ok=True)

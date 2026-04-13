@@ -23,7 +23,13 @@ class YoloTest:
 
     def __init__(self, parser, args):
         self.logger = logging.getLogger(__class__.__name__)
+
+        parser.add_argument('--model', type=str, default=None, help='模型路径')
+        parser.add_argument('--csv', type=str, default=None, help='保存结果', metavar="result.csv")
+        parser.add_argument('--output', type=str, default=None, help='测试结果输出路径')
+
         self.parser = parser
+
         self.args = args
         self.yolo = None
         self.files = []
@@ -132,6 +138,13 @@ class YoloTestDiff:
 
     def __init__(self, parser, args):
         self.logger = logging.getLogger(__class__.__name__)
+
+        # parser.add_argument('--diff', action="store_true", default=False, help='对比模型')
+        parser.add_argument('-m',"--model", nargs="+", default=None, help="模型", metavar="best1.pt best2.pt best3.pt")
+        parser.add_argument('-l', '--label', type=str, default=None, help='标签过滤只统计指定标签', metavar="")
+        parser.add_argument('-o','--output', type=str, default=None, help='对比结果输出路径')
+        parser.add_argument('-c','--csv', type=str, default=None, help='保存对比结果', metavar="result.csv")
+
         self.parser = parser
         self.args = args
         self.files = []
@@ -157,7 +170,7 @@ class YoloTestDiff:
         models = {}
         scores = {}
         try:
-            for model in self.args.models:
+            for model in self.args.model:
                 models[model] = YOLO(model)
                 scores[model] = {}
                 header.append(model)
@@ -175,7 +188,7 @@ class YoloTestDiff:
         labels = {file: set() for file in files}
         model_items = list(models.items())
         model_total = len(model_items)
-        save_model = self.args.models[-1] if self.args.models else None
+        save_model = self.args.model[-1] if self.args.model else None
         workers = max(1, model_total)
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
@@ -292,7 +305,7 @@ class YoloTestDiff:
         print(f"Total: {self.total} Average: {', '.join(averages)}")
 
     def main(self):
-        if self.args.source and self.args.models and len(self.args.models) > 0:
+        if self.args.source and self.args.model and len(self.args.model) > 0:
             self.input()
             self.process()
             self.output()

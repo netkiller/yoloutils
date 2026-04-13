@@ -2,6 +2,7 @@ import glob
 import logging
 import os
 import shutil
+import sys
 import uuid
 
 from texttable import Texttable
@@ -18,6 +19,12 @@ class YoloLabelRemove(Common):
     total = {"change": 0, "remove": 0, "skip": 0, "error": 0}
 
     def __init__(self, parser, args):
+        parser.add_argument(
+            "--classes", nargs="+", default=None, help="标签序号", metavar="1 2 3"
+        )
+        parser.add_argument(
+            "--label", nargs="+", default=None, help="标签名称", metavar="label1 label2"
+        )
         self.parser = parser
         self.args = args
         self.logger = logging.getLogger("remove")
@@ -128,6 +135,22 @@ class YoloLabelMerge(Common):
     lose = []
 
     def __init__(self, parser, args):
+        parser.add_argument(
+            "--left", type=str, default=None, help="左侧目录", metavar="/tmp/dir1"
+        )
+        parser.add_argument(
+            "--right", default=None, type=str, help="右侧目录", metavar="/tmp/dir2"
+        )
+        parser.add_argument(
+            "--output",
+            type=str,
+            default=None,
+            help="最终输出目录",
+            metavar="/tmp/output",
+        )
+        parser.add_argument(
+            "--clean", action="store_true", default=False, help="清理之前的数据"
+        )
         self.parser = parser
         self.args = args
 
@@ -224,6 +247,17 @@ class YoloLabelMerge(Common):
 
 class YoloLabelCopy(Common):
     def __init__(self, parser, args):
+        parser.add_argument("--source", type=str, default=None, help="图片来源地址")
+        parser.add_argument("--target", type=str, default=None, help="图片目标地址")
+        parser.add_argument(
+            "--label", type=str, default=None, help="逗号分割多个标签"
+        )
+        parser.add_argument(
+            "-u", "--uuid", action="store_true", default=False, help="UUID 文件名"
+        )
+        parser.add_argument(
+            "-c", "--clean", action="store_true", default=False, help="清理目标文件夹"
+        )
         self.parser = parser
         self.args = args
 
@@ -342,6 +376,15 @@ class YoloLabelChange(Common):
     count = 0
 
     def __init__(self, parser, args):
+        parser.add_argument(
+            "--source", type=str, default=None, help="目录", metavar="/tmp/dir1"
+        )
+        parser.add_argument(
+            "--search", nargs="+", default=None, help="标签序号", metavar="1 2 3"
+        )
+        parser.add_argument(
+            "--replace", nargs="+", default=None, help="标签名称", metavar="4 5 6"
+        )
         self.parser = parser
         self.args = args
         self.logger = logging.getLogger("change")
@@ -440,9 +483,27 @@ class YoloLabel(Common):
     count = 0
 
     def __init__(self, parser, args):
+        parser.add_argument(
+            "--source", type=str, default=None, help="目录", metavar="/tmp/dir1"
+        )
+        parser.add_argument(
+            "--classes",
+            action="store_true",
+            default=False,
+            help="查看 classes.txt 文件",
+        )
+        parser.add_argument(
+            "--total", action="store_true", default=False, help="统计标签图数量"
+        )
+        parser.add_argument(
+            "--index", action="store_true", default=False, help="统计标签索引数量"
+        )
+        parser.add_argument(
+            "--search", nargs="+", default=None, help="搜索标签", metavar="1 2 3"
+        )
         self.parser = parser
         self.args = args
-        self.logger = logging.getLogger("label")
+        self.logger = logging.getLogger(__class__.__name__)
 
         self.indexs = {}
 

@@ -19,6 +19,16 @@ class YoloImageCrop:
     total = {"未处理": 0, "已处理": 0}
 
     def __init__(self, parser, args):
+        parser.add_argument(
+            "--model", type=str, default=None, metavar="best.pt", help="模型"
+        )
+        parser.add_argument(
+            "--output",
+            type=str,
+            default=None,
+            help="Yolo 输出目录",
+            metavar="/tmp/output",
+        )
         self.files = []
         self.parser = parser
         self.args = args
@@ -168,9 +178,15 @@ class YoloImageResize:
     total = {"未处理": 0, "已处理": 0}
 
     def __init__(self, parser, args):
+        parser.add_argument(
+            "--imgsz", type=int, default=640, help="长边尺寸", metavar=640
+        )
+        parser.add_argument(
+            "--output", type=str, default=None, help="输出识别图像", metavar=""
+        )
         self.parser = parser
         self.args = args
-        self.logger = logging.getLogger("resize")
+        self.logger = logging.getLogger(__class__.__name__)
         self.total = {"未处理": 0, "已处理": 0}
 
     def resize(self, image):
