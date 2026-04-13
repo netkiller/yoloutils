@@ -17,27 +17,30 @@ pip install netkiller-yoloutils
 
 ```shell
 (.venv) neo@Neo-Mac-mini-M4 yoloutils % yoloutils
-usage: yoloutils [-h] {label,merge,copy,remove,change,crop,labelimg,resize,classify} ...
+usage: yoloutils.py [-h] {label,merge,copy,remove,change,crop,labelimg,auto,resize,classify,test,diff} ...
 
-Yolo 标签工具
+Yolo 标签与图像处理工具
 
 options:
   -h, --help            show this help message and exit
 
-subcommands:
-  valid subcommands
+子命令:
+  工具含标签类处理和图像类处理工具
 
-  {label,merge,copy,remove,change,crop,labelimg,resize,classify}
-                        additional help
-    label               标签处理工具
+  {label,merge,copy,remove,change,crop,labelimg,auto,resize,classify,test,diff}
+                        风险提示：当使用 --clean 参数时会删除目标目录和输出目录
+    label               标签统计、索引统计、标签搜索
     merge               合并两个TXT文件中的标签到新TXT文件
     copy                从指定标签复制图片文件
     remove              从YOLO TXT文件中删除指定标签
     change              修改标签索引
     crop                图片裁剪
     labelimg            labelimg 格式转换为 yolo 训练数据集
+    auto                用现有模型自动给训练图像打标签
     resize              修改图片尺寸
     classify            图像分类数据处理
+    test                模型测试工具
+    diff                模型比较工具
 
 Author: netkiller - https://www.netkiller.cn
 ```
@@ -112,7 +115,7 @@ options:
 
 ```
 
-## 修改标签 
+## 修改标签
 
 ```shell
 (.venv) neo@Neo-Mac-mini-M4 yoloutils % yoloutils change -h
@@ -166,6 +169,25 @@ options:
   --clean            清理之前的数据
 ```
 
+## 自动打标签
+
+```shell
+(.venv) neo@netkiller yoloutils % yoloutils auto
+usage: yoloutils auto [-h] [--source SOURCE] [--target TARGET] [--clean] [--model best.pt] [--conf 0.5] [--csv report.csv] [--output /path/to/output]
+
+options:
+  -h, --help                show this help message and exit
+  --source SOURCE           图片来源地址
+  --target TARGET           图片目标地址
+  --clean                   清理之前的数据
+  --model best.pt           载入模型
+  --conf 0.5                置信度阈值
+  --csv report.csv          报告输出，哪些文件已经标准，哪些没有标注
+  --output /path/to/output  输出标注效果
+
+用载入的模型自动给目录中的文件打标
+```
+
 ## 修改图片尺寸
 
 ```shell
@@ -209,25 +231,32 @@ options:
 ## 模型测试
 
 ```shell
-(.venv) neo@netkiller yoloutils % yoloutils test -h
-usage: yoloutils.py test [-h] [--source SOURCE] [--target TARGET] [--clean] [--model MODEL] [--csv result.csv] [--output OUTPUT]
+usage: yoloutils test [-h] [--source SOURCE] [--target TARGET] [--clean] [--model MODEL] [--csv result.csv] [--output OUTPUT]
+
+options:
+  -h, --help        show this help message and exit
+  --source SOURCE   图片来源地址
+  --target TARGET   图片目标地址
+  --clean           清理之前的数据
+  --model MODEL     模型路径
+  --csv result.csv  保存结果
+  --output OUTPUT   测试结果输出路径
+```
+
+## 模型对比
+
+```shell
+(.venv) neo@netkiller yoloutils % yoloutils diff 
+usage: yoloutils diff [-h] [--source SOURCE] [--target TARGET] [--clean] [-m best1.pt best2.pt best3.pt [best1.pt best2.pt best3.pt ...]] [-l ] [-o OUTPUT] [-c result.csv]
 
 options:
   -h, --help            show this help message and exit
-  --model MODEL         模型路径
-  --csv result.csv      保存结果
-  --output OUTPUT       测试结果输出路径
-
-通用参数:
   --source SOURCE       图片来源地址
   --target TARGET       图片目标地址
   --clean               清理之前的数据
-
-对比模型:
-  对比多个模型识别率
-
-  --diff                对比模型
-  --models best1.pt best2.pt best3.pt [best1.pt best2.pt best3.pt ...]
+  -m, --model best1.pt best2.pt best3.pt [best1.pt best2.pt best3.pt ...]
                         模型
-  -l, --label           标签统计
+  -l, --label           标签过滤只统计指定标签
+  -o, --output OUTPUT   对比结果输出路径
+  -c, --csv result.csv  保存对比结果
 ```
