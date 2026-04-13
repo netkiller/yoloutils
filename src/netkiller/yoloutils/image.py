@@ -9,6 +9,11 @@ from texttable import Texttable
 from tqdm import tqdm
 from ultralytics import YOLO
 
+try:
+    from . import Common
+except ImportError:
+    from __init__ import Common
+
 
 class YoloImageCrop:
     # background = (22, 255, 39) # 绿幕RGB模式（R22 - G255 - B39），CMYK模式（C62 - M0 - Y100 - K0）
@@ -25,11 +30,11 @@ class YoloImageCrop:
             "--clean", action="store_true", default=False, help="清理之前的数据"
         )
 
-        model = parser.add_argument_group(title="基于模型裁切", description="用指定模型识别后，将 box 框内的图像保存指定目录")
-        model.add_argument(
+        modelgroup = parser.add_argument_group(title="基于模型裁切", description="用指定模型识别后，将 box 框内的图像保存指定目录")
+        modelgroup.add_argument(
             "--model", type=str, default=None, metavar="best.pt", help="模型"
         )
-        model.add_argument(
+        modelgroup.add_argument(
             "--output",
             type=str,
             default=None,
@@ -38,7 +43,7 @@ class YoloImageCrop:
         )
         txt = parser.add_argument_group(title="基于txt标准裁切", description="用.txt文件中的box框为基准，向外扩展裁切")
         txt.add_argument('--txt', action="store_true", default=False, help='自动标注')
-        txt.add_argument('--length', type=int, default=640, help='矩形长边', metavar=640)
+        txt.add_argument('--imgsz', type=int, default=640, help='矩形长边', metavar=640)
 
         self.files = []
         self.parser = parser
@@ -83,7 +88,7 @@ class YoloImageCrop:
         )
         return image
 
-    def crop(self, source: str, target: str):
+    def model(self, source: str, target: str):
         if not os.path.exists(source):
             return None
 
@@ -92,7 +97,7 @@ class YoloImageCrop:
             if image is None:
                 return None
 
-            results = self.model(source, verbose=False)
+            results = self.yolo(source, verbose=False)
 
             for result in results:
                 boxes = result.boxes.data.cpu().numpy()
@@ -125,6 +130,9 @@ class YoloImageCrop:
             exit()
         return None
 
+    def txt(self, source: str, target: str, imgsz: int = 640):
+        pass
+
     def input(self):
         try:
             if self.args.clean:
@@ -141,10 +149,13 @@ class YoloImageCrop:
             print("input: ", repr(e))
             exit()
 
-        self.files = glob.glob(f"{self.args.source}/**/*.jpg", recursive=True)
+        files = glob.glob(f"{self.args.source}/**/*", recursive=True)
+        self.files = [
+            f for f in files if os.path.isfile(f) and f.lower().endswith(Common.image_exts)
+        ]
         self.logger.info(f"files total={len(self.files)}")
 
-        self.model = YOLO(self.args.model)
+        self.yolo = YOLO(self.args.model)
         self.logger.info(f"loading model={self.args.model}")
 
     def process(self):
@@ -159,8 +170,12 @@ class YoloImageCrop:
 
                 if not os.path.exists(os.path.dirname(target)):
                     os.makedirs(os.path.dirname(target), exist_ok=True)
-                self.crop(source, target)
-                self.logger.info(f"images source={source} target={target}")
+                if self.args.model:
+                    self.model(source, target)
+                    self.logger.info(f"images crop=model source={source} target={target}")
+                elif self.args.txt:
+                    self.txt(source, target)
+                    self.logger.info(f"images crop=txt source={source} target={target}")
                 progress.update(1)
 
     def output(self):
