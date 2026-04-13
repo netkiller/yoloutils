@@ -153,7 +153,6 @@ class YoloUtils:
         # Namespace(bar=12, foo=False)
 
         # self.parser = argparse.ArgumentParser(description='YOLO标签删除工具')
-        # self.parser.add_argument('--label', type=int, default=-1, help='长边尺寸',metavar=0)
 
         # self.args = self.parser.parse_args()
         # self.parser = argparse.ArgumentParser(description='YOLO标签删除工具')
