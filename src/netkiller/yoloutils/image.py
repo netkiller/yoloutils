@@ -24,20 +24,26 @@ class YoloImageCrop:
         parser.add_argument(
             "--clean", action="store_true", default=False, help="清理之前的数据"
         )
-        parser.add_argument(
+
+        model = parser.add_argument_group(title="基于模型裁切", description="用指定模型识别后，将 box 框内的图像保存指定目录")
+        model.add_argument(
             "--model", type=str, default=None, metavar="best.pt", help="模型"
         )
-        parser.add_argument(
+        model.add_argument(
             "--output",
             type=str,
             default=None,
             help="Yolo 输出目录",
             metavar="/tmp/output",
         )
+        txt = parser.add_argument_group(title="基于txt标准裁切", description="用.txt文件中的box框为基准，向外扩展裁切")
+        txt.add_argument('--txt', action="store_true", default=False, help='自动标注')
+        txt.add_argument('--length', type=int, default=640, help='矩形长边', metavar=640)
+
         self.files = []
         self.parser = parser
         self.args = args
-        self.logger = logging.getLogger("crop")
+        self.logger = logging.getLogger(__class__.__name__)
         self.total = {"未处理": 0, "已处理": 0}
 
     def border(self, original, xyxy):

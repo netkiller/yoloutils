@@ -163,19 +163,20 @@ class YoloUtils:
         # self.parser.add_argument('--source', type=str, default=None, help='图片来源地址')
         # self.parser.add_argument('--target', default=None, type=str, help='图片目标地址')
 
-        # self.parser.add_argument('--val', type=int, default=10, help='检验数量', metavar=10)
         # self.parser.add_argument('--crop', action="store_true", default=False, help='裁剪')
         # self.args = self.parser.parse_args()
 
         self.labelimg = self.subparsers.add_parser(
             "labelimg",
             help="labelimg 格式转换为 yolo 训练数据集",
+            epilog="将 labelimg 标注的图像转换为 yolo 训练数据集",
             formatter_class=nowrap_formatter,
         )
 
         self.auto = self.subparsers.add_parser(
             "auto",
             help="用现有模型自动给训练图像打标签",
+            epilog="用载入的模型自动给目录中的文件打标",
             formatter_class=nowrap_formatter,
         )
 

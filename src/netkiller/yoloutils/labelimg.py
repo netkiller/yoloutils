@@ -1,10 +1,10 @@
+import csv
 import glob
 import logging
 import os
 import random
 import shutil
 import uuid
-import csv
 
 import cv2
 import yaml
@@ -112,7 +112,6 @@ class YoloLabelimg(Common):
                     self.missed.append(source)
                     self.logger.warning(f"标注文件缺少配对图片: {source}")
                 progress.update(1)
-
 
         with tqdm(total=len(directory), ncols=120) as progress:
             progress.set_description(f"yolo init")
@@ -260,7 +259,7 @@ class YoloLabelimg(Common):
             # 'nc': len(self.classes)
         }
         with open(
-            os.path.join(self.args.target, "data.yaml"), "w", encoding="utf-8"
+                os.path.join(self.args.target, "data.yaml"), "w", encoding="utf-8"
         ) as file:
             yaml.dump(data, file, allow_unicode=True)
 
@@ -313,8 +312,7 @@ class YoloLabelimgAutomatic(Common):
         parser.add_argument(
             "--clean", action="store_true", default=False, help="清理之前的数据"
         )
-        # autolabel = parser.add_argument_group(title="自动打标", description="用载入的模型自动给目录中的文件打标")
-        # parser.add_argument('--auto', action="store_true", default=False, help='自动标注')
+
         parser.add_argument('--model', type=str, default=None, help='载入模型', metavar="best.pt")
         parser.add_argument('--conf', type=float, default=None, help='置信度阈值', metavar=0.5)
         parser.add_argument('--csv', default=None, type=str, help='报告输出，哪些文件已经标准，哪些没有标注', metavar="report.csv")
@@ -544,7 +542,7 @@ class YoloLabelimgAutomatic(Common):
     def output(self):
         classes = self._classes_from_model()
         with open(
-            os.path.join(self.args.target, "classes.txt"), "w", encoding="utf-8"
+                os.path.join(self.args.target, "classes.txt"), "w", encoding="utf-8"
         ) as file:
             if classes:
                 file.write("\n".join(classes) + "\n")
