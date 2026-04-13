@@ -29,15 +29,6 @@ except ImportError as err:
     print("Import Error: %s" % (err))
     exit()
 
-
-class HelpOnErrorParser(argparse.ArgumentParser):
-    def error(self, message):
-        self.print_usage(sys.stderr)
-        self._print_message(f"{self.prog}: error: {message}\n\n", sys.stderr)
-        self.print_help(sys.stderr)
-        self.exit(2)
-
-
 try:
     from . import BASE_DIR, Common
 except ImportError:
@@ -121,7 +112,7 @@ class YoloUtils:
             encoding="utf-8",
             format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         )
-        parser = HelpOnErrorParser(
+        parser = argparse.ArgumentParser(
             description="Yolo 标签工具",
             epilog="Author: netkiller - https://www.netkiller.cn",
         )
@@ -229,42 +220,57 @@ class YoloUtils:
 
         self.parser = parser
 
-    def _build_runner(self, args):
-        if args.subcommand == "label":
-            return YoloLabel(self.label, args)
-        elif args.subcommand == "copy":
-            return YoloLabelCopy(self.copy, args)
-        elif args.subcommand == "remove":
-            return YoloLabelRemove(self.remove, args)
-        elif args.subcommand == "change":
-            return YoloLabelChange(self.change, args)
-        elif args.subcommand == "merge":
-            return YoloLabelMerge(self.merge, args)
-        elif args.subcommand == "labelimg":
-            return YoloLabelimg(self.labelimg, args)
-        elif args.subcommand == "auto":
-            return YoloLabelimgAutomatic(self.auto, args)
-        elif args.subcommand == "resize":
-            return YoloImageResize(self.resize, args)
-        elif args.subcommand == "crop":
-            return YoloImageCrop(self.crop, args)
-        elif args.subcommand == "test":
-            return YoloTest(self.test, args)
-        elif args.subcommand == "diff":
-            return YoloTestDiff(self.diff, args)
-        elif args.subcommand == "classify":
-            return YoloClassify(self.classify, args)
-        return None
-
     def main(self):
         argv = sys.argv[1:]
-        bootstrap_args, _ = self.parser.parse_known_args(argv)
-        run = self._build_runner(bootstrap_args)
-        if not run:
+        try:
+            if not argv:
+                self.parser.print_help()
+                exit()
+            root_args = self.parser.parse_args([argv[0]])
+        except SystemExit as e:
+            if e.code != 0:
+                self.parser.print_help(sys.stderr)
+            raise
+
+        run = None
+        if root_args.subcommand == "label":
+            run = YoloLabel(self.label, root_args)
+        elif root_args.subcommand == "copy":
+            run = YoloLabelCopy(self.copy, root_args)
+        elif root_args.subcommand == "remove":
+            run = YoloLabelRemove(self.remove, root_args)
+        elif root_args.subcommand == "change":
+            run = YoloLabelChange(self.change, root_args)
+        elif root_args.subcommand == "merge":
+            run = YoloLabelMerge(self.merge, root_args)
+        elif root_args.subcommand == "labelimg":
+            run = YoloLabelimg(self.labelimg, root_args)
+        elif root_args.subcommand == "auto":
+            run = YoloLabelimgAutomatic(self.auto, root_args)
+        elif root_args.subcommand == "resize":
+            run = YoloImageResize(self.resize, root_args)
+        elif root_args.subcommand == "crop":
+            run = YoloImageCrop(self.crop, root_args)
+        elif root_args.subcommand == "test":
+            run = YoloTest(self.test, root_args)
+        elif root_args.subcommand == "diff":
+            run = YoloTestDiff(self.diff, root_args)
+        elif root_args.subcommand == "classify":
+            run = YoloClassify(self.classify, root_args)
+
+        if run is None:
             self.parser.print_help()
             exit()
-        args = self.parser.parse_args(argv)
-        run.args = args
+
+        try:
+            sub_args = run.parser.parse_args(argv[1:])
+        except SystemExit as e:
+            if e.code != 0:
+                run.parser.print_help(sys.stderr)
+            raise
+
+        setattr(sub_args, "subcommand", root_args.subcommand)
+        run.args = sub_args
         run.main()
 
 
