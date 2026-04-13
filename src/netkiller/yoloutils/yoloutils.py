@@ -161,7 +161,6 @@ class YoloUtils:
         # self.parser = argparse.ArgumentParser(
         #     description='Yolo 工具 V3.0 - Design by netkiller - https://www.netkiller.cn')
         # self.parser.add_argument('--source', type=str, default=None, help='图片来源地址')
-        # self.parser.add_argument('--target', default=None, type=str, help='图片目标地址')
 
         # self.parser.add_argument('--crop', action="store_true", default=False, help='裁剪')
         # self.args = self.parser.parse_args()

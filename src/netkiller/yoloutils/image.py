@@ -2,6 +2,7 @@ import glob
 import logging
 import os
 import shutil
+import csv
 
 import cv2
 from PIL import Image, ImageOps
@@ -18,10 +19,10 @@ except ImportError:
 class YoloImageCrop:
     # background = (22, 255, 39) # 绿幕RGB模式（R22 - G255 - B39），CMYK模式（C62 - M0 - Y100 - K0）
     background = (0, 0, 0)
-    expand = 50
 
     # border = 10
     total = {"未处理": 0, "已处理": 0}
+    missed = []
 
     def __init__(self, parser, args):
         parser.add_argument("--source", type=str, default=None, help="图片来源地址")
@@ -29,6 +30,7 @@ class YoloImageCrop:
         parser.add_argument(
             "--clean", action="store_true", default=False, help="清理之前的数据"
         )
+        parser.add_argument('-c', '--csv', type=str, default=None, help='未处理文件列表', metavar="result.csv")
 
         modelgroup = parser.add_argument_group(title="基于模型裁切", description="用指定模型识别后，将 box 框内的图像保存指定目录")
         modelgroup.add_argument(
@@ -50,8 +52,21 @@ class YoloImageCrop:
         self.args = args
         self.logger = logging.getLogger(__class__.__name__)
         self.total = {"未处理": 0, "已处理": 0}
+        self.missed = []
 
-    def border(self, original, xyxy):
+    def _mark_missed(self, source: str, reason: str):
+        self.total["未处理"] += 1
+        filename = source
+        if self.args.source:
+            try:
+                filename = os.path.relpath(source, self.args.source)
+            except Exception:
+                filename = os.path.basename(source)
+        if filename not in self.missed:
+            self.missed.append(filename)
+        self.logger.warning(f"{reason} source={source}")
+
+    def border(self, original, xyxy, expand=50):
         width, height = original.size
         x0, y0, x1, y1 = map(int, xyxy)
 
@@ -90,11 +105,13 @@ class YoloImageCrop:
 
     def model(self, source: str, target: str):
         if not os.path.exists(source):
+            self._mark_missed(source, "image missing")
             return None
 
         try:
             image = cv2.imread(source)
             if image is None:
+                self._mark_missed(source, "image invalid")
                 return None
 
             results = self.yolo(source, verbose=False)
@@ -123,10 +140,10 @@ class YoloImageCrop:
                     self.total["已处理"] += 1
                     self.logger.info(f"Saved cropped image: {target}")
                     return target
-            self.total["未处理"] += 1
+            self._mark_missed(source, "no detection boxes")
         except Exception as e:
             print(e)
-            self.logger.error(e)
+            self._mark_missed(source, f"model crop exception: {repr(e)}")
             exit()
         return None
 
@@ -135,28 +152,24 @@ class YoloImageCrop:
         label_target = f"{os.path.splitext(target)[0]}.txt"
 
         if not os.path.exists(label_source):
-            self.total["未处理"] += 1
-            self.logger.warning(f"txt missing source={source} label={label_source}")
+            self._mark_missed(source, f"txt missing label={label_source}")
             return None
 
         image = cv2.imread(source)
         if image is None:
-            self.total["未处理"] += 1
-            self.logger.warning(f"image invalid source={source}")
+            self._mark_missed(source, "image invalid")
             return None
 
         height, width = image.shape[:2]
         if imgsz <= 0:
-            self.total["未处理"] += 1
-            self.logger.warning(f"invalid imgsz={imgsz} source={source}")
+            self._mark_missed(source, f"invalid imgsz={imgsz}")
             return None
 
         with open(label_source, "r", encoding="utf-8") as file:
             rows = [line.strip() for line in file if line.strip()]
 
         if not rows:
-            self.total["未处理"] += 1
-            self.logger.warning(f"txt empty source={source} label={label_source}")
+            self._mark_missed(source, f"txt empty label={label_source}")
             return None
 
         parsed = []
@@ -175,8 +188,7 @@ class YoloImageCrop:
             parsed.append((cls, cx, cy, bw, bh))
 
         if not parsed:
-            self.total["未处理"] += 1
-            self.logger.warning(f"txt parse failed source={source} label={label_source}")
+            self._mark_missed(source, f"txt parse failed label={label_source}")
             return None
 
         first_cls, first_cx, first_cy, first_bw, first_bh = parsed[0]
@@ -223,9 +235,8 @@ class YoloImageCrop:
 
         cropped = padded[top:bottom, left:right]
         if cropped.shape[0] != imgsz or cropped.shape[1] != imgsz:
-            self.total["未处理"] += 1
-            self.logger.warning(
-                f"txt crop invalid shape={cropped.shape[:2]} imgsz={imgsz} source={source}"
+            self._mark_missed(
+                source, f"txt crop invalid shape={cropped.shape[:2]} imgsz={imgsz}"
             )
             return None
 
@@ -254,8 +265,7 @@ class YoloImageCrop:
             adjusted_rows.append(f"{cls} {new_cx:.6f} {new_cy:.6f} {new_bw:.6f} {new_bh:.6f}")
 
         if not adjusted_rows:
-            self.total["未处理"] += 1
-            self.logger.warning(f"txt crop no labels after clip source={source}")
+            self._mark_missed(source, "txt crop no labels after clip")
             return None
 
         cv2.imwrite(target, cropped)
@@ -313,13 +323,32 @@ class YoloImageCrop:
                 progress.update(1)
 
     def output(self):
-        tables = [["事件", "统计"]]
-        for key, value in self.total.items():
-            tables.append([key, value])
-        tables.append(["合计", len(self.files)])
-        table = Texttable(max_width=100)
-        table.add_rows(tables)
-        print(table.draw())
+
+        tables = [["未处理文件"]]
+        for filename in self.missed:
+            tables.append([filename])
+
+        if self.missed:
+            table = Texttable(max_width=200)
+            table.add_rows(tables)
+            print(table.draw())
+
+        if self.args.csv:
+            csv_dir = os.path.dirname(self.args.csv)
+            if csv_dir:
+                os.makedirs(csv_dir, exist_ok=True)
+            with open(self.args.csv, "w", encoding="utf-8", newline="") as file:
+                writer = csv.writer(file)
+                writer.writerows(tables)
+            self.logger.info(f"missed rows saved csv={self.args.csv}")
+
+        summary = (
+            f"统计结果, "
+            f"未处理:{self.total['未处理']}, "
+            f"已处理:{self.total['已处理']}, "
+            f"合计:{len(self.files)}"
+        )
+        print(summary)
 
     def main(self):
         if self.args.source and self.args.target and (self.args.model or self.args.txt):
