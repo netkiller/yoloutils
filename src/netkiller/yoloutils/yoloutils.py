@@ -225,7 +225,7 @@ class YoloUtils:
         try:
             if not argv:
                 self.parser.print_help()
-                exit()
+                return
             root_args = self.parser.parse_args([argv[0]])
         except SystemExit as e:
             if e.code != 0:
