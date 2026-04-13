@@ -131,7 +131,140 @@ class YoloImageCrop:
         return None
 
     def txt(self, source: str, target: str, imgsz: int = 640):
-        pass
+        label_source = f"{os.path.splitext(source)[0]}.txt"
+        label_target = f"{os.path.splitext(target)[0]}.txt"
+
+        if not os.path.exists(label_source):
+            self.total["未处理"] += 1
+            self.logger.warning(f"txt missing source={source} label={label_source}")
+            return None
+
+        image = cv2.imread(source)
+        if image is None:
+            self.total["未处理"] += 1
+            self.logger.warning(f"image invalid source={source}")
+            return None
+
+        height, width = image.shape[:2]
+        if imgsz <= 0:
+            self.total["未处理"] += 1
+            self.logger.warning(f"invalid imgsz={imgsz} source={source}")
+            return None
+
+        with open(label_source, "r", encoding="utf-8") as file:
+            rows = [line.strip() for line in file if line.strip()]
+
+        if not rows:
+            self.total["未处理"] += 1
+            self.logger.warning(f"txt empty source={source} label={label_source}")
+            return None
+
+        parsed = []
+        for row in rows:
+            parts = row.split()
+            if len(parts) < 5:
+                continue
+            try:
+                cls = parts[0]
+                cx = float(parts[1])
+                cy = float(parts[2])
+                bw = float(parts[3])
+                bh = float(parts[4])
+            except ValueError:
+                continue
+            parsed.append((cls, cx, cy, bw, bh))
+
+        if not parsed:
+            self.total["未处理"] += 1
+            self.logger.warning(f"txt parse failed source={source} label={label_source}")
+            return None
+
+        first_cls, first_cx, first_cy, first_bw, first_bh = parsed[0]
+        box_w_px = first_bw * width
+        box_h_px = first_bh * height
+
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        os.makedirs(os.path.dirname(label_target), exist_ok=True)
+
+        # 框尺寸超过 imgsz，按原图/原标签复制，不做裁切
+        if box_w_px > imgsz or box_h_px > imgsz:
+            shutil.copy2(source, target)
+            shutil.copy2(label_source, label_target)
+            self.total["已处理"] += 1
+            self.logger.info(
+                f"txt crop skipped(box>{imgsz}) source={source} target={target}"
+            )
+            return target
+
+        center_x = first_cx * width
+        center_y = first_cy * height
+        half = imgsz / 2.0
+        pad = int(half)
+
+        padded = cv2.copyMakeBorder(
+            image,
+            pad,
+            pad,
+            pad,
+            pad,
+            borderType=cv2.BORDER_CONSTANT,
+            value=self.background,
+        )
+
+        crop_left = center_x - half
+        crop_top = center_y - half
+        crop_right = crop_left + imgsz
+        crop_bottom = crop_top + imgsz
+
+        left = int(round(crop_left + pad))
+        top = int(round(crop_top + pad))
+        right = left + imgsz
+        bottom = top + imgsz
+
+        cropped = padded[top:bottom, left:right]
+        if cropped.shape[0] != imgsz or cropped.shape[1] != imgsz:
+            self.total["未处理"] += 1
+            self.logger.warning(
+                f"txt crop invalid shape={cropped.shape[:2]} imgsz={imgsz} source={source}"
+            )
+            return None
+
+        adjusted_rows = []
+        for cls, cx, cy, bw, bh in parsed:
+            bx = cx * width
+            by = cy * height
+            bw_px = bw * width
+            bh_px = bh * height
+            x1 = bx - bw_px / 2.0
+            y1 = by - bh_px / 2.0
+            x2 = bx + bw_px / 2.0
+            y2 = by + bh_px / 2.0
+
+            ix1 = max(x1, crop_left)
+            iy1 = max(y1, crop_top)
+            ix2 = min(x2, crop_right)
+            iy2 = min(y2, crop_bottom)
+            if ix2 <= ix1 or iy2 <= iy1:
+                continue
+
+            new_cx = ((ix1 + ix2) / 2.0 - crop_left) / imgsz
+            new_cy = ((iy1 + iy2) / 2.0 - crop_top) / imgsz
+            new_bw = (ix2 - ix1) / imgsz
+            new_bh = (iy2 - iy1) / imgsz
+            adjusted_rows.append(f"{cls} {new_cx:.6f} {new_cy:.6f} {new_bw:.6f} {new_bh:.6f}")
+
+        if not adjusted_rows:
+            self.total["未处理"] += 1
+            self.logger.warning(f"txt crop no labels after clip source={source}")
+            return None
+
+        cv2.imwrite(target, cropped)
+        with open(label_target, "w", encoding="utf-8") as file:
+            file.write("\n".join(adjusted_rows) + "\n")
+
+        self.total["已处理"] += 1
+        self.logger.info(f"txt crop saved source={source} target={target}")
+        return target
 
     def input(self):
         try:
@@ -155,8 +288,9 @@ class YoloImageCrop:
         ]
         self.logger.info(f"files total={len(self.files)}")
 
-        self.yolo = YOLO(self.args.model)
-        self.logger.info(f"loading model={self.args.model}")
+        if self.args.model:
+            self.yolo = YOLO(self.args.model)
+            self.logger.info(f"loading model={self.args.model}")
 
     def process(self):
         with tqdm(total=len(self.files), ncols=120) as progress:
@@ -174,7 +308,7 @@ class YoloImageCrop:
                     self.model(source, target)
                     self.logger.info(f"images crop=model source={source} target={target}")
                 elif self.args.txt:
-                    self.txt(source, target)
+                    self.txt(source, target, imgsz=self.args.imgsz)
                     self.logger.info(f"images crop=txt source={source} target={target}")
                 progress.update(1)
 
@@ -188,7 +322,7 @@ class YoloImageCrop:
         print(table.draw())
 
     def main(self):
-        if self.args.source and self.args.target and self.args.model:
+        if self.args.source and self.args.target and (self.args.model or self.args.txt):
             if self.args.source == self.args.target:
                 print("目标文件夹不能与原始图片文件夹相同")
                 exit()
