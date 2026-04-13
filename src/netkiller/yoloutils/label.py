@@ -19,6 +19,11 @@ class YoloLabelRemove(Common):
     total = {"change": 0, "remove": 0, "skip": 0, "error": 0}
 
     def __init__(self, parser, args):
+        parser.add_argument("--source", type=str, default=None, help="图片来源地址")
+        parser.add_argument("--target", type=str, default=None, help="图片目标地址")
+        parser.add_argument(
+            "--clean", action="store_true", default=False, help="清理之前的数据"
+        )
         parser.add_argument(
             "--classes", nargs="+", default=None, help="标签序号", metavar="1 2 3"
         )

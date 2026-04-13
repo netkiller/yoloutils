@@ -24,6 +24,9 @@ class YoloTest:
     def __init__(self, parser, args):
         self.logger = logging.getLogger(__class__.__name__)
 
+        parser.add_argument('--source', type=str, default=None, help='图片来源地址')
+        parser.add_argument('--target', type=str, default=None, help='图片目标地址')
+        parser.add_argument('--clean', action="store_true", default=False, help='清理之前的数据')
         parser.add_argument('--model', type=str, default=None, help='模型路径')
         parser.add_argument('--csv', type=str, default=None, help='保存结果', metavar="result.csv")
         parser.add_argument('--output', type=str, default=None, help='测试结果输出路径')
@@ -139,6 +142,9 @@ class YoloTestDiff:
     def __init__(self, parser, args):
         self.logger = logging.getLogger(__class__.__name__)
 
+        parser.add_argument('--source', type=str, default=None, help='图片来源地址')
+        parser.add_argument('--target', type=str, default=None, help='图片目标地址')
+        parser.add_argument('--clean', action="store_true", default=False, help='清理之前的数据')
         # parser.add_argument('--diff', action="store_true", default=False, help='对比模型')
         parser.add_argument('-m',"--model", nargs="+", default=None, help="模型", metavar="best1.pt best2.pt best3.pt")
         parser.add_argument('-l', '--label', type=str, default=None, help='标签过滤只统计指定标签', metavar="")

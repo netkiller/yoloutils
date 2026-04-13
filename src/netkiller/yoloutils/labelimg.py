@@ -26,6 +26,11 @@ class YoloLabelimg(Common):
     def __init__(self, parser, args):
         self.basedir = BASE_DIR
 
+        parser.add_argument("--source", type=str, default=None, help="图片来源地址")
+        parser.add_argument("--target", type=str, default=None, help="图片目标地址")
+        parser.add_argument(
+            "--clean", action="store_true", default=False, help="清理之前的数据"
+        )
         parser.add_argument(
             "--classes", type=str, default=None, help="classes.txt 文件"
         )
@@ -303,6 +308,11 @@ class YoloLabelimgAutomatic(Common):
     def __init__(self, parser, args):
         self.basedir = BASE_DIR
 
+        parser.add_argument("--source", type=str, default=None, help="图片来源地址")
+        parser.add_argument("--target", type=str, default=None, help="图片目标地址")
+        parser.add_argument(
+            "--clean", action="store_true", default=False, help="清理之前的数据"
+        )
         # autolabel = parser.add_argument_group(title="自动打标", description="用载入的模型自动给目录中的文件打标")
         # parser.add_argument('--auto', action="store_true", default=False, help='自动标注')
         parser.add_argument('--model', type=str, default=None, help='载入模型', metavar="best.pt")

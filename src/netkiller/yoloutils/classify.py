@@ -22,6 +22,11 @@ class YoloClassify:
     model = None
 
     def __init__(self, parser, args):
+        parser.add_argument("--source", type=str, default=None, help="图片来源地址")
+        parser.add_argument("--target", type=str, default=None, help="图片目标地址")
+        parser.add_argument(
+            "--clean", action="store_true", default=False, help="清理之前的数据"
+        )
         parser.add_argument(
             "--output", type=str, default=None, help="输出识别图像", metavar=""
         )
