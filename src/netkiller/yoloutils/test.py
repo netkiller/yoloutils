@@ -206,8 +206,11 @@ class YoloTestDiff:
         self.args = args
         self.files = []
         self.total = 0
+        self.models = {}
+        self.scores = {}
 
     def input(self):
+
         if self.args.clean and self.args.output:
             if os.path.exists(self.args.output):
                 shutil.rmtree(self.args.output)
@@ -222,14 +225,12 @@ class YoloTestDiff:
         ]
         self.total = len(self.files)
 
-    def process(self):
         header = ["文件", "标签"]
-        models = {}
-        scores = {}
+
         try:
             for model in self.args.model:
-                models[model] = YOLO(model)
-                scores[model] = {}
+                self.models[model] = YOLO(model)
+                self.scores[model] = {}
                 header.append(model)
             self.tables = [header]
         except FileNotFoundError as e:
@@ -241,12 +242,16 @@ class YoloTestDiff:
             print(type(e).__name__, ": ", e)
             exit()
 
+    def process(self):
         files = [os.path.abspath(file) for file in self.files]
         labels = {file: set() for file in files}
-        model_items = list(models.items())
-        model_total = len(model_items)
-        save_model = self.args.model[-1] if self.args.model else None
-        workers = max(1, model_total)
+        model_items = list(self.models.items())
+        workers = max(1, len(model_items))
+        source_prefix = ""
+        if self.args.source:
+            source_prefix = (
+                os.path.normpath(os.path.abspath(self.args.source)) + os.sep
+            )
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
             futures = []
@@ -258,14 +263,13 @@ class YoloTestDiff:
                         model,
                         files,
                         position,
-                        model_total,
-                        save_model,
+
                     )
                 )
 
             for future in concurrent.futures.as_completed(futures):
                 name, model_scores, model_labels = future.result()
-                scores[name] = model_scores
+                self.scores[name] = model_scores
                 for file, found in model_labels.items():
                     if found:
                         labels[file].update(found)
@@ -276,12 +280,13 @@ class YoloTestDiff:
                 label_text = ",".join(found)
             else:
                 label_text = ""
-            column = [os.path.basename(file), label_text]
-            for name in models:
-                column.append(scores[name].get(file, 0.0))
+            filename = file.replace(source_prefix, "") if source_prefix else file
+            column = [filename, label_text]
+            for name in self.models:
+                column.append(self.scores[name].get(file, 0.0))
             self.tables.append(column)
 
-    def _process_model(self, name, model, files, position, model_total, save_model):
+    def _process_model(self, name, model, files, position):
         model_scores = {}
         model_labels = {file: set() for file in files}
         file_total = len(files)
@@ -297,18 +302,22 @@ class YoloTestDiff:
                 leave=True,
         ) as progress:
             for file_index, file in enumerate(files, start=1):
-                filename = os.path.basename(file)
+
+                filename = file.replace(os.path.normpath(os.path.abspath(self.args.source)) + '/', '')
+
                 conf = 0.0
                 found_labels = set()
-                progress.set_postfix_str(os.path.basename(file))
+                progress.set_postfix_str(filename)
 
                 try:
                     results = model.predict(file, verbose=False)
                     for result in results:
-                        # 顺序版本最终会被最后一个模型覆盖，这里只保留最后一个模型的可视化输出，避免并发写同一路径。
-                        if self.args.output and name == save_model:
-                            output = os.path.join(self.args.output, filename)
+                        if self.args.output:
+                            output = os.path.join(self.args.output, model_name, filename)
+
+                            os.makedirs(os.path.dirname(output), exist_ok=True)
                             result.save(output)
+                            self.logger.info(f"output {output}")
 
                         names = result.names
                         boxes = result.boxes
