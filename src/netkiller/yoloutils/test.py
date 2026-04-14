@@ -1,5 +1,5 @@
-import csv
 import concurrent.futures
+import csv
 import glob
 import logging
 import os
@@ -24,12 +24,13 @@ class YoloTest:
     def __init__(self, parser, args):
         self.logger = logging.getLogger(__class__.__name__)
 
-        parser.add_argument('--source', type=str, default=None, help='图片来源地址')
-        parser.add_argument('--target', type=str, default=None, help='图片目标地址')
-        parser.add_argument('--clean', action="store_true", default=False, help='清理之前的数据')
-        parser.add_argument('--model', type=str, default=None, help='模型路径')
+        parser.add_argument('-s', '--source', type=str, default=None, help='图片来源地址')
+        parser.add_argument('-t', '--target', type=str, default=None, help='图片目标地址')
+        parser.add_argument('-c', '--clean', action="store_true", default=False, help='清理之前的数据')
+        parser.add_argument('-m', '--model', type=str, default=None, help='模型路径')
         parser.add_argument('--csv', type=str, default=None, help='保存结果', metavar="result.csv")
-        parser.add_argument('--output', type=str, default=None, help='测试结果输出路径')
+        parser.add_argument('-o', '--output', type=str, default=None, help='测试结果输出路径')
+        parser.add_argument('-w', '--worker', type=int, default=1, help='线程数', metavar=1)
 
         self.parser = parser
 
@@ -67,14 +68,55 @@ class YoloTest:
             print(type(e).__name__, ": ", e)
             exit()
 
-        with tqdm(total=self.total, ncols=100) as progress:
-            for file in self.files:
-                progress.set_description("%s" % file)
+        max_workers = self.args.worker
+        if max_workers < 1:
+            max_workers = 1
+
+        self._index = 0
+        self._lock = __import__("threading").Lock()
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = []
+            for i in range(max_workers):
+                futures.append(
+                    executor.submit(
+                        self._process_worker,
+                        model,
+                        i,
+                    )
+                )
+
+            for future in concurrent.futures.as_completed(futures):
+                thread_id, chunk_results = future.result()
+                self.tables.extend(chunk_results)
+
+    def _process_worker(self, model, thread_id):
+        results = []
+
+        with tqdm(
+            total=self.total,
+            ncols=120,
+            unit="file",
+            mininterval=0.0,
+            position=thread_id,
+            desc=f"Thread-{thread_id}",
+            leave=True,
+        ) as progress:
+            while True:
+                with self._lock:
+                    if self._index >= len(self.files):
+                        break
+                    file = self.files[self._index]
+                    self._index += 1
+
+                progress.set_postfix_str(f"file={self._index}/{self.total}")
                 source, label, conf = self.detect(model, file)
                 if conf is None:
                     conf = 0.0
-                self.tables.append([os.path.basename(source), label, conf])
+                results.append([os.path.basename(source), label, conf])
                 progress.update(1)
+
+        return thread_id, results
 
     def output(self):
         if self.args.csv:
@@ -146,10 +188,10 @@ class YoloTestDiff:
         parser.add_argument('--target', type=str, default=None, help='图片目标地址')
         parser.add_argument('--clean', action="store_true", default=False, help='清理之前的数据')
         # parser.add_argument('--diff', action="store_true", default=False, help='对比模型')
-        parser.add_argument('-m',"--model", nargs="+", default=None, help="模型", metavar="best1.pt best2.pt best3.pt")
+        parser.add_argument('-m', "--model", nargs="+", default=None, help="模型", metavar="best1.pt best2.pt best3.pt")
         parser.add_argument('-l', '--label', type=str, default=None, help='标签过滤只统计指定标签', metavar="")
-        parser.add_argument('-o','--output', type=str, default=None, help='对比结果输出路径')
-        parser.add_argument('-c','--csv', type=str, default=None, help='保存对比结果', metavar="result.csv")
+        parser.add_argument('-o', '--output', type=str, default=None, help='对比结果输出路径')
+        parser.add_argument('-c', '--csv', type=str, default=None, help='保存对比结果', metavar="result.csv")
 
         self.parser = parser
         self.args = args
@@ -237,13 +279,13 @@ class YoloTestDiff:
         model_name = os.path.basename(name)
 
         with tqdm(
-            total=file_total,
-            ncols=120,
-            unit="file",
-            mininterval=0.0,
-            position=position,
-            desc=f"{model_name}",
-            leave=True,
+                total=file_total,
+                ncols=120,
+                unit="file",
+                mininterval=0.0,
+                position=position,
+                desc=f"{model_name}",
+                leave=True,
         ) as progress:
             for file_index, file in enumerate(files, start=1):
                 filename = os.path.basename(file)
