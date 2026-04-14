@@ -19,15 +19,17 @@ class YoloLabelRemove(Common):
     total = {"change": 0, "remove": 0, "skip": 0, "error": 0}
 
     def __init__(self, parser, args):
-        parser.add_argument("--source", type=str, default=None, help="图片来源地址")
-        parser.add_argument("--target", type=str, default=None, help="图片目标地址")
+        parser.add_argument('-s', "--source", type=str, default=None, help="图片来源地址")
+        parser.add_argument('-t', "--target", type=str, default=None, help="图片目标地址")
         parser.add_argument(
             "--clean", action="store_true", default=False, help="清理之前的数据"
         )
         parser.add_argument(
+            '-c',
             "--classes", nargs="+", default=None, help="标签序号", metavar="1 2 3"
         )
         parser.add_argument(
+            '-l',
             "--label", nargs="+", default=None, help="标签名称", metavar="label1 label2"
         )
         self.parser = parser
@@ -141,12 +143,15 @@ class YoloLabelMerge(Common):
 
     def __init__(self, parser, args):
         parser.add_argument(
+            '-l',
             "--left", type=str, default=None, help="左侧目录", metavar="/tmp/dir1"
         )
         parser.add_argument(
+            '-r',
             "--right", default=None, type=str, help="右侧目录", metavar="/tmp/dir2"
         )
         parser.add_argument(
+            '-o',
             "--output",
             type=str,
             default=None,
@@ -154,6 +159,7 @@ class YoloLabelMerge(Common):
             metavar="/tmp/output",
         )
         parser.add_argument(
+            '-c',
             "--clean", action="store_true", default=False, help="清理之前的数据"
         )
         self.parser = parser
@@ -252,9 +258,10 @@ class YoloLabelMerge(Common):
 
 class YoloLabelCopy(Common):
     def __init__(self, parser, args):
-        parser.add_argument("--source", type=str, default=None, help="图片来源地址")
-        parser.add_argument("--target", type=str, default=None, help="图片目标地址")
+        parser.add_argument('-s', "--source", type=str, default=None, help="图片来源地址")
+        parser.add_argument('-t', "--target", type=str, default=None, help="图片目标地址")
         parser.add_argument(
+            '-l',
             "--label", type=str, default=None, help="逗号分割多个标签"
         )
         parser.add_argument(
