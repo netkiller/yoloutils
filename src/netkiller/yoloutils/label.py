@@ -382,17 +382,20 @@ class YoloLabelChange(Common):
 
     def __init__(self, parser, args):
         parser.add_argument(
+            '-s',
             "--source", type=str, default=None, help="目录", metavar="/tmp/dir1"
         )
         parser.add_argument(
-            "--search", nargs="+", default=None, help="标签序号", metavar="1 2 3"
+            '-f',
+            "--find", nargs="+", default=None, help="标签序号", metavar="1 2 3"
         )
         parser.add_argument(
+            '-r',
             "--replace", nargs="+", default=None, help="标签名称", metavar="4 5 6"
         )
         self.parser = parser
         self.args = args
-        self.logger = logging.getLogger("change")
+        self.logger = logging.getLogger(__class__.__name__)
 
         self.editable = {}
         self.total = {}
@@ -406,11 +409,11 @@ class YoloLabelChange(Common):
 
     def input(self):
         try:
-            self.logger.info(f"search={self.args.search}")
+            self.logger.info(f"search={self.args.find}")
             self.logger.info(f"replace={self.args.replace}")
 
-            for n in range(0, len(self.args.search)):
-                self.editable[self.args.search[n]] = self.args.replace[n]
+            for n in range(0, len(self.args.find)):
+                self.editable[self.args.find[n]] = self.args.replace[n]
 
             self.logger.info(f"editable={self.editable}")
 
@@ -475,7 +478,7 @@ class YoloLabelChange(Common):
         print(table.draw())
 
     def main(self):
-        if self.args.source and self.args.search and self.args.replace:
+        if self.args.source and self.args.find and self.args.replace:
             self.input()
             self.process()
             self.output()
@@ -488,23 +491,27 @@ class YoloLabel(Common):
     count = 0
 
     def __init__(self, parser, args):
+        parser.add_argument('-s',
+                            "--source", type=str, default=None, help="目录", metavar="/tmp/dir1"
+                            )
         parser.add_argument(
-            "--source", type=str, default=None, help="目录", metavar="/tmp/dir1"
-        )
-        parser.add_argument(
+            '-c',
             "--classes",
             action="store_true",
             default=False,
             help="查看 classes.txt 文件",
         )
         parser.add_argument(
+            '-t',
             "--total", action="store_true", default=False, help="统计标签图数量"
         )
         parser.add_argument(
+            '-i',
             "--index", action="store_true", default=False, help="统计标签索引数量"
         )
         parser.add_argument(
-            "--search", nargs="+", default=None, help="搜索标签", metavar="1 2 3"
+            '-f',
+            "--find", nargs="+", default=None, help="搜索标签", metavar="1 2 3"
         )
         self.parser = parser
         self.args = args
@@ -606,7 +613,7 @@ class YoloLabel(Common):
                                 index = line.strip().split(" ")[0]
                                 if index not in data.keys():
                                     data[index] = []
-                                if index in self.args.search:
+                                if index in self.args.find:
                                     data[index].append(file)
 
                 except FileNotFoundError as e:
@@ -632,7 +639,7 @@ class YoloLabel(Common):
             self.total()
         elif self.args.source and self.args.index:
             self.total()
-        elif self.args.source and self.args.search:
+        elif self.args.source and self.args.find:
             self.search()
         else:
             self.parser.print_help()

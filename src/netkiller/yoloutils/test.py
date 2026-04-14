@@ -122,7 +122,7 @@ class YoloTest:
                 source, label, conf = self.detect(model, file)
                 if conf is None:
                     conf = 0.0
-                results.append([os.path.basename(source), label, conf])
+                results.append([source, label, conf])
                 progress.update(1)
 
         return thread_id, results
