@@ -7,7 +7,6 @@
 # Description：YOLO 标签处理工具
 # （标签删除/合并/修改/复制/图片尺寸/Labelimg2yolo）
 ##############################################
-
 try:
     import argparse
     import glob
@@ -92,6 +91,15 @@ except ImportError:
     else:
         raise
 
+try:
+    from .info import YoloInfo
+except ImportError:
+    # Support direct script execution (python yoloutils.py ...)
+    if __name__ == "__main__":
+        from info import YoloInfo
+    else:
+        raise
+
 
 class YoloUtils:
     def __init__(self):
@@ -123,6 +131,8 @@ class YoloUtils:
             help="风险提示：当使用 --clean 参数时会删除目标目录和输出目录 ",
         )
 
+        self.info = self.subparsers.add_parser(name='info', help='查看模型信息')
+
         self.label = self.subparsers.add_parser("label", help="标签统计、索引统计、标签搜索")
 
         # labelimg.add_argument('--baz', choices=('X', 'Y', 'Z'), help='baz help')
@@ -131,8 +141,6 @@ class YoloUtils:
             "merge", help="合并两个TXT文件中的标签到新TXT文件"
         )
         # self.parser = argparse.ArgumentParser(description='合并YOLO标签工具')
-
-        # subparsers = self.parser.add_subparsers(help='subcommand help')
 
         self.copy = self.subparsers.add_parser("copy", help="从指定标签复制图片文件")
         self.remove = self.subparsers.add_parser("remove", help="从YOLO TXT文件中删除指定标签")
@@ -161,7 +169,6 @@ class YoloUtils:
         #     description='Yolo 工具 V3.0 - Design by netkiller - https://www.netkiller.cn')
         # self.parser.add_argument('--source', type=str, default=None, help='图片来源地址')
 
-        # self.parser.add_argument('--crop', action="store_true", default=False, help='裁剪')
         # self.args = self.parser.parse_args()
 
         self.labelimg = self.subparsers.add_parser(
@@ -229,6 +236,48 @@ class YoloUtils:
             run = YoloTestDiff(self.diff, root_args)
         elif root_args.subcommand == "classify":
             run = YoloClassify(self.classify, root_args)
+        elif root_args.subcommand == "info":
+            self.info.add_argument('-m', '--model', type=str, default=None, help='模型路径')
+            self.info.add_argument('-i', '--info', action="store_true", default=False, help='模型信息')
+
+            self.info.add_argument('-r', '--recall', action="store_true", default=False, help='召回率')
+            self.info.add_argument('-p', '--precision', action="store_true", default=False, help='精确率')
+            self.info.add_argument('-a', '--accuracy', action="store_true", default=False, help='准确率')
+            self.info.add_argument('--f1', action="store_true", default=False, help='输出 F1 指标')
+            self.info.add_argument('--mAP', action="store_true", default=False, help='平均精度均值 mAP（mean Average Precision）')
+
+            try:
+                sub_args = self.info.parse_args(argv[1:])
+            except SystemExit as e:
+                if e.code != 0:
+                    self.info.print_help(sys.stderr)
+                raise
+            model = sub_args.model or getattr(sub_args, "target", None)
+            if not model:
+                self.info.print_help()
+                exit()
+            run = YoloInfo(model=model)
+            if sub_args.f1:
+                run.f1()
+                exit()
+            if sub_args.recall:
+                run.recall()
+                exit()
+            if sub_args.precision:
+                run.precision()
+                exit()
+            if sub_args.accuracy:
+                run.accuracy()
+                exit()
+            if sub_args.mAP:
+                run.mAP()
+                exit()
+            if sub_args.info:
+                run.info()
+                exit()
+            else:
+                self.info.print_help()
+            exit()
 
         if run is None:
             self.parser.print_help()
