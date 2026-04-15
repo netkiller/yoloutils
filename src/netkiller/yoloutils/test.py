@@ -250,7 +250,7 @@ class YoloTestDiff:
         source_prefix = ""
         if self.args.source:
             source_prefix = (
-                os.path.normpath(os.path.abspath(self.args.source)) + os.sep
+                    os.path.normpath(os.path.abspath(self.args.source)) + os.sep
             )
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
@@ -303,7 +303,7 @@ class YoloTestDiff:
         ) as progress:
             for file_index, file in enumerate(files, start=1):
 
-                filename = file.replace(os.path.normpath(os.path.abspath(self.args.source)) + '/', '')
+                filename = file.replace(os.path.normpath(os.path.abspath(self.args.source)) + os.sep, '')
 
                 conf = 0.0
                 found_labels = set()
