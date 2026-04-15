@@ -40,6 +40,10 @@ class YoloLabelimg(Common):
         if self.args.clean:
             if os.path.exists(self.args.target):
                 shutil.rmtree(self.args.target)
+        if self.args.val < 0 or self.args.val > 100:
+            print(f"--val 超出范围: {self.args.val}，必须在 0~100 之间")
+            self.logger.error(f"--val out of range: {self.args.val}")
+            exit()
 
         self.mkdirs(os.path.join(self.args.target))
         directory = [
@@ -170,10 +174,13 @@ class YoloLabelimg(Common):
         for label, files in self.lables.items():
             if len(files) == 0:
                 continue
-            if len(files) < self.args.val:
+            valnumber = int(len(files) * self.args.val / 100)
+            if self.args.val > 0 and valnumber == 0:
+                valnumber = 1
+            if valnumber > len(files):
                 valnumber = len(files)
-            else:
-                valnumber = self.args.val
+            if valnumber == 0:
+                continue
 
             vals = random.sample(files, valnumber)
             # print(f"label={label} files={len(files)} val={len(vals)}")
