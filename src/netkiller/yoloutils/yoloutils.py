@@ -213,6 +213,16 @@ class YoloUtils:
             epilog="用载入的模型自动给目录中的文件打标",
             formatter_class=nowrap_formatter,
         )
+        self.auto.add_argument("--source", type=str, default=None, help="图片来源地址")
+        self.auto.add_argument("--target", type=str, default=None, help="图片目标地址")
+        self.auto.add_argument(
+            "--clean", action="store_true", default=False, help="清理之前的数据"
+        )
+
+        self.auto.add_argument('--model', type=str, default=None, help='载入模型', metavar="best.pt")
+        self.auto.add_argument('--conf', type=float, default=None, help='置信度阈值', metavar=0.5)
+        self.auto.add_argument('--csv', default=None, type=str, help='报告输出，哪些文件已经标准，哪些没有标注', metavar="report.csv")
+        self.auto.add_argument('--output', type=str, default=None, help='输出标注效果', metavar="/path/to/output")
 
         self.resize = self.subparsers.add_parser("resize", help="修改图片尺寸")
         # self.parser = argparse.ArgumentParser(description='自动切割学习数据')
@@ -270,7 +280,21 @@ class YoloUtils:
             exit()
 
         elif root_args.subcommand == "auto":
-            run = YoloLabelimgAutomatic(self.auto, root_args)
+            try:
+                sub_args = self.auto.parse_args(argv[1:])
+            except SystemExit as e:
+                if e.code != 0:
+                    self.auto.print_help(sys.stderr)
+                raise
+
+            if sub_args.source and sub_args.target and sub_args.model:
+                run = YoloLabelimgAutomatic()
+                run.main(sub_args)
+                exit()
+            else:
+                self.auto.print_help()
+                exit()
+
         elif root_args.subcommand == "resize":
             run = YoloImageResize(self.resize, root_args)
         elif root_args.subcommand == "crop":

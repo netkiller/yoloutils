@@ -273,22 +273,8 @@ class YoloLabelimg(Common):
 class YoloLabelimgAutomatic(Common):
     image_exts = (".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff")
 
-    def __init__(self, parser, args):
+    def __init__(self):
         self.basedir = BASE_DIR
-
-        parser.add_argument("--source", type=str, default=None, help="图片来源地址")
-        parser.add_argument("--target", type=str, default=None, help="图片目标地址")
-        parser.add_argument(
-            "--clean", action="store_true", default=False, help="清理之前的数据"
-        )
-
-        parser.add_argument('--model', type=str, default=None, help='载入模型', metavar="best.pt")
-        parser.add_argument('--conf', type=float, default=None, help='置信度阈值', metavar=0.5)
-        parser.add_argument('--csv', default=None, type=str, help='报告输出，哪些文件已经标准，哪些没有标注', metavar="report.csv")
-        parser.add_argument('--output', type=str, default=None, help='输出标注效果', metavar="/path/to/output")
-
-        self.parser = parser
-        self.args = args
         self.logger = logging.getLogger(__class__.__name__)
         self.model = None
         self.files = []
@@ -520,13 +506,10 @@ class YoloLabelimgAutomatic(Common):
         self._print_summary()
         self._write_report_csv()
 
-    def main(self):
-        if self.args.source and self.args.target and self.args.model:
-            self.logger.info("Start auto labelimg")
-            self.input()
-            self.process()
-            self.output()
-            self.logger.info("Done auto labelimg")
-        else:
-            self.parser.print_help()
-            exit()
+    def main(self, args):
+        self.args = args
+        self.logger.info("Start auto labelimg")
+        self.input()
+        self.process()
+        self.output()
+        self.logger.info("Done auto labelimg")
