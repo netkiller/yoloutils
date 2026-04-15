@@ -132,6 +132,13 @@ class YoloUtils:
         )
 
         self.info = self.subparsers.add_parser(name='info', help='查看模型信息')
+        self.info.add_argument('-m', '--model', type=str, default=None, help='模型路径')
+        self.info.add_argument('-i', '--info', action="store_true", default=False, help='模型信息')
+        self.info.add_argument('-r', '--recall', action="store_true", default=False, help='召回率')
+        self.info.add_argument('-p', '--precision', action="store_true", default=False, help='精确率')
+        self.info.add_argument('-a', '--accuracy', action="store_true", default=False, help='准确率')
+        self.info.add_argument('--f1', action="store_true", default=False, help='输出 F1 指标')
+        self.info.add_argument('--mAP', action="store_true", default=False, help='平均精度均值 mAP（mean Average Precision）')
 
         self.label = self.subparsers.add_parser("label", help="标签统计、索引统计、标签搜索")
 
@@ -177,6 +184,28 @@ class YoloUtils:
             epilog="将 labelimg 标注的图像转换为 yolo 训练数据集",
             formatter_class=nowrap_formatter,
         )
+        self.labelimg.add_argument('-s', "--source", type=str, default=None, help="图片来源地址")
+        self.labelimg.add_argument('-t', "--target", type=str, default=None, help="图片目标地址")
+        self.labelimg.add_argument(
+            "--clean", action="store_true", default=False, help="清理之前的数据"
+        )
+        self.labelimg.add_argument(
+            '-c', "--classes", type=str, default=None, help="classes.txt 文件"
+        )
+        self.labelimg.add_argument(
+            '-v', "--val", type=int, default=10, help="检验数量", metavar=10
+        )
+        # self.labelimg.add_argument('--clean', action="store_true", default=False, help='清理之前的数据')
+
+        self.labelimg.add_argument(
+            '-u', "--uuid", action="store_true", default=False, help="输出文件名使用UUID"
+        )
+        self.labelimg.add_argument(
+            "--check",
+            action="store_true",
+            default=False,
+            help="图片检查 corrupt JPEG restored and saved",
+        )
 
         self.auto = self.subparsers.add_parser(
             "auto",
@@ -200,6 +229,8 @@ class YoloUtils:
         self.parser = parser
 
     def main(self):
+        # print(self.parser.parse_args())
+
         argv = sys.argv[1:]
         try:
             if not argv:
@@ -223,7 +254,21 @@ class YoloUtils:
         elif root_args.subcommand == "merge":
             run = YoloLabelMerge(self.merge, root_args)
         elif root_args.subcommand == "labelimg":
-            run = YoloLabelimg(self.labelimg, root_args)
+            try:
+                sub_args = self.labelimg.parse_args(argv[1:])
+            except SystemExit as e:
+                if e.code != 0:
+                    self.labelimg.print_help(sys.stderr)
+                raise
+
+            if sub_args.source and sub_args.target:
+                run = YoloLabelimg()
+                run.main(sub_args)
+                exit()
+
+            self.labelimg.print_help()
+            exit()
+
         elif root_args.subcommand == "auto":
             run = YoloLabelimgAutomatic(self.auto, root_args)
         elif root_args.subcommand == "resize":
@@ -237,14 +282,6 @@ class YoloUtils:
         elif root_args.subcommand == "classify":
             run = YoloClassify(self.classify, root_args)
         elif root_args.subcommand == "info":
-            self.info.add_argument('-m', '--model', type=str, default=None, help='模型路径')
-            self.info.add_argument('-i', '--info', action="store_true", default=False, help='模型信息')
-
-            self.info.add_argument('-r', '--recall', action="store_true", default=False, help='召回率')
-            self.info.add_argument('-p', '--precision', action="store_true", default=False, help='精确率')
-            self.info.add_argument('-a', '--accuracy', action="store_true", default=False, help='准确率')
-            self.info.add_argument('--f1', action="store_true", default=False, help='输出 F1 指标')
-            self.info.add_argument('--mAP', action="store_true", default=False, help='平均精度均值 mAP（mean Average Precision）')
 
             try:
                 sub_args = self.info.parse_args(argv[1:])

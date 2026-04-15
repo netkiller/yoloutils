@@ -260,8 +260,9 @@ class YoloLabelimg(Common):
         table.add_rows(tables)
         print(table.draw())
 
-    def main(self, **args):
-        self.args = args
+    def main(self, args=None):
+        if args is not None:
+            self.args = args
         self.logger.info("Start")
         self.input()
         self.process()
