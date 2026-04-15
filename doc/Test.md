@@ -231,4 +231,7 @@ Total: 24, Average(best2.pt): 0.09, Average(best4.pt): 0.25, Average(best1.pt): 
 
 (.venv) neo@netkiller yoloutils % python src/netkiller/yoloutils/yoloutils.py diff --model /Users/neo/tmp/yolo/best2.pt
 /Users/neo/tmp/yolo/best4.pt /Users/neo/tmp/yolo/best1.pt --source /Users/neo/tmp/yolo/source --csv
-/Users/neo/tmp/yolo/diff.csv 
+/Users/neo/tmp/yolo/diff.csv
+
+python src/netkiller/yoloutils/yoloutils.py diff --model /Users/neo/tmp/yolo/best13.pt /Users/neo/tmp/yolo/best15.pt
+--source /Volumes/ESD-USB/Cordyceps1 --output /Volumes/ESD-USB/diff/ --csv /Volumes/ESD-USB/diff.csv  

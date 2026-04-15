@@ -141,6 +141,28 @@ class YoloUtils:
         self.info.add_argument('--mAP', action="store_true", default=False, help='平均精度均值 mAP（mean Average Precision）')
 
         self.label = self.subparsers.add_parser("label", help="标签统计、索引统计、标签搜索")
+        self.label.add_argument('-s',
+                                "--source", type=str, default=None, help="目录", metavar="/tmp/dir1"
+                                )
+        self.label.add_argument(
+            '-c',
+            "--classes",
+            action="store_true",
+            default=False,
+            help="查看 classes.txt 文件",
+        )
+        self.label.add_argument(
+            '-t',
+            "--total", action="store_true", default=False, help="统计标签图数量"
+        )
+        self.label.add_argument(
+            '-i',
+            "--index", action="store_true", default=False, help="统计标签索引数量"
+        )
+        self.label.add_argument(
+            '-f',
+            "--find", nargs="+", default=None, help="搜索标签", metavar="1 2 3"
+        )
 
         # labelimg.add_argument('--baz', choices=('X', 'Y', 'Z'), help='baz help')
 
@@ -254,7 +276,17 @@ class YoloUtils:
 
         run = None
         if root_args.subcommand == "label":
-            run = YoloLabel(self.label, root_args)
+            try:
+                sub_args = self.label.parse_args(argv[1:])
+
+                run = YoloLabel()
+                run.main(sub_args)
+
+            except SystemExit as e:
+                if e.code != 0:
+                    self.label.print_help(sys.stderr)
+                raise
+            exit()
         elif root_args.subcommand == "copy":
             run = YoloLabelCopy(self.copy, root_args)
         elif root_args.subcommand == "remove":
@@ -293,7 +325,7 @@ class YoloUtils:
                 exit()
             else:
                 self.auto.print_help()
-                exit()
+            exit()
 
         elif root_args.subcommand == "resize":
             run = YoloImageResize(self.resize, root_args)

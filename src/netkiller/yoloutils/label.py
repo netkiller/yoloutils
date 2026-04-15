@@ -497,31 +497,8 @@ class YoloLabelChange(Common):
 class YoloLabel(Common):
     count = 0
 
-    def __init__(self, parser, args):
-        parser.add_argument('-s',
-                            "--source", type=str, default=None, help="目录", metavar="/tmp/dir1"
-                            )
-        parser.add_argument(
-            '-c',
-            "--classes",
-            action="store_true",
-            default=False,
-            help="查看 classes.txt 文件",
-        )
-        parser.add_argument(
-            '-t',
-            "--total", action="store_true", default=False, help="统计标签图数量"
-        )
-        parser.add_argument(
-            '-i',
-            "--index", action="store_true", default=False, help="统计标签索引数量"
-        )
-        parser.add_argument(
-            '-f',
-            "--find", nargs="+", default=None, help="搜索标签", metavar="1 2 3"
-        )
-        self.parser = parser
-        self.args = args
+    def __init__(self):
+
         self.logger = logging.getLogger(__class__.__name__)
 
         self.indexs = {}
@@ -545,6 +522,13 @@ class YoloLabel(Common):
             print(table.draw())
 
     def total(self):
+
+        classes = os.path.join(self.args.source, "classes.txt")
+        if not os.path.isfile(classes):
+            print(f"classes.txt 文件不存在: {classes}")
+            self.logger.error("classes.txt 文件不存在！")
+            exit()
+
         self.files = glob.glob(f"{self.args.source}/**/*.txt", recursive=True)
         self.logger.info(f"files total={len(self.files)}")
         with tqdm(total=len(self.files), ncols=150) as progress:
@@ -581,21 +565,16 @@ class YoloLabel(Common):
             for k, v in self.indexs.items():
                 tables.append([k, v])
         else:
-            classes = os.path.join(self.args.source, "classes.txt")
-            if not os.path.isfile(classes):
-                print(f"classes.txt 文件不存在: {classes}")
-                self.logger.error("classes.txt 文件不存在！")
-                exit()
-            else:
-                with open(classes) as file:
-                    labels = file.readlines()
-                    tables = [["标签", "索引", "数量"]]
-                    for k, v in self.indexs.items():
-                        try:
-                            tables.append([labels[k], k, v])
-                        except IndexError as e:
-                            tables.append(["", k, v])
-                            self.logger.error(e)
+
+            with open(classes) as file:
+                labels = file.readlines()
+                tables = [["标签", "索引", "数量"]]
+                for k, v in self.indexs.items():
+                    try:
+                        tables.append([labels[k], k, v])
+                    except IndexError as e:
+                        tables.append(["", k, v])
+                        self.logger.error(e)
         self.logger.info(f"tables len={len(tables)} data={tables}")
         table = Texttable(max_width=100)
         table.add_rows(tables)
@@ -639,7 +618,8 @@ class YoloLabel(Common):
         table.add_rows(tables)
         print(table.draw())
 
-    def main(self):
+    def main(self, args):
+        self.args = args
         if self.args.classes and self.args.source:
             self.classes()
         elif self.args.source and self.args.total:
@@ -648,6 +628,3 @@ class YoloLabel(Common):
             self.total()
         elif self.args.source and self.args.find:
             self.search()
-        else:
-            self.parser.print_help()
-            exit()
