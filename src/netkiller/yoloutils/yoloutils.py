@@ -278,9 +278,19 @@ class YoloUtils:
         if root_args.subcommand == "label":
             try:
                 sub_args = self.label.parse_args(argv[1:])
-
-                run = YoloLabel()
-                run.main(sub_args)
+                has_action = any(
+                    [
+                        sub_args.classes,
+                        sub_args.total,
+                        sub_args.index,
+                        sub_args.find,
+                    ]
+                )
+                if sub_args.source and has_action:
+                    run = YoloLabel()
+                    run.main(sub_args)
+                else:
+                    self.label.print_help()
 
             except SystemExit as e:
                 if e.code != 0:
