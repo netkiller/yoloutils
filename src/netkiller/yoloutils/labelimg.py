@@ -23,34 +23,8 @@ class YoloLabelimg(Common):
     # background = (22, 255, 39) # 绿幕RGB模式（R22 - G255 - B39），CMYK模式（C62 - M0 - Y100 - K0）
     background = (0, 0, 0)
 
-    def __init__(self, parser, args):
+    def __init__(self):
         self.basedir = BASE_DIR
-
-        parser.add_argument("--source", type=str, default=None, help="图片来源地址")
-        parser.add_argument("--target", type=str, default=None, help="图片目标地址")
-        parser.add_argument(
-            "--clean", action="store_true", default=False, help="清理之前的数据"
-        )
-        parser.add_argument(
-            "--classes", type=str, default=None, help="classes.txt 文件"
-        )
-        parser.add_argument(
-            "--val", type=int, default=10, help="检验数量", metavar=10
-        )
-        # self.labelimg.add_argument('--clean', action="store_true", default=False, help='清理之前的数据')
-
-        parser.add_argument(
-            "--uuid", action="store_true", default=False, help="输出文件名使用UUID"
-        )
-        parser.add_argument(
-            "--check",
-            action="store_true",
-            default=False,
-            help="图片检查 corrupt JPEG restored and saved",
-        )
-
-        self.parser = parser
-        self.args = args
 
         self.classes = []
         self.lables = {}
@@ -263,8 +237,6 @@ class YoloLabelimg(Common):
         ) as file:
             yaml.dump(data, file, allow_unicode=True)
 
-    def report(self):
-
         tables = [["丢失图像"]]
         if self.missed:
             for file in self.missed:
@@ -288,17 +260,13 @@ class YoloLabelimg(Common):
         table.add_rows(tables)
         print(table.draw())
 
-    def main(self):
-        if self.args.source and self.args.target:
-            self.logger.info("Start")
-            self.input()
-            self.process()
-            self.output()
-            self.report()
-            self.logger.info("Done")
-        else:
-            self.parser.print_help()
-            exit()
+    def main(self, **args):
+        self.args = args
+        self.logger.info("Start")
+        self.input()
+        self.process()
+        self.output()
+        self.logger.info("Done")
 
 
 class YoloLabelimgAutomatic(Common):
