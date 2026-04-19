@@ -403,7 +403,8 @@ def main():
         run = YoloUtils()
         run.main()
     except KeyboardInterrupt as e:
-        print(e)
+        # print(e)
+        pass
 
 
 if __name__ == "__main__":

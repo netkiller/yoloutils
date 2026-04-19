@@ -32,7 +32,7 @@ class YoloTest:
         parser.add_argument('-m', '--model', type=str, default=None, help='模型路径')
         parser.add_argument('-c', '--csv', type=str, default=None, help='保存结果', metavar="result.csv")
         parser.add_argument('-o', '--output', type=str, default=None, help='测试结果输出路径')
-        parser.add_argument('-w', '--worker', type=int, default=1, help='线程数', metavar=1)
+        parser.add_argument('-w', '--worker', type=int, default=2, help='线程数', metavar=2)
 
         self.parser = parser
 

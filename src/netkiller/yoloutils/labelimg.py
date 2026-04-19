@@ -104,12 +104,12 @@ class YoloLabelimg(Common):
         with (
             tqdm(
                 total=len(self.files),
-                ncols=150,
+                ncols=120,
                 bar_format="{desc} {percentage:3.0f}%|{bar:58}| {n:>4.0f}/{total:>4.0f} {postfix}",
             ) as images,
             tqdm(
                 total=len(self.files),
-                ncols=150,
+                ncols=120,
                 bar_format="{desc} {percentage:3.0f}%|{bar:58}| {n:>4.0f}/{total:>4.0f} {postfix}",
             ) as train,
         ):
