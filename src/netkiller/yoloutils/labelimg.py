@@ -70,7 +70,7 @@ class YoloLabelimg(Common):
                 )
 
         files = glob.glob(f"{self.args.source}/**/*.txt", recursive=True)
-        with tqdm(total=len(files), ncols=120) as progress:
+        with tqdm(total=len(files), ncols=100) as progress:
             progress.set_description("file scanning")
             for source in files:
                 progress.set_postfix_str(f"file={os.path.basename(source)[:36]:<36}")
@@ -91,7 +91,7 @@ class YoloLabelimg(Common):
                     self.logger.warning(f"标注文件缺少配对图片: {source}")
                 progress.update(1)
 
-        with tqdm(total=len(directory), ncols=120) as progress:
+        with tqdm(total=len(directory), ncols=100) as progress:
             progress.set_description(f"yolo init")
             for dir in directory:
                 progress.set_postfix_str(f"dir={dir[:36]:<36}")
@@ -104,12 +104,12 @@ class YoloLabelimg(Common):
         with (
             tqdm(
                 total=len(self.files),
-                ncols=120,
+                ncols=100,
                 bar_format="{desc} {percentage:3.0f}%|{bar:58}| {n:>4.0f}/{total:>4.0f} {postfix}",
             ) as images,
             tqdm(
                 total=len(self.files),
-                ncols=120,
+                ncols=100,
                 bar_format="{desc} {percentage:3.0f}%|{bar:58}| {n:>4.0f}/{total:>4.0f} {postfix}",
             ) as train,
         ):
@@ -185,7 +185,7 @@ class YoloLabelimg(Common):
             vals = random.sample(files, valnumber)
             # print(f"label={label} files={len(files)} val={len(vals)}")
 
-            with tqdm(total=len(vals), ncols=120) as progress:
+            with tqdm(total=len(vals), ncols=100) as progress:
                 for file in vals:
                     progress.set_description(f"val/label {label}")
                     name, extension = os.path.splitext(os.path.basename(file))
