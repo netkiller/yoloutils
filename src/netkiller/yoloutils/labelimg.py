@@ -134,21 +134,6 @@ class YoloLabelimg(Common):
                     )
                 name, extension = os.path.splitext(os.path.basename(target))
 
-                with open(source) as file:
-                    lines = []
-                    for line in file:
-                        index = line.strip().split(" ")[0]
-                        try:
-                            label = self.classes[int(index)]
-                            # if label not in self.lables:
-                            #     self.lables[label] = []
-                            self.lables[label].append(name)
-                            lines.append(label)
-                        # self.logger.debug(f"label={label} count={len(self.lables[label])} index={index} file={name} line={line.strip()} ")
-                        except IndexError as e:
-                            self.logger.error(f"{repr(e)}, {index}")
-                    self.logger.info(f"file={name} labels={lines}")
-
                 shutil.copy(source, target)
                 self.report.append((source, target))
                 self.logger.debug(
@@ -175,6 +160,21 @@ class YoloLabelimg(Common):
                     f"train/images source={image} target={target} name={name}"
                 )
                 images.update(1)
+
+                with open(source) as file:
+                    lines = []
+                    for line in file:
+                        index = line.strip().split(" ")[0]
+                        try:
+                            label = self.classes[int(index)]
+                            # if label not in self.lables:
+                            #     self.lables[label] = []
+                            self.lables[label].append(target)
+                            lines.append(label)
+                        # self.logger.debug(f"label={label} count={len(self.lables[label])} index={index} file={name} line={line.strip()} ")
+                        except IndexError as e:
+                            self.logger.error(f"{repr(e)}, {index}")
+                    self.logger.info(f"file={target} labels={lines}")
 
         for label, files in self.lables.items():
             if len(files) == 0:
@@ -208,24 +208,20 @@ class YoloLabelimg(Common):
                             progress.update(1)
                             continue
 
-                        shutil.copy(source, target)
+                        shutil.move(source, target)
                         self.logger.info(
-                            f"val/labels copy label={label} source={source} target={target}"
+                            f"val/labels move label={label} source={source} target={target}"
                         )
 
-                        for ext in Common.image_exts:
-                            source = os.path.join(
-                                self.args.target, "train/images", f"{name}{ext}"
+                        source = file
+                        target = os.path.join(
+                            self.args.target, "val/images", os.path.basename(file)
+                        )
+                        if os.path.exists(source):
+                            shutil.move(source, target)
+                            self.logger.info(
+                                f"val/images move label={label} source={source} target={target}"
                             )
-                            if os.path.exists(source):
-                                target = os.path.join(
-                                    self.args.target, "val/images", f"{name}{ext}"
-                                )
-                                shutil.copy(source, target)
-                                self.logger.info(
-                                    f"val/images copy label={label} source={source} target={target}"
-                                )
-                                break
                         else:
                             self.logger.warning(
                                 f"val/images missing train image label={label} name={name}"

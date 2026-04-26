@@ -19,6 +19,33 @@ class Common:
         if not os.path.exists(path):
             os.makedirs(path)
 
+    def _confirm_clean(self, source, target):
+        source_path = os.path.abspath(source)
+        target_path = os.path.abspath(target)
+        if source_path == target_path:
+            print("--target 不能与 --source 相同")
+            if self.logger:
+                self.logger.error("--target same as --source")
+            exit()
+
+        if not os.path.exists(target):
+            return True
+
+        print("检测到 --clean，将删除以下目录：")
+        print(f"- {target}")
+        try:
+            answer = input("是否继续？[y/N]: ").strip().lower()
+        except EOFError:
+            answer = ""
+
+        if answer in ("y", "yes"):
+            return True
+
+        print("已取消清理操作")
+        if self.logger:
+            self.logger.info("cancel clean operation by user")
+        return False
+
     def scanfile(self, path):
         files = []
         for name in os.listdir(path):
