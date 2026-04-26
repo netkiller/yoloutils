@@ -25,10 +25,16 @@ class Common:
         targets = [path for path in targets if path]
 
         for path in targets:
-            if source_path == os.path.abspath(path):
+            target_path = os.path.abspath(path)
+            if source_path == target_path:
                 print("--target 不能与 --source 相同")
                 if self.logger:
                     self.logger.error("--target same as --source")
+                exit()
+            if os.path.commonpath([source_path, target_path]) == target_path:
+                print("--target 不能是 --source 的父目录")
+                if self.logger:
+                    self.logger.error("--target parent of --source")
                 exit()
 
         existing_targets = [path for path in targets if os.path.exists(path)]

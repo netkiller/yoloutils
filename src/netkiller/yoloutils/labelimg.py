@@ -74,6 +74,10 @@ class YoloLabelimg(Common):
                 self.logger.info(
                     f"classes len={len(self.classes)} labels={self.classes}"
                 )
+        if len(self.classes) == 0:
+            print(f"classes.txt 没有有效标签: {classes}")
+            self.logger.error(f"classes.txt empty labels: {classes}")
+            exit()
 
         if not self.args.uuid:
             has_subdirs = any(
@@ -81,10 +85,18 @@ class YoloLabelimg(Common):
                 for name in os.listdir(self.args.source)
             )
             if has_subdirs:
-                print("source 存在子目录，输出文件可能因同名被覆盖，建议使用 --uuid 参数")
                 self.logger.warning(
                     "source has subdirectories, output files may be overwritten by duplicate names, recommend --uuid"
                 )
+                print("source 存在子目录，输出文件可能因同名被覆盖，建议使用 --uuid 参数")
+                try:
+                    answer = input("是否继续？[y/N]: ").strip().lower()
+                except EOFError:
+                    answer = ""
+                if answer not in ("y", "yes"):
+                    print("已取消操作")
+                    self.logger.info("cancel labelimg operation by subdirectory warning")
+                    exit()
 
         files = glob.glob(f"{self.args.source}/**/*.txt", recursive=True)
         with tqdm(total=len(files), ncols=100) as progress:
@@ -313,7 +325,7 @@ class YoloLabelimg(Common):
         for label, files in self.lables.items():
             # if len(files) == 0:
             #     continue
-            tables.append([label, len(files)])
+            tables.append([label, len(set(files))])
         table = Texttable(max_width=160)
         table.add_rows(tables)
         print(table.draw())
