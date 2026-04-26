@@ -196,7 +196,6 @@ class YoloUtils:
         # self.parser.add_argument('--label', type=int, default=-1, help='长边尺寸',metavar=0)
         # self.parser = argparse.ArgumentParser(
         #     description='Yolo 工具 V3.0 - Design by netkiller - https://www.netkiller.cn')
-        # self.parser.add_argument('--source', type=str, default=None, help='图片来源地址')
 
         # self.args = self.parser.parse_args()
 
@@ -228,6 +227,7 @@ class YoloUtils:
             default=False,
             help="图片检查 corrupt JPEG restored and saved",
         )
+        self.labelimg.add_argument('-r', '--report', type=str, default=None, help='输出 csv 报告')
 
         self.auto = self.subparsers.add_parser(
             "auto",

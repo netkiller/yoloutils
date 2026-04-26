@@ -30,6 +30,7 @@ class YoloLabelimg(Common):
         self.lables = {}
         self.missed = []
         self.files = {}
+        self.report = []
         self.logger = logging.getLogger(__class__.__name__)
 
     def mkdirs(self, path):
@@ -41,7 +42,7 @@ class YoloLabelimg(Common):
             if os.path.exists(self.args.target):
                 shutil.rmtree(self.args.target)
         if self.args.val < 0 or self.args.val > 100:
-            print(f"--val 超出范围: {self.args.val}，必须在 0~100 之间")
+            print(f"--val 超出范围: {self.args.val}，必须在 1~99 之间")
             self.logger.error(f"--val out of range: {self.args.val}")
             exit()
 
@@ -75,10 +76,11 @@ class YoloLabelimg(Common):
             for source in files:
                 progress.set_postfix_str(f"file={os.path.basename(source)[:36]:<36}")
                 if source.endswith("classes.txt"):
+                    self.missed.append((source, '忽略'))
                     progress.update(1)
                     continue
                 if os.path.getsize(source) == 0:
-                    self.missed.append(source)
+                    self.missed.append((source, '.txt 空'))
                     self.logger.warning(f"标注文件为空: {source}")
                     progress.update(1)
                     continue
@@ -87,7 +89,7 @@ class YoloLabelimg(Common):
                         self.files[source] = f"{os.path.splitext(source)[0]}{ext}"
                         break
                 else:
-                    self.missed.append(source)
+                    self.missed.append((source, "扩展名不支持"))
                     self.logger.warning(f"标注文件缺少配对图片: {source}")
                 progress.update(1)
 
@@ -146,6 +148,7 @@ class YoloLabelimg(Common):
                     self.logger.info(f"file={name} labels={lines}")
 
                 shutil.copy(source, target)
+                self.report.append((source, target))
                 self.logger.debug(
                     f"train/labels source={source} target={target} name={name}"
                 )
@@ -244,19 +247,18 @@ class YoloLabelimg(Common):
         ) as file:
             yaml.dump(data, file, allow_unicode=True)
 
-        tables = [["丢失图像"]]
+        tables = [("丢失图像", "原因")]
         if self.missed:
             for file in self.missed:
-                tables.append([os.path.relpath(file, self.args.source)])
-        else:
-            tables.append(["（无）"])
-        table = Texttable(max_width=160)
-        table.add_rows(tables)
-        print(table.draw())
-        print(f"Total: {len(self.files) + len(self.missed)}, Lost: {len(self.missed)}")
+                tables.append(file)
 
-        for file in self.missed:
-            self.logger.warning(f"丢失文件 {file}")
+            table = Texttable(max_width=160)
+            table.add_rows(tables)
+            print(table.draw())
+            print(f"Total: {len(self.files) + len(self.missed)}, Lost: {len(self.missed)}")
+
+            for file in self.missed:
+                self.logger.warning(f"丢失文件 {file}")
 
         tables = [["标签", "数量"]]
         for label, files in self.lables.items():
@@ -266,6 +268,12 @@ class YoloLabelimg(Common):
         table = Texttable(max_width=160)
         table.add_rows(tables)
         print(table.draw())
+
+        if self.args.report:
+            with open(self.args.report, "w", encoding="utf-8", newline="") as file:
+                writer = csv.writer(file)
+                writer.writerow(('源文件', '目标文件'))
+                writer.writerows(self.report)
 
     def main(self, args=None):
         if args is not None:
