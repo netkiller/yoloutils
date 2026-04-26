@@ -41,8 +41,8 @@ class YoloLabelimg(Common):
         if self.args.clean:
             if os.path.exists(self.args.target):
                 shutil.rmtree(self.args.target)
-        if self.args.val < 0 or self.args.val > 100:
-            print(f"--val 超出范围: {self.args.val}，必须在 1~99 之间")
+        if self.args.val < 5 or self.args.val > 80:
+            print(f"--val 超出范围: {self.args.val}，必须在 5~80 之间")
             self.logger.error(f"--val out of range: {self.args.val}")
             exit()
 
@@ -56,7 +56,7 @@ class YoloLabelimg(Common):
             "test/images",
         ]
 
-        classes = os.path.join(self.args.source, "classes.txt")
+        classes = self.args.classes or os.path.join(self.args.source, "classes.txt")
         if not os.path.isfile(classes):
             print(f"classes.txt 文件不存在: {classes}")
             self.logger.error(f"classes.txt 文件不存在！")
