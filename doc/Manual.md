@@ -739,6 +739,12 @@ yoloutils image --source ./images --imgsz '<1920'
 - 在 shell 中 `>` 和 `<` 是重定向符，必须加引号或转义，例如 `--imgsz '>1920'`。
 - 输出表格列为：`文件, 宽, 高`。
 - `--csv` 可选，导出筛选结果，CSV 表头为：`文件, 宽, 高`。
+- `--check` 可递归检查 `.jpg/.jpeg` 文件，异常结果输出表格；配合 `--csv` 时导出表头为：`文件, 错误`。
+
+```shell
+# 检查异常 JPG/JPEG 图片
+yoloutils image --source ./images --check --csv ./jpg-check.csv
+```
 
 ### 4.10 `classify`
 

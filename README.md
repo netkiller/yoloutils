@@ -219,6 +219,13 @@ yoloutils image --source ./images --imgsz '<1920'
 `>` 和 `<` 在 shell 中是重定向符，使用时需要加引号或转义。
 `--csv` 可将查询结果导出为 CSV，列为：`文件, 宽, 高`。
 
+```shell
+# 检查异常 JPG/JPEG 图片
+yoloutils image --source ./images --check --csv ./jpg-check.csv
+```
+
+`--check` 递归检查 `.jpg/.jpeg` 文件，发现异常时输出并可导出 CSV，列为：`文件, 错误`。
+
 ## 图像分类数据处理
 
 ```shell

@@ -266,7 +266,7 @@ class YoloUtils:
             "--check",
             action="store_true",
             default=False,
-            help="图片检查 corrupt JPEG restored and saved",
+            help="检查异常 JPG/JPEG 图片",
         )
         self.image.add_argument('-i', '--imgsz', type=str, default=None, help="查找长边图像，格式用法 '>1920' 或 '<1920'", metavar="'>1920'")
         self.parser = parser
@@ -396,10 +396,11 @@ class YoloUtils:
 
             try:
                 args = self.image.parse_args(argv[1:])
-
+                run = YoloImage()
                 if args.source and args.imgsz is not None:
-                    run = YoloImage()
                     run.imgsz(args.source, args.imgsz, args.csv)
+                elif args.source and args.check:
+                    run.check(args.source, args.csv)
                 else:
                     self.image.print_help()
             except SystemExit as e:

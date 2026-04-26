@@ -35,6 +35,15 @@ class YoloImage:
         ]
         self.logger.info(f"files total={len(self.files)}")
 
+    def _scan_jpg_images(self, source: str):
+        files = glob.glob(f"{source}/**/*", recursive=True)
+        self.files = [
+            file
+            for file in files
+            if os.path.isfile(file) and file.lower().endswith((".jpg", ".jpeg"))
+        ]
+        self.logger.info(f"jpg files total={len(self.files)}")
+
     def _parse_imgsz_filter(self, imgsz: str):
         if imgsz is None:
             return None
@@ -79,6 +88,29 @@ class YoloImage:
 
         self.logger.info(f"imgsz rows saved csv={csv_path}")
         print(f"CSV 已保存: {csv_path}")
+
+    def _write_check_csv(self, csv_path: str):
+        if not csv_path:
+            return
+
+        csv_dir = os.path.dirname(csv_path)
+        if csv_dir:
+            os.makedirs(csv_dir, exist_ok=True)
+
+        with open(csv_path, "w", encoding="utf-8", newline="") as file:
+            writer = csv.writer(file)
+            writer.writerow(["文件", "错误"])
+            writer.writerows(self.matched)
+
+        self.logger.info(f"check rows saved csv={csv_path}")
+        print(f"CSV 已保存: {csv_path}")
+
+    def _verify_jpg(self, file: str):
+        with Image.open(file) as image:
+            image.verify()
+        with Image.open(file) as image:
+            image = ImageOps.exif_transpose(image)
+            image.load()
 
     def imgsz(self, source: str, imgsz: str, csv_path: str = None):
         if not source or not os.path.isdir(source):
@@ -127,6 +159,44 @@ class YoloImage:
             f"统计结果, 条件:长边{op_text}{size}, 匹配:{len(self.matched)}, 无效:{self.invalid}, 合计:{len(self.files)}"
         )
         self._write_imgsz_csv(csv_path)
+
+    def check(self, source: str, csv_path: str = None):
+        if not source or not os.path.isdir(source):
+            print(f"source 目录不存在: {source}")
+            return
+
+        self.matched = []
+        self.invalid = 0
+        self._scan_jpg_images(source)
+
+        with tqdm(total=len(self.files), ncols=120) as progress:
+            for file in self.files:
+                progress.set_description(file)
+                try:
+                    self._verify_jpg(file)
+                except Exception as e:
+                    self.invalid += 1
+                    self.logger.warning(f"jpg invalid source={file} err={repr(e)}")
+                    try:
+                        filename = os.path.relpath(file, source)
+                    except ValueError:
+                        filename = file
+                    self.matched.append((filename, str(e)))
+                progress.update(1)
+
+        tables = [["文件", "错误"]]
+        for filename, error in self.matched:
+            tables.append([filename, error])
+
+        if self.matched:
+            table = Texttable(max_width=200)
+            table.add_rows(tables)
+            print(table.draw())
+        else:
+            print("没有找到异常 JPG 图片")
+
+        print(f"统计结果, 异常:{len(self.matched)}, 合计:{len(self.files)}")
+        self._write_check_csv(csv_path)
 
 
 class YoloImageCrop:
