@@ -72,6 +72,17 @@ class YoloLabelimg(Common):
                     f"classes len={len(self.classes)} labels={self.classes}"
                 )
 
+        if not self.args.uuid:
+            has_subdirs = any(
+                os.path.isdir(os.path.join(self.args.source, name))
+                for name in os.listdir(self.args.source)
+            )
+            if has_subdirs:
+                print("source 存在子目录，输出文件可能因同名被覆盖，建议使用 --uuid 参数")
+                self.logger.warning(
+                    "source has subdirectories, output files may be overwritten by duplicate names, recommend --uuid"
+                )
+
         files = glob.glob(f"{self.args.source}/**/*.txt", recursive=True)
         with tqdm(total=len(files), ncols=100) as progress:
             progress.set_description("file scanning")
@@ -125,19 +136,71 @@ class YoloLabelimg(Common):
                 uuid4 = None
                 if self.args.uuid:
                     uuid4 = uuid.uuid4()
-                    target = os.path.join(
+                    label_target = os.path.join(
                         self.args.target, "train/labels", f"{uuid4}.txt"
                     )
                 else:
-                    target = os.path.join(
+                    label_target = os.path.join(
                         self.args.target, "train/labels", os.path.basename(source)
                     )
-                name, extension = os.path.splitext(os.path.basename(target))
+                name, extension = os.path.splitext(os.path.basename(label_target))
 
-                shutil.copy(source, target)
-                self.report.append((source, target))
+                valid_lines = []
+                labels = []
+                with open(source) as file:
+                    for line_number, line in enumerate(file, start=1):
+                        stripped = line.strip()
+                        if not stripped:
+                            self.missed.append((source, f"第 {line_number} 行为空"))
+                            self.logger.error(f"empty label line file={source} line={line_number}")
+                            continue
+
+                        fields = stripped.split()
+                        if len(fields) != 5:
+                            self.missed.append((source, f"第 {line_number} 行格式错误"))
+                            self.logger.error(f"invalid label format file={source} line={line_number} text={stripped}")
+                            continue
+
+                        try:
+                            index = int(fields[0])
+                        except ValueError:
+                            self.missed.append((source, f"第 {line_number} 行类别非数字"))
+                            self.logger.error(f"invalid label index file={source} line={line_number} index={fields[0]}")
+                            continue
+
+                        if index < 0:
+                            self.missed.append((source, f"第 {line_number} 行类别为负数: {index}"))
+                            self.logger.error(f"negative label index file={source} line={line_number} index={index}")
+                            continue
+
+                        if index >= len(self.classes):
+                            self.missed.append((source, f"第 {line_number} 行类别越界: {index}"))
+                            self.logger.error(f"label index out of range file={source} line={line_number} index={index}")
+                            continue
+
+                        try:
+                            [float(value) for value in fields[1:]]
+                        except ValueError:
+                            self.missed.append((source, f"第 {line_number} 行坐标非数字"))
+                            self.logger.error(f"invalid label coordinate file={source} line={line_number} text={stripped}")
+                            continue
+
+                        labels.append(self.classes[index])
+                        valid_lines.append(stripped)
+
+                if not valid_lines:
+                    self.missed.append((source, "没有合法标签"))
+                    self.logger.warning(f"标注文件没有合法标签: {source}")
+                    train.update(1)
+                    images.update(1)
+                    continue
+
+                with open(label_target, "w", encoding="utf-8") as file:
+                    file.write("\n".join(valid_lines) + "\n")
+
+                self.report.append((source, label_target))
                 self.logger.debug(
-                    f"train/labels source={source} target={target} name={name}"
+                    f"train/labels source={source} target={label_target} name={name}"
                 )
                 train.update(1)
                 # 图片复制
@@ -146,35 +209,24 @@ class YoloLabelimg(Common):
                 images.set_postfix_str(f"file={os.path.basename(image)[:36]:<36}")
 
                 if self.args.uuid:
-                    target = os.path.join(
+                    image_target = os.path.join(
                         self.args.target,
                         "train/images",
                         f"{name}{os.path.splitext(image)[1]}",
                     )
                 else:
-                    target = os.path.join(
+                    image_target = os.path.join(
                         self.args.target, "train/images", os.path.basename(image)
                     )
-                shutil.copy(image, target)
+                shutil.copy(image, image_target)
                 self.logger.info(
-                    f"train/images source={image} target={target} name={name}"
+                    f"train/images source={image} target={image_target} name={name}"
                 )
                 images.update(1)
 
-                with open(source) as file:
-                    lines = []
-                    for line in file:
-                        index = line.strip().split(" ")[0]
-                        try:
-                            label = self.classes[int(index)]
-                            # if label not in self.lables:
-                            #     self.lables[label] = []
-                            self.lables[label].append(target)
-                            lines.append(label)
-                        # self.logger.debug(f"label={label} count={len(self.lables[label])} index={index} file={name} line={line.strip()} ")
-                        except IndexError as e:
-                            self.logger.error(f"{repr(e)}, {index}")
-                    self.logger.info(f"file={target} labels={lines}")
+                for label in labels:
+                    self.lables[label].append(image_target)
+                self.logger.info(f"file={image_target} labels={labels}")
 
         for label, files in self.lables.items():
             if len(files) == 0:

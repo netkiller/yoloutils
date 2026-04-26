@@ -13,7 +13,7 @@
 
 [project]
 name = "netkiller-yoloutils"
-version = "0.0.15"
+version = "0.1.0"
 authors = [
     { name = "Neo Chan", email = "netkiller@msn.com" },
 ]
