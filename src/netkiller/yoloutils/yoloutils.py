@@ -100,6 +100,15 @@ except ImportError:
     else:
         raise
 
+try:
+    from .workstation import Workstation
+except ImportError:
+    # Support direct script execution (python yoloutils.py ...)
+    if __name__ == "__main__":
+        from workstation import Workstation
+    else:
+        raise
+
 
 class YoloUtils:
     def __init__(self):
@@ -241,7 +250,6 @@ class YoloUtils:
 
         self.resize = self.subparsers.add_parser("resize", help="修改图片尺寸")
         # self.parser = argparse.ArgumentParser(description='自动切割学习数据')
-        # self.resize.add_argument('--clean', action="store_true", default=False, help='清理之前的数据')
         # self.resize.add_argument('--md5sum', action="store_true", default=False, help='使用md5作为文件名')
         # self.args = self.parser.parse_args()
 
@@ -269,6 +277,17 @@ class YoloUtils:
             help="检查异常 JPG/JPEG 图片",
         )
         self.image.add_argument('-i', '--imgsz', type=str, default=None, help="查找长边图像，格式用法 '>1920' 或 '<1920'", metavar="'>1920'")
+
+        self.workstation = self.subparsers.add_parser(
+            "workstation",
+            help="Yolo 工作站",
+            epilog="Yolo workstation",
+            formatter_class=nowrap_formatter,
+        )
+        self.workstation.add_argument('-w', "--workspace", type=str, default=None, help="工作目录")
+        self.workstation.add_argument('-d', '--daemon', action="store_true", default=False, help='后台运行')
+        self.workstation.add_argument("--host", type=str, default="127.0.0.1", help="监听地址")
+        self.workstation.add_argument("-p", "--port", type=int, default=8000, help="监听端口")
         self.parser = parser
 
     def main(self):
@@ -406,6 +425,20 @@ class YoloUtils:
             except SystemExit as e:
                 if e.code != 0:
                     self.image.print_help(sys.stderr)
+                raise
+            exit()
+        elif root_args.subcommand == "workstation":
+
+            try:
+                args = self.workstation.parse_args(argv[1:])
+                run = Workstation()
+                if args.workspace:
+                    run.main(args.workspace, args.host, args.port, args.daemon)
+                else:
+                    self.workstation.print_help()
+            except SystemExit as e:
+                if e.code != 0:
+                    self.workstation.print_help(sys.stderr)
                 raise
             exit()
         if run is None:

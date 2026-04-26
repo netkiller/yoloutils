@@ -23,6 +23,7 @@
 | `auto` | 用现有模型自动生成 YOLO 标签 |
 | `resize` | 按长边尺寸缩放图片 |
 | `image` | 按长边条件查找图片 |
+| `workstation` | 启动 YOLO 图像管理工作站 |
 | `classify` | 处理分类数据集并划分 `train/test/val` |
 | `test` | 单模型批量推理并输出表格或 CSV |
 | `diff` | 多模型并发对比并输出表格或 CSV |
@@ -746,7 +747,42 @@ yoloutils image --source ./images --imgsz '<1920'
 yoloutils image --source ./images --check --csv ./jpg-check.csv
 ```
 
-### 4.10 `classify`
+### 4.10 `workstation`
+
+启动本地 FastAPI 站点，浏览 YOLO 图像和标注。
+
+```shell
+python src/netkiller/yoloutils/yoloutils.py workstation -w /Users/neo/tmp/yolo/source
+```
+
+功能：
+
+- 遍历 `--workspace` 目录。
+- 查找 `classes.txt`，右侧栏上半部分展示标签列表。
+- 标签下方展示当前图片 RGB 直方图，标签和直方图之间可上下拖动分配比例，直方图可折叠。
+- 左侧第一栏展示目录树。
+- 左侧第二栏展示当前目录中的图片文件。
+- 文件列表中，已标注且 `.txt` 有效的图片显示为绿色，空 `.txt`、无效 `.txt` 或损坏图片显示为红色。
+- 目录树和文件列表之间可左右拖动调整比例，目录栏可隐藏；隐藏后释放的空间由图像栏填充。
+- 文件列表和图像区域之间可左右拖动调整比例。
+- 中间展示图片；存在同名 `.txt` 时按 YOLO 标注绘制 box 框。
+- 图像栏头部提供自动标注激活、删除当前标注、重置标注和保存标注按钮。
+- 右侧栏下半部分展示当前图片的文件信息和 EXIF 信息。
+- 右侧标签/EXIF 栏可隐藏。
+- 标签/直方图区域和 EXIF 栏之间的水平分隔条可上下拖动调整比例。
+- EXIF 可折叠到底部，只保留标题条，让出空间给标签列表。
+- 底部 footer 左侧展示 `--workspace` 位置，右侧展示图像数量、`.txt` 数量、损坏图像和无效 `.txt` 数量。
+- 无效 `.txt` 包括行格式错误、数值无法解析、类别索引超出 `classes.txt` 范围。
+- 默认监听 `http://127.0.0.1:8000`，可用 `--host` 和 `--port` 调整。
+- 使用 `-d/--daemon` 后台运行，工作目录会写入 `.yoloutils-workstation.pid` 和 `.yoloutils-workstation.log`。
+
+后台运行示例：
+
+```shell
+python src/netkiller/yoloutils/yoloutils.py workstation -w /Users/neo/tmp/yolo/source -d
+```
+
+### 4.11 `classify`
 
 处理分类数据集，并自动生成 `train/test/val` 目录结构。支持在复制训练集之前先用检测模型裁剪图片。
 
@@ -843,7 +879,7 @@ yoloutils classify \
     --checklist ./checklist
 ```
 
-### 4.11 `test`
+### 4.12 `test`
 
 `test` 用于单模型批量推理目录中的图片，可选保存 CSV 和可视化图片。
 
@@ -890,7 +926,7 @@ options:
 - `--output` 保存带框结果图。
 - 该命令继承了通用参数中的 `--target`、`--clean`，当前仅使用 `--clean`（配合 `--output` 清理旧结果目录）。
 
-#### 4.11.1 `diff` 子命令
+#### 4.12.1 `diff` 子命令
 
 `diff` 用于同一批图片上并发对比多个模型的检测表现。
 

@@ -12,3 +12,5 @@ pillow
 texttable
 tqdm
 #dominate
+fastapi
+uvicorn
