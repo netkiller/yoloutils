@@ -22,6 +22,7 @@
 | `labelimg` | 手工整理 labelimg 数据并生成 YOLO 训练目录 |
 | `auto` | 用现有模型自动生成 YOLO 标签 |
 | `resize` | 按长边尺寸缩放图片 |
+| `image` | 按长边条件查找图片 |
 | `classify` | 处理分类数据集并划分 `train/test/val` |
 | `test` | 单模型批量推理并输出表格或 CSV |
 | `diff` | 多模型并发对比并输出表格或 CSV |
@@ -717,7 +718,29 @@ yoloutils resize --source ./images --target ./resized --imgsz 640
 yoloutils resize --source ./images --target ./resized --imgsz 1920
 ```
 
-### 4.9 `classify`
+### 4.9 `image`
+
+按图片长边筛选文件，只输出匹配列表，不修改图片。
+
+命令格式：
+
+```shell
+# 查找长边大于 1920 的图片
+yoloutils image --source ./images --imgsz '>1920' --csv ./result.csv
+
+# 查找长边小于 1920 的图片
+yoloutils image --source ./images --imgsz '<1920'
+```
+
+说明：
+
+- `--imgsz` 支持 `>数字` 和 `<数字` 两种格式。
+- 不写比较符时默认按 `<数字` 处理。
+- 在 shell 中 `>` 和 `<` 是重定向符，必须加引号或转义，例如 `--imgsz '>1920'`。
+- 输出表格列为：`文件, 宽, 高`。
+- `--csv` 可选，导出筛选结果，CSV 表头为：`文件, 宽, 高`。
+
+### 4.10 `classify`
 
 处理分类数据集，并自动生成 `train/test/val` 目录结构。支持在复制训练集之前先用检测模型裁剪图片。
 
@@ -814,7 +837,7 @@ yoloutils classify \
     --checklist ./checklist
 ```
 
-### 4.10 `test`
+### 4.11 `test`
 
 `test` 用于单模型批量推理目录中的图片，可选保存 CSV 和可视化图片。
 
@@ -861,7 +884,7 @@ options:
 - `--output` 保存带框结果图。
 - 该命令继承了通用参数中的 `--target`、`--clean`，当前仅使用 `--clean`（配合 `--output` 清理旧结果目录）。
 
-#### 4.10.1 `diff` 子命令
+#### 4.11.1 `diff` 子命令
 
 `diff` 用于同一批图片上并发对比多个模型的检测表现。
 

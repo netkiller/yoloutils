@@ -17,7 +17,7 @@ pip install netkiller-yoloutils
 
 ```shell
 (.venv) neo@Neo-Mac-mini-M4 yoloutils % yoloutils
-usage: yoloutils.py [-h] {label,merge,copy,remove,change,crop,labelimg,auto,resize,classify,test,diff} ...
+usage: yoloutils.py [-h] {label,merge,copy,remove,change,crop,labelimg,auto,resize,classify,test,diff,image} ...
 
 Yolo 标签与图像处理工具
 
@@ -27,7 +27,7 @@ options:
 子命令:
   工具含标签类处理和图像类处理工具
 
-  {label,merge,copy,remove,change,crop,labelimg,auto,resize,classify,test,diff}
+  {label,merge,copy,remove,change,crop,labelimg,auto,resize,classify,test,diff,image}
                         风险提示：当使用 --clean 参数时会删除目标目录和输出目录
     label               标签统计、索引统计、标签搜索
     merge               合并两个TXT文件中的标签到新TXT文件
@@ -41,6 +41,7 @@ options:
     classify            图像分类数据处理
     test                模型测试工具
     diff                模型比较工具
+    image               图像工具
 
 Author: netkiller - https://www.netkiller.cn
 ```
@@ -204,6 +205,19 @@ options:
   --target TARGET  图片目标地址
   --clean          清理之前的数据
 ```
+
+## 图像查找
+
+```shell
+# 查找长边大于 1920 的图片
+yoloutils image --source ./images --imgsz '>1920' --csv ./result.csv
+
+# 查找长边小于 1920 的图片
+yoloutils image --source ./images --imgsz '<1920'
+```
+
+`>` 和 `<` 在 shell 中是重定向符，使用时需要加引号或转义。
+`--csv` 可将查询结果导出为 CSV，列为：`文件, 宽, 高`。
 
 ## 图像分类数据处理
 

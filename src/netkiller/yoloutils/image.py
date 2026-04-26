@@ -1,8 +1,9 @@
+import csv
 import glob
 import logging
+import operator
 import os
 import shutil
-import csv
 
 import cv2
 from PIL import Image, ImageOps
@@ -14,6 +15,118 @@ try:
     from . import Common
 except ImportError:
     from __init__ import Common
+
+
+class YoloImage:
+    def __init__(self, **kwargs):
+        if kwargs:
+            self.args = kwargs
+        self.logger = logging.getLogger(__class__.__name__)
+        self.files = []
+        self.matched = []
+        self.invalid = 0
+
+    def _scan_images(self, source: str):
+        files = glob.glob(f"{source}/**/*", recursive=True)
+        self.files = [
+            file
+            for file in files
+            if os.path.isfile(file) and file.lower().endswith(Common.image_exts)
+        ]
+        self.logger.info(f"files total={len(self.files)}")
+
+    def _parse_imgsz_filter(self, imgsz: str):
+        if imgsz is None:
+            return None
+
+        raw = str(imgsz).strip()
+        if not raw:
+            print("imgsz 不能为空，格式用法: '>1920' 或 '<1920'")
+            return None
+
+        op_text = raw[0] if raw[0] in (">", "<") else "<"
+        size_text = raw[1:].strip() if raw[0] in (">", "<") else raw
+
+        try:
+            size = int(size_text)
+        except (TypeError, ValueError):
+            print(f"imgsz 格式错误: {imgsz}，格式用法: '>1920' 或 '<1920'")
+            return None
+
+        if size <= 0:
+            print(f"imgsz 必须大于 0: {size}")
+            return None
+
+        if op_text == ">":
+            return operator.gt, "大于", ">", size
+        return operator.lt, "小于", "<", size
+
+    def _write_imgsz_csv(self, csv_path: str):
+        if not csv_path:
+            return
+
+        csv_dir = os.path.dirname(csv_path)
+        if csv_dir:
+            os.makedirs(csv_dir, exist_ok=True)
+
+        with open(csv_path, "w", encoding="utf-8", newline="") as file:
+            writer = csv.writer(file)
+            writer.writerow(["文件", "宽", "高"])
+            writer.writerows(
+                (filename, width, height)
+                for filename, width, height, _long_edge in self.matched
+            )
+
+        self.logger.info(f"imgsz rows saved csv={csv_path}")
+        print(f"CSV 已保存: {csv_path}")
+
+    def imgsz(self, source: str, imgsz: str, csv_path: str = None):
+        if not source or not os.path.isdir(source):
+            print(f"source 目录不存在: {source}")
+            return
+
+        parsed = self._parse_imgsz_filter(imgsz)
+        if parsed is None:
+            return
+        compare, compare_text, op_text, size = parsed
+
+        self._scan_images(source)
+        with tqdm(total=len(self.files), ncols=120) as progress:
+            for file in self.files:
+                progress.set_description(file)
+                try:
+                    with Image.open(file) as image:
+                        width, height = ImageOps.exif_transpose(image).size
+                except Exception as e:
+                    self.invalid += 1
+                    self.logger.warning(f"image invalid source={file} err={repr(e)}")
+                    progress.update(1)
+                    continue
+
+                long_edge = max(width, height)
+                if compare(long_edge, size):
+                    try:
+                        filename = os.path.relpath(file, source)
+                    except ValueError:
+                        filename = file
+                    self.matched.append((filename, width, height, long_edge))
+                progress.update(1)
+
+        tables = [["文件", "宽", "高"]]
+        for filename, width, height, long_edge in self.matched:
+            tables.append([filename, width, height])
+
+        if self.matched:
+            table = Texttable(max_width=200)
+            table.add_rows(tables)
+            print(table.draw())
+        else:
+            print(f"没有找到长边{compare_text} {size} 的图片")
+
+        print(
+            f"统计结果, 条件:长边{op_text}{size}, 匹配:{len(self.matched)}, 无效:{self.invalid}, 合计:{len(self.files)}"
+        )
+        self._write_imgsz_csv(csv_path)
 
 
 class YoloImageCrop:

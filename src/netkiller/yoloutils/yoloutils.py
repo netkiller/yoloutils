@@ -44,11 +44,11 @@ except ImportError:
         raise
 
 try:
-    from .image import YoloImageCrop, YoloImageResize
+    from .image import YoloImageCrop, YoloImageResize, YoloImage
 except ImportError:
     # Support direct script execution (python yoloutils.py ...)
     if __name__ == "__main__":
-        from image import YoloImageCrop, YoloImageResize
+        from image import YoloImageCrop, YoloImageResize, YoloImage
     else:
         raise
 
@@ -174,8 +174,6 @@ class YoloUtils:
         self.copy = self.subparsers.add_parser("copy", help="从指定标签复制图片文件")
         self.remove = self.subparsers.add_parser("remove", help="从YOLO TXT文件中删除指定标签")
         # self.parser = argparse.ArgumentParser(description='YOLO标签删除工具')
-
-        # remove.add_argument('--output', type=str, default=None, help='输出目录', metavar="/tmp/output")
         # self.remove.add_argument('--clean', action="store_true", default=False, help='清理输出目录')
         # self.remove.add_argument('--show', action='store_true', help='查看 classes.txt 文件')
 
@@ -221,12 +219,7 @@ class YoloUtils:
         self.labelimg.add_argument(
             '-u', "--uuid", action="store_true", default=False, help="输出文件名使用UUID"
         )
-        # self.labelimg.add_argument(
-        #     "--check",
-        #     action="store_true",
-        #     default=False,
-        #     help="图片检查 corrupt JPEG restored and saved",
-        # )
+
         self.labelimg.add_argument('-r', '--report', type=str, default=None, help='输出 csv 报告')
 
         self.auto = self.subparsers.add_parser(
@@ -258,6 +251,24 @@ class YoloUtils:
         self.test = self.subparsers.add_parser("test", help="模型测试工具")
         self.diff = self.subparsers.add_parser("diff", help="模型比较工具")
 
+        self.image = self.subparsers.add_parser(
+            "image",
+            help="图像工具",
+            epilog="图像查找",
+            formatter_class=nowrap_formatter,
+        )
+        self.image.add_argument('-s', "--source", type=str, default=None, help="图片来源地址")
+        self.image.add_argument("-c", "--csv", type=str, default=None, help="导出查询结果", metavar="result.csv")
+        # self.auto.add_argument(
+        #     "--clean", action="store_true", default=False, help="清理之前的数据"
+        # )
+        self.image.add_argument(
+            "--check",
+            action="store_true",
+            default=False,
+            help="图片检查 corrupt JPEG restored and saved",
+        )
+        self.image.add_argument('-i', '--imgsz', type=str, default=None, help="查找长边图像，格式用法 '>1920' 或 '<1920'", metavar="'>1920'")
         self.parser = parser
 
     def main(self):
@@ -381,7 +392,21 @@ class YoloUtils:
             else:
                 self.info.print_help()
             exit()
+        elif root_args.subcommand == "image":
 
+            try:
+                args = self.image.parse_args(argv[1:])
+
+                if args.source and args.imgsz is not None:
+                    run = YoloImage()
+                    run.imgsz(args.source, args.imgsz, args.csv)
+                else:
+                    self.image.print_help()
+            except SystemExit as e:
+                if e.code != 0:
+                    self.image.print_help(sys.stderr)
+                raise
+            exit()
         if run is None:
             self.parser.print_help()
             exit()
