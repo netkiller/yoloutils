@@ -22,13 +22,16 @@ except ImportError:
 class YoloLabelimg(Common):
     # background = (22, 255, 39) # 绿幕RGB模式（R22 - G255 - B39），CMYK模式（C62 - M0 - Y100 - K0）
     background = (0, 0, 0)
+    progress_ncols = 88
+    progress_bar_format = (
+        "{desc} {percentage:3.0f}%|{bar:28}| {n:>4.0f}/{total:>4.0f} {postfix}"
+    )
 
     def __init__(self):
         self.basedir = BASE_DIR
 
         self.classes = []
         self.lables = {}
-        self.missed = []
         self.files = {}
         self.report = []
         self.logger = logging.getLogger(__class__.__name__)
@@ -37,12 +40,33 @@ class YoloLabelimg(Common):
         if not os.path.exists(path):
             os.makedirs(path)
 
+    def progress_dir(self, path):
+        directory = os.path.dirname(os.path.abspath(path))
+        name = os.path.basename(directory)
+        if name:
+            return name
+        return "."
+
+    def remove_clean_path(self, path):
+        if not path or not os.path.exists(path):
+            return
+        if os.path.isdir(path):
+            shutil.rmtree(path)
+        else:
+            os.remove(path)
+
+    def add_report(self, source, target="", reason=""):
+        self.report.append((source, target, reason))
+
     def input(self):
         if self.args.clean:
-            if not self._confirm_clean(self.args.source, self.args.target):
+            clean_paths = [self.args.target]
+            if self.args.report:
+                clean_paths.append(self.args.report)
+            if not self._confirm_clean(self.args.source, clean_paths):
                 exit()
-            if os.path.exists(self.args.target):
-                shutil.rmtree(self.args.target)
+            for path in clean_paths:
+                self.remove_clean_path(path)
         if self.args.val < 10 or self.args.val > 80:
             print(f"--val 超出范围: {self.args.val}，必须在 10~80% 之间")
             self.logger.error(f"--val out of range: {self.args.val}")
@@ -90,25 +114,29 @@ class YoloLabelimg(Common):
                 )
                 print("source 存在子目录，输出文件可能因同名被覆盖，建议使用 --uuid 参数")
                 try:
-                    answer = input("是否继续？[y/N]: ").strip().lower()
+                    answer = input("是否继续？[Y/n]: ").strip().lower()
                 except EOFError:
                     answer = ""
-                if answer not in ("y", "yes"):
+                if answer in ("n", "no"):
                     print("已取消操作")
                     self.logger.info("cancel labelimg operation by subdirectory warning")
                     exit()
 
         files = glob.glob(f"{self.args.source}/**/*.txt", recursive=True)
-        with tqdm(total=len(files), ncols=100) as progress:
+        with tqdm(
+            total=len(files),
+            ncols=self.progress_ncols,
+            bar_format=self.progress_bar_format,
+        ) as progress:
             progress.set_description("file scanning")
             for source in files:
-                progress.set_postfix_str(f"file={os.path.basename(source)[:36]:<36}")
+                progress.set_postfix_str(f"dir={self.progress_dir(source)[:24]:<24}")
                 if source.endswith("classes.txt"):
-                    self.missed.append((source, '忽略'))
+                    self.add_report(source, reason="忽略")
                     progress.update(1)
                     continue
                 if os.path.getsize(source) == 0:
-                    self.missed.append((source, '.txt 空'))
+                    self.add_report(source, reason=".txt 空")
                     self.logger.warning(f"标注文件为空: {source}")
                     progress.update(1)
                     continue
@@ -117,14 +145,18 @@ class YoloLabelimg(Common):
                         self.files[source] = f"{os.path.splitext(source)[0]}{ext}"
                         break
                 else:
-                    self.missed.append((source, "扩展名不支持"))
+                    self.add_report(source, reason="扩展名不支持")
                     self.logger.warning(f"标注文件缺少配对图片: {source}")
                 progress.update(1)
 
-        with tqdm(total=len(directory), ncols=100) as progress:
+        with tqdm(
+            total=len(directory),
+            ncols=self.progress_ncols,
+            bar_format=self.progress_bar_format,
+        ) as progress:
             progress.set_description(f"yolo init")
             for dir in directory:
-                progress.set_postfix_str(f"dir={dir[:36]:<36}")
+                progress.set_postfix_str(f"dir={dir[:24]:<24}")
                 self.mkdirs(os.path.join(self.args.target, dir))
                 progress.update(1)
 
@@ -134,19 +166,19 @@ class YoloLabelimg(Common):
         with (
             tqdm(
                 total=len(self.files),
-                ncols=100,
-                bar_format="{desc} {percentage:3.0f}%|{bar:58}| {n:>4.0f}/{total:>4.0f} {postfix}",
+                ncols=self.progress_ncols,
+                bar_format=self.progress_bar_format,
             ) as images,
             tqdm(
                 total=len(self.files),
-                ncols=100,
-                bar_format="{desc} {percentage:3.0f}%|{bar:58}| {n:>4.0f}/{total:>4.0f} {postfix}",
+                ncols=self.progress_ncols,
+                bar_format=self.progress_bar_format,
             ) as train,
         ):
             for source in self.files.keys():
 
                 train.set_description("train/labels")
-                train.set_postfix_str(f"file={os.path.basename(source)[:36]:<36}")
+                train.set_postfix_str(f"dir={self.progress_dir(source)[:24]:<24}")
 
                 uuid4 = None
                 if self.args.uuid:
@@ -166,37 +198,37 @@ class YoloLabelimg(Common):
                     for line_number, line in enumerate(file, start=1):
                         stripped = line.strip()
                         if not stripped:
-                            self.missed.append((source, f"第 {line_number} 行为空"))
+                            self.add_report(source, label_target, f"第 {line_number} 行为空")
                             self.logger.error(f"empty label line file={source} line={line_number}")
                             continue
 
                         fields = stripped.split()
                         if len(fields) != 5:
-                            self.missed.append((source, f"第 {line_number} 行格式错误"))
+                            self.add_report(source, label_target, f"第 {line_number} 行格式错误")
                             self.logger.error(f"invalid label format file={source} line={line_number} text={stripped}")
                             continue
 
                         try:
                             index = int(fields[0])
                         except ValueError:
-                            self.missed.append((source, f"第 {line_number} 行类别非数字"))
+                            self.add_report(source, label_target, f"第 {line_number} 行类别非数字")
                             self.logger.error(f"invalid label index file={source} line={line_number} index={fields[0]}")
                             continue
 
                         if index < 0:
-                            self.missed.append((source, f"第 {line_number} 行类别为负数: {index}"))
+                            self.add_report(source, label_target, f"第 {line_number} 行类别为负数: {index}")
                             self.logger.error(f"negative label index file={source} line={line_number} index={index}")
                             continue
 
                         if index >= len(self.classes):
-                            self.missed.append((source, f"第 {line_number} 行类别越界: {index}"))
+                            self.add_report(source, label_target, f"第 {line_number} 行类别越界: {index}")
                             self.logger.error(f"label index out of range file={source} line={line_number} index={index}")
                             continue
 
                         try:
                             [float(value) for value in fields[1:]]
                         except ValueError:
-                            self.missed.append((source, f"第 {line_number} 行坐标非数字"))
+                            self.add_report(source, label_target, f"第 {line_number} 行坐标非数字")
                             self.logger.error(f"invalid label coordinate file={source} line={line_number} text={stripped}")
                             continue
 
@@ -204,7 +236,7 @@ class YoloLabelimg(Common):
                         valid_lines.append(stripped)
 
                 if not valid_lines:
-                    self.missed.append((source, "没有合法标签"))
+                    self.add_report(source, label_target, "没有合法标签")
                     self.logger.warning(f"标注文件没有合法标签: {source}")
                     train.update(1)
                     images.update(1)
@@ -213,7 +245,7 @@ class YoloLabelimg(Common):
                 with open(label_target, "w", encoding="utf-8") as file:
                     file.write("\n".join(valid_lines) + "\n")
 
-                self.report.append((source, label_target))
+                self.add_report(source, label_target)
                 self.logger.debug(
                     f"train/labels source={source} target={label_target} name={name}"
                 )
@@ -221,7 +253,7 @@ class YoloLabelimg(Common):
                 # 图片复制
                 images.set_description("train/images")
                 image = self.files[source]
-                images.set_postfix_str(f"file={os.path.basename(image)[:36]:<36}")
+                images.set_postfix_str(f"dir={self.progress_dir(image)[:24]:<24}")
 
                 if self.args.uuid:
                     image_target = os.path.join(
@@ -259,7 +291,11 @@ class YoloLabelimg(Common):
             val_files.update(random.sample(files, valnumber))
             # print(f"label={label} files={len(files)} val={len(vals)}")
 
-        with tqdm(total=len(val_files), ncols=100) as progress:
+        with tqdm(
+            total=len(val_files),
+            ncols=self.progress_ncols,
+            bar_format=self.progress_bar_format,
+        ) as progress:
             for file in sorted(val_files):
                 progress.set_description("val")
                 name, extension = os.path.splitext(os.path.basename(file))
@@ -308,18 +344,19 @@ class YoloLabelimg(Common):
         ) as file:
             yaml.dump(data, file, allow_unicode=True)
 
-        tables = [("丢失图像", "原因")]
-        if self.missed:
-            for file in self.missed:
-                tables.append(file)
+        problem_reports = [row for row in self.report if row[2]]
+        tables = [("源文件", "目标文件", "原因")]
+        if problem_reports:
+            for row in problem_reports:
+                tables.append(row)
 
             table = Texttable(max_width=160)
             table.add_rows(tables)
             print(table.draw())
-            print(f"Total: {len(self.files) + len(self.missed)}, Lost: {len(self.missed)}")
+            print(f"Total: {len(self.files) + len(problem_reports)}, Lost: {len(problem_reports)}")
 
-            for file in self.missed:
-                self.logger.warning(f"丢失文件 {file}")
+            for row in problem_reports:
+                self.logger.warning(f"丢失文件 {row}")
 
         tables = [["标签", "数量"]]
         for label, files in self.lables.items():
@@ -336,7 +373,7 @@ class YoloLabelimg(Common):
                 os.makedirs(report_dir, exist_ok=True)
             with open(self.args.report, "w", encoding="utf-8", newline="") as file:
                 writer = csv.writer(file)
-                writer.writerow(('源文件', '目标文件'))
+                writer.writerow(("源文件", "目标文件", "原因"))
                 writer.writerows(self.report)
 
     def main(self, args=None):

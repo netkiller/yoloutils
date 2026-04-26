@@ -45,11 +45,11 @@ class Common:
         for path in existing_targets:
             print(f"- {path}")
         try:
-            answer = input("是否继续？[y/N]: ").strip().lower()
+            answer = input("是否继续？[Y/n]: ").strip().lower()
         except EOFError:
             answer = ""
 
-        if answer in ("y", "yes"):
+        if answer in ("", "y", "yes"):
             return True
 
         print("已取消清理操作")
