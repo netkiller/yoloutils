@@ -66,8 +66,11 @@ class YoloLabelimg(Common):
         else:
             with open(classes) as file:
                 for line in file:
-                    self.classes.append(line.strip())
-                    self.lables[line.strip()] = []
+                    label = line.strip()
+                    if not label:
+                        continue
+                    self.classes.append(label)
+                    self.lables[label] = []
                 self.logger.info(
                     f"classes len={len(self.classes)} labels={self.classes}"
                 )
@@ -228,9 +231,11 @@ class YoloLabelimg(Common):
                     self.lables[label].append(image_target)
                 self.logger.info(f"file={image_target} labels={labels}")
 
+        val_files = set()
         for label, files in self.lables.items():
             if len(files) == 0:
                 continue
+            files = list(dict.fromkeys(files))
             valnumber = int(len(files) * self.args.val / 100)
             if self.args.val > 0 and valnumber == 0:
                 valnumber = 1
@@ -239,48 +244,42 @@ class YoloLabelimg(Common):
             if valnumber == 0:
                 continue
 
-            vals = random.sample(files, valnumber)
+            val_files.update(random.sample(files, valnumber))
             # print(f"label={label} files={len(files)} val={len(vals)}")
 
-            with tqdm(total=len(vals), ncols=100) as progress:
-                for file in vals:
-                    progress.set_description(f"val/label {label}")
-                    name, extension = os.path.splitext(os.path.basename(file))
-                    try:
-                        source = os.path.join(
-                            self.args.target, "train/labels", f"{name}.txt"
-                        )
-                        target = os.path.join(
-                            self.args.target, "val/labels", f"{name}.txt"
-                        )
-                        if os.path.exists(target):
-                            self.logger.info(
-                                f"val/labels skip label={label} file={file}"
-                            )
-                            progress.update(1)
-                            continue
-
+        with tqdm(total=len(val_files), ncols=100) as progress:
+            for file in sorted(val_files):
+                progress.set_description("val")
+                name, extension = os.path.splitext(os.path.basename(file))
+                try:
+                    source = os.path.join(
+                        self.args.target, "train/labels", f"{name}.txt"
+                    )
+                    target = os.path.join(
+                        self.args.target, "val/labels", f"{name}.txt"
+                    )
+                    if os.path.exists(source):
                         shutil.move(source, target)
                         self.logger.info(
-                            f"val/labels move label={label} source={source} target={target}"
+                            f"val/labels move source={source} target={target}"
                         )
+                    else:
+                        self.logger.warning(f"val/labels missing train label name={name}")
 
-                        source = file
-                        target = os.path.join(
-                            self.args.target, "val/images", os.path.basename(file)
+                    source = file
+                    target = os.path.join(
+                        self.args.target, "val/images", os.path.basename(file)
+                    )
+                    if os.path.exists(source):
+                        shutil.move(source, target)
+                        self.logger.info(
+                            f"val/images move source={source} target={target}"
                         )
-                        if os.path.exists(source):
-                            shutil.move(source, target)
-                            self.logger.info(
-                                f"val/images move label={label} source={source} target={target}"
-                            )
-                        else:
-                            self.logger.warning(
-                                f"val/images missing train image label={label} name={name}"
-                            )
-                    except Exception as e:
-                        self.logger.error(f"val {repr(e)} name={name}")
-                    progress.update(1)
+                    else:
+                        self.logger.warning(f"val/images missing train image name={name}")
+                except Exception as e:
+                    self.logger.error(f"val {repr(e)} name={name}")
+                progress.update(1)
 
     def output(self):
         names = {i: self.classes[i] for i in range(len(self.classes))}  # 标签类别
@@ -320,6 +319,9 @@ class YoloLabelimg(Common):
         print(table.draw())
 
         if self.args.report:
+            report_dir = os.path.dirname(self.args.report)
+            if report_dir:
+                os.makedirs(report_dir, exist_ok=True)
             with open(self.args.report, "w", encoding="utf-8", newline="") as file:
                 writer = csv.writer(file)
                 writer.writerow(('源文件', '目标文件'))
@@ -351,32 +353,6 @@ class YoloLabelimgAutomatic(Common):
             "标注框总数": 0
         }
 
-    def _clean_paths(self):
-        paths = []
-        for path in (self.args.target, self.args.output):
-            if path and path not in paths:
-                paths.append(path)
-        return paths
-
-    def _confirm_clean(self, paths):
-        if not paths:
-            return True
-
-        print("检测到 --clean，将删除以下目录：")
-        for path in paths:
-            print(f"- {path}")
-        try:
-            answer = input("是否继续？[y/N]: ").strip().lower()
-        except EOFError:
-            answer = ""
-
-        if answer in ("y", "yes"):
-            return True
-
-        print("已取消清理操作")
-        self.logger.info("cancel clean operation by user")
-        return False
-
     def input(self):
         if not os.path.isdir(self.args.source):
             print(f"source 目录不存在: {self.args.source}")
@@ -389,8 +365,11 @@ class YoloLabelimgAutomatic(Common):
 
         try:
             if self.args.clean:
-                clean_paths = self._clean_paths()
-                if not self._confirm_clean(clean_paths):
+                clean_paths = []
+                for path in (self.args.target, self.args.output):
+                    if path and path not in clean_paths:
+                        clean_paths.append(path)
+                if not self._confirm_clean(self.args.source, clean_paths):
                     exit()
                 for path in clean_paths:
                     if os.path.exists(path):

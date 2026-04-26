@@ -21,18 +21,23 @@ class Common:
 
     def _confirm_clean(self, source, target):
         source_path = os.path.abspath(source)
-        target_path = os.path.abspath(target)
-        if source_path == target_path:
-            print("--target 不能与 --source 相同")
-            if self.logger:
-                self.logger.error("--target same as --source")
-            exit()
+        targets = target if isinstance(target, (list, tuple, set)) else [target]
+        targets = [path for path in targets if path]
 
-        if not os.path.exists(target):
+        for path in targets:
+            if source_path == os.path.abspath(path):
+                print("--target 不能与 --source 相同")
+                if self.logger:
+                    self.logger.error("--target same as --source")
+                exit()
+
+        existing_targets = [path for path in targets if os.path.exists(path)]
+        if not existing_targets:
             return True
 
         print("检测到 --clean，将删除以下目录：")
-        print(f"- {target}")
+        for path in existing_targets:
+            print(f"- {path}")
         try:
             answer = input("是否继续？[y/N]: ").strip().lower()
         except EOFError:
