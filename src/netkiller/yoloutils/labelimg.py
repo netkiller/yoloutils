@@ -39,10 +39,12 @@ class YoloLabelimg(Common):
 
     def input(self):
         if self.args.clean:
+            if not self._confirm_clean(self.args.source, self.args.target):
+                exit()
             if os.path.exists(self.args.target):
                 shutil.rmtree(self.args.target)
-        if self.args.val < 5 or self.args.val > 80:
-            print(f"--val 超出范围: {self.args.val}，必须在 5~80 之间")
+        if self.args.val < 10 or self.args.val > 80:
+            print(f"--val 超出范围: {self.args.val}，必须在 10~80% 之间")
             self.logger.error(f"--val out of range: {self.args.val}")
             exit()
 

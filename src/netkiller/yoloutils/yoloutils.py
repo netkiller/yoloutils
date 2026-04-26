@@ -214,19 +214,19 @@ class YoloUtils:
             '-c', "--classes", type=str, default=None, help="classes.txt 文件"
         )
         self.labelimg.add_argument(
-            '-v', "--val", type=int, default=10, help="验证集占比（百分比）", metavar=10
+            '-v', "--val", type=int, default=10, help="验证集占比（百分比 10% ~ 80%）", metavar=10
         )
         # self.labelimg.add_argument('--clean', action="store_true", default=False, help='清理之前的数据')
 
         self.labelimg.add_argument(
             '-u', "--uuid", action="store_true", default=False, help="输出文件名使用UUID"
         )
-        self.labelimg.add_argument(
-            "--check",
-            action="store_true",
-            default=False,
-            help="图片检查 corrupt JPEG restored and saved",
-        )
+        # self.labelimg.add_argument(
+        #     "--check",
+        #     action="store_true",
+        #     default=False,
+        #     help="图片检查 corrupt JPEG restored and saved",
+        # )
         self.labelimg.add_argument('-r', '--report', type=str, default=None, help='输出 csv 报告')
 
         self.auto = self.subparsers.add_parser(
