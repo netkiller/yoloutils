@@ -749,37 +749,71 @@ yoloutils image --source ./images --check --csv ./jpg-check.csv
 
 ### 4.10 `workstation`
 
-启动本地 FastAPI 站点，浏览 YOLO 图像和标注。
+启动本地 FastAPI 站点，浏览、检查和手工标注 YOLO 图像。
 
 ```shell
-python src/netkiller/yoloutils/yoloutils.py workstation -w /Users/neo/tmp/yolo/source
+yoloutils workstation -w /Users/neo/tmp/yolo/source
+```
+
+常用参数：
+
+```shell
+yoloutils workstation \
+    --host 127.0.0.1 \
+    --port 8000 \
+    -w /Users/neo/tmp/yolo/source \
+    --dataset /Users/neo/tmp/yolo/dataset \
+    --run /Users/neo/tmp/yolo/runs \
+    --classes /Users/neo/tmp/yolo/source/classes.txt \
+    --open
 ```
 
 功能：
 
 - 遍历 `--workspace` 目录。
-- 查找 `classes.txt`，右侧栏上半部分展示标签列表。
-- 标签下方展示当前图片 RGB 直方图，标签和直方图之间可上下拖动分配比例，直方图可折叠。
-- 左侧第一栏展示目录树。
-- 左侧第二栏展示当前目录中的图片文件。
-- 文件列表中，已标注且 `.txt` 有效的图片显示为绿色，空 `.txt`、无效 `.txt` 或损坏图片显示为红色。
-- 目录树和文件列表之间可左右拖动调整比例，目录栏可隐藏；隐藏后释放的空间由图像栏填充。
-- 文件列表和图像区域之间可左右拖动调整比例。
-- 中间展示图片；存在同名 `.txt` 时按 YOLO 标注绘制 box 框。
-- 图像栏头部提供自动标注激活、删除当前标注、重置标注和保存标注按钮。
-- 右侧栏下半部分展示当前图片的文件信息和 EXIF 信息。
-- 右侧标签/EXIF 栏可隐藏。
-- 标签/直方图区域和 EXIF 栏之间的水平分隔条可上下拖动调整比例。
-- EXIF 可折叠到底部，只保留标题条，让出空间给标签列表。
-- 底部 footer 左侧展示 `--workspace` 位置，右侧展示图像数量、`.txt` 数量、损坏图像和无效 `.txt` 数量。
+- 顶部 header 提供标注、数据集、训练、自动、只读/打标、分享、下载、查询和快捷键入口。
+- 左侧目录栏按树形结构展示目录，目录完成后显示 `[x]`，未完成显示 `[]`；目录栏支持重载、折叠和隐藏。
+- 左侧文件栏展示当前目录图片，文件名前显示格式图标；排序按钮可在“未达标优先”和“已达标优先”之间切换。
+- 文件列表中，已标注且 `.txt` 有效的图片显示为绿色，状态后显示标签数量；空 `.txt`、无效 `.txt` 或损坏图片显示为红色。
+- 当前目录会默认打开排序后的第一张图片。
+- 中间图像栏展示图片；存在同名 `.txt` 时按 YOLO 标注绘制 box 框。
+- 图像栏 header 双击后进入图像聚焦模式，隐藏目录、文件、标签/信息三列，只保留 header、footer 和图像区域。
+- 图像支持鼠标滚轮和触控板手势缩放；非 `100%` 时在图像 header 中间显示倍率和 `↺ ESC` 还原提示。
+- 打开“打标”状态后，可在图像上拖动鼠标创建 box；保存按钮仅在标注变更后激活。
+- 点击已有 box 或 box 标签可选中 box，选中后显示 8 个锚点；拖动锚点可按方向缩放，拖动标签可移动整个 box。
+- 只读状态下，在图像空白区域拖动鼠标可平移图片位置。
+- 删除按钮仅在当前图片已有标注时激活；重置按钮撤销当前未保存操作；保存按钮写入同名 `.txt`，保存后自动进入下一张待标注图片。
+- 遮罩按钮可给 box 框内增加半透明蒙版效果，只影响显示，不影响保存的 YOLO 标注。
+- 右侧标签栏展示 `classes.txt` 标签，点击标签后，新建 box 使用该标签索引。
+- 右侧标签下方展示当前图片 RGB 直方图，标签和直方图之间可上下拖动分配比例，直方图可折叠。
+- 右侧信息栏展示当前图片的文件信息和 EXIF 信息，信息栏可折叠。
+- 底部 footer 左侧展示 Home 图标、当前目录面包屑和当前文件名；目录之间用 `>` 分隔。
+- 底部 footer 右侧展示图像数量、已完成 `有效标注/图像总数`、`.txt` 数量、`classes.txt` 数量、损坏图像和无效 `.txt` 数量。
 - 无效 `.txt` 包括行格式错误、数值无法解析、类别索引超出 `classes.txt` 范围。
 - 默认监听 `http://127.0.0.1:8000`，可用 `--host` 和 `--port` 调整。
 - 使用 `-d/--daemon` 后台运行，工作目录会写入 `.yoloutils-workstation.pid` 和 `.yoloutils-workstation.log`。
+- `--classes` 可指定要使用的 `classes.txt`；未指定时会递归扫描 `--workspace` 下所有 `classes.txt`，并把根目录的 `classes.txt` 展示在标签栏最上方。
+- `--dataset` 和 `--run` 用于传入数据集目录和训练目录，当前作为工作站入口参数保留。
+- `--open` 会在服务启动后优先打开无地址栏的浏览器应用窗口，并定时访问首页做保活。
+
+快捷键：
+
+| 快捷键 | 作用 |
+|---|---|
+| `↑` / `↓` | 在当前展开的目录树中切换目录 |
+| `←` / `→` | 切换上一张 / 下一张图片 |
+| `Cmd+M` / `Ctrl+M` | 切换 box 半透明遮罩 |
+| `Cmd+S` / `Ctrl+S` | 保存当前标注 |
+| `Cmd+D` / `Ctrl+D` | 删除当前标注 |
+| `Cmd+R` / `Ctrl+R` | 重置当前未保存操作 |
+| `Esc` | 还原图片缩放；快捷键浮窗打开时关闭浮窗 |
+| 鼠标滚轮 / 触控板滚动 | 快速放大或缩小图片 |
+| 双击图像标题栏 | 切换图像聚焦模式 |
 
 后台运行示例：
 
 ```shell
-python src/netkiller/yoloutils/yoloutils.py workstation -w /Users/neo/tmp/yolo/source -d
+yoloutils workstation -w /Users/neo/tmp/yolo/source -d
 ```
 
 ### 4.11 `classify`

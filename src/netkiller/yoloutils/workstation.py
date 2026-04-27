@@ -1,6 +1,9 @@
 import os
 import subprocess
 import sys
+import threading
+import time
+import urllib.request
 from datetime import datetime
 from pathlib import Path
 
@@ -40,6 +43,7 @@ class Workstation:
         self.dataset = None
         self.run = None
         self.requested_classes_file = None
+        self.open_browser = False
         self.classes_file = None
         self.class_groups = []
         self.classes = []
@@ -50,6 +54,7 @@ class Workstation:
         dataset: str = None,
         run: str = None,
         classes_file: str = None,
+        open_browser: bool = False,
     ):
         if FastAPI is None or uvicorn is None:
             print("缺少依赖: fastapi/uvicorn，请先安装: pip install fastapi uvicorn")
@@ -62,6 +67,7 @@ class Workstation:
         self.dataset = Path(dataset).expanduser().resolve() if dataset else None
         self.run = Path(run).expanduser().resolve() if run else None
         self.requested_classes_file = classes_file
+        self.open_browser = open_browser
 
         if self.daemon:
             self._start_daemon()
@@ -76,7 +82,8 @@ class Workstation:
         self.classes = self.class_groups[0]["classes"] if self.class_groups else []
         app = self._create_app()
 
-        print(f"Yolo Workstation: http://{self.host}:{self.port}")
+        url = self._server_url()
+        print(f"Yolo Workstation: {url}")
         print(f"Workspace: {self.workspace}")
         if self.dataset:
             print(f"Dataset: {self.dataset}")
@@ -86,7 +93,64 @@ class Workstation:
             print(f"Classes: {self.classes_file}")
         else:
             print("Classes: 未找到 classes.txt")
+        if self.open_browser:
+            self._start_browser_opener(url)
+            print("Browser: opening")
         uvicorn.run(app, host=self.host, port=self.port)
+
+    def _server_url(self):
+        host = "127.0.0.1" if self.host in ("0.0.0.0", "::") else self.host
+        if ":" in host and not host.startswith("["):
+            host = f"[{host}]"
+        return f"http://{host}:{self.port}"
+
+    def _start_browser_opener(self, url: str):
+        def open_and_keep_alive():
+            time.sleep(1)
+            self._open_app_window(url)
+            while True:
+                try:
+                    request = urllib.request.Request(
+                        url,
+                        headers={"User-Agent": "Yolo-Workstation-Headless/1.0"},
+                    )
+                    with urllib.request.urlopen(request, timeout=5) as response:
+                        response.read(2048)
+                except Exception:
+                    pass
+                time.sleep(60)
+
+        threading.Thread(target=open_and_keep_alive, daemon=True, name="yoloutils-browser-opener").start()
+
+    def _open_app_window(self, url: str):
+        if sys.platform == "darwin":
+            for app_name in ("Google Chrome", "Microsoft Edge", "Brave Browser", "Chromium"):
+                try:
+                    result = subprocess.run(
+                        ["open", "-na", app_name, "--args", f"--app={url}", "--new-window"],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        check=False,
+                        timeout=3,
+                    )
+                except (OSError, subprocess.TimeoutExpired):
+                    continue
+                if result.returncode == 0:
+                    return
+        commands = [
+            ["google-chrome", f"--app={url}", "--new-window"],
+            ["chrome", f"--app={url}", "--new-window"],
+            ["chromium", f"--app={url}", "--new-window"],
+            ["chromium-browser", f"--app={url}", "--new-window"],
+            ["microsoft-edge", f"--app={url}", "--new-window"],
+            ["brave-browser", f"--app={url}", "--new-window"],
+        ]
+        for command in commands:
+            try:
+                subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                return
+            except OSError:
+                continue
 
     def _pid_file(self):
         return self.workspace / ".yoloutils-workstation.pid"
@@ -513,7 +577,11 @@ class Workstation:
     * { box-sizing: border-box; }
     body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #1f2933; background: #f5f7fa; }
     header { height: 48px; display: grid; grid-template-columns: minmax(160px, 1fr) auto minmax(160px, 1fr); align-items: center; gap: 16px; padding: 0 16px; border-bottom: 1px solid #d9e2ec; background: #fff; font-weight: 650; }
-    .header-title { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .header-title { min-width: 0; display: flex; align-items: center; gap: 8px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .brand-link { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: #1f2933; text-decoration: none; }
+    .brand-link:hover { color: #1d4ed8; }
+    .enterprise-link { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; height: 24px; padding: 0 8px; border: 1px solid #d9e2ec; border-radius: 6px; color: #334e68; background: #fff; font-size: 12px; line-height: 1; text-decoration: none; }
+    .enterprise-link:hover { background: #e6f0ff; color: #243b53; }
     .header-modes { display: flex; align-items: center; justify-content: center; gap: 8px; }
     .header-actions { min-width: 0; display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
     .header-button { width: auto; min-width: 62px; height: 30px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 0 9px; border: 1px solid #d9e2ec; border-radius: 6px; background: #fff; color: #334e68; font-size: 12px; line-height: 1; white-space: nowrap; }
@@ -582,6 +650,7 @@ class Workstation:
     .zoom-reset-hint { margin-left: 8px; color: #7b8794; font-size: 11px; font-weight: 650; }
     #canvas { margin: auto; max-width: none; max-height: none; background: #fff; box-shadow: 0 1px 8px rgba(31, 41, 51, .18); }
     #canvas.annotating { cursor: crosshair; }
+    #canvas.panning { cursor: grabbing; }
     .empty { color: #7b8794; padding: 16px; }
     .label-source { margin: 8px 0 4px; color: #52606d; font-size: 12px; font-weight: 700; overflow-wrap: anywhere; }
     .label-row { width: 100%; display: flex; align-items: center; gap: 8px; padding: 6px 4px; font-size: 13px; }
@@ -625,11 +694,21 @@ class Workstation:
     .stat strong { color: #1f2933; font-weight: 700; }
     .stat.warn strong { color: #b45309; }
     .stat.bad strong { color: #be123c; }
+    .shortcut-popover { position: fixed; top: 56px; right: 16px; z-index: 20; width: 300px; padding: 12px; border: 1px solid #d9e2ec; border-radius: 8px; background: #fff; box-shadow: 0 12px 28px rgba(31, 41, 51, .18); color: #243b53; }
+    .shortcut-popover[hidden] { display: none; }
+    .shortcut-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; font-size: 13px; font-weight: 700; }
+    .shortcut-title button { width: 24px; height: 24px; padding: 0; display: inline-flex; align-items: center; justify-content: center; color: #52606d; }
+    .shortcut-list { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 7px 12px; font-size: 12px; line-height: 1.35; }
+    .shortcut-key { color: #1d4ed8; font-weight: 750; white-space: nowrap; }
+    .shortcut-desc { color: #52606d; }
   </style>
 </head>
 <body>
   <header>
-    <div class="header-title">Yolo Workstation</div>
+    <div class="header-title">
+      <a class="brand-link" href="https://www.netkiller.cn" target="_blank" rel="noopener noreferrer">Yolo Workstation</a>
+      <a class="enterprise-link" href="https://saas.netkiller.cn" target="_blank" rel="noopener noreferrer">企业版</a>
+    </div>
     <div class="header-modes">
       <button id="annotateModeButton" class="header-button active" title="当前窗口：标注"><span class="header-icon">▧</span><span>标注</span></button>
       <button id="datasetButton" class="header-button" title="数据集"><span class="header-icon">▦</span><span>数据集</span></button>
@@ -641,8 +720,23 @@ class Workstation:
       <button id="shareButton" class="header-button" title="分享当前页面或当前位置"><span class="header-icon">⇪</span><span>分享</span></button>
       <button id="downloadImage" class="header-button" title="下载当前图片"><span class="header-icon">⇩</span><span>下载</span></button>
       <button id="queryButton" class="header-button" title="查询目录或当前文件列表"><span class="header-icon">⌕</span><span>查询</span></button>
+      <button id="shortcutButton" class="header-button" title="查看快捷键"><span class="header-icon">⌘</span><span>快捷键</span></button>
     </div>
   </header>
+  <div id="shortcutPopover" class="shortcut-popover" hidden>
+    <div class="shortcut-title"><span>快捷键</span><button id="closeShortcuts" type="button" title="关闭">×</button></div>
+    <div class="shortcut-list">
+      <span class="shortcut-key">↑ / ↓</span><span class="shortcut-desc">在目录树中切换目录</span>
+      <span class="shortcut-key">← / →</span><span class="shortcut-desc">切换上一张 / 下一张图片</span>
+      <span class="shortcut-key">⌘M</span><span class="shortcut-desc">切换 box 半透明遮罩</span>
+      <span class="shortcut-key">⌘S</span><span class="shortcut-desc">保存当前标注</span>
+      <span class="shortcut-key">⌘D</span><span class="shortcut-desc">删除当前标注</span>
+      <span class="shortcut-key">⌘R</span><span class="shortcut-desc">重置当前操作</span>
+      <span class="shortcut-key">ESC</span><span class="shortcut-desc">还原图片缩放 / 关闭快捷键窗口</span>
+      <span class="shortcut-key">滚轮</span><span class="shortcut-desc">快速放大或缩小图片</span>
+      <span class="shortcut-key">双击图像标题</span><span class="shortcut-desc">隐藏或显示左右栏</span>
+    </div>
+  </div>
   <main id="appMain">
     <div id="leftPanel" class="left-panel">
       <aside id="treePane" class="left-pane tree-pane">
@@ -673,6 +767,7 @@ class Workstation:
         <h2 id="viewerTitle"><span class="pane-title-icon">▧</span>图像</h2>
         <div id="zoomIndicator" class="viewer-zoom">100%</div>
         <div class="viewer-tools">
+          <button id="maskAnnotation" class="tool-button" title="切换 box 遮罩"><span class="header-icon">◧</span><span>遮罩</span><span class="shortcut-hint">⌘M</span></button>
           <button id="deleteAnnotation" class="tool-button" title="删除当前标注"><span class="header-icon">×</span><span>删除</span><span class="shortcut-hint">⌘D</span></button>
           <button id="resetAnnotation" class="tool-button" title="重新读取标注"><span class="header-icon">↺</span><span>重置</span><span class="shortcut-hint">⌘R</span></button>
           <button id="saveAnnotation" class="tool-button" title="保存当前标注"><span class="header-icon">✓</span><span>保存</span><span class="shortcut-hint">⌘S</span></button>
@@ -737,6 +832,7 @@ class Workstation:
     const showRight = document.getElementById("showRight");
     const autoAnnotate = document.getElementById("autoAnnotate");
     const editModeToggle = document.getElementById("editModeToggle");
+    const maskAnnotation = document.getElementById("maskAnnotation");
     const deleteAnnotation = document.getElementById("deleteAnnotation");
     const resetAnnotation = document.getElementById("resetAnnotation");
     const saveAnnotation = document.getElementById("saveAnnotation");
@@ -745,6 +841,9 @@ class Workstation:
     const shareButton = document.getElementById("shareButton");
     const downloadImage = document.getElementById("downloadImage");
     const queryButton = document.getElementById("queryButton");
+    const shortcutButton = document.getElementById("shortcutButton");
+    const shortcutPopover = document.getElementById("shortcutPopover");
+    const closeShortcuts = document.getElementById("closeShortcuts");
     const annotateModeButton = document.getElementById("annotateModeButton");
     const datasetButton = document.getElementById("datasetButton");
     const trainButton = document.getElementById("trainButton");
@@ -763,9 +862,13 @@ class Workstation:
     let savedBoxes = [];
     let draftBox = null;
     let dragStart = null;
+    let selectedBoxIndex = -1;
+    let boxHitAreas = [];
+    let canvasInteraction = null;
     let currentFiles = [];
     let fileSortDirection = "asc";
     let annotateMode = false;
+    let maskEnabled = false;
     let boxesDirty = false;
     let classLabels = [];
     let selectedClassId = 0;
@@ -966,6 +1069,17 @@ class Workstation:
         .find(button => button.dataset.path === path);
     }
 
+    async function selectAdjacentImage(direction) {
+      const files = sortedCurrentFiles();
+      if (!files.length) return;
+      const currentIndex = files.findIndex(file => file.path === currentPath);
+      const index = currentIndex < 0
+        ? 0
+        : (currentIndex + direction + files.length) % files.length;
+      const path = files[index].path;
+      await selectImage(path, fileRow(path));
+    }
+
     function nextAnnotationFilePath(savedPath) {
       const files = sortedCurrentFiles().filter(file => file.path !== savedPath);
       if (!files.length) return "";
@@ -982,6 +1096,8 @@ class Workstation:
         savedBoxes = [];
         draftBox = null;
         dragStart = null;
+        selectedBoxIndex = -1;
+        canvasInteraction = null;
         setBoxesDirty(false);
         resetImageZoom();
         viewerTitle.innerHTML = '<span class="pane-title-icon">▧</span>图像';
@@ -1006,6 +1122,8 @@ class Workstation:
       savedBoxes = cloneBoxes(annotation.boxes);
       draftBox = null;
       dragStart = null;
+      selectedBoxIndex = -1;
+      canvasInteraction = null;
       setBoxesDirty(false);
       loadExif(path);
       const image = new Image();
@@ -1026,6 +1144,7 @@ class Workstation:
       if (!currentImage) return;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(currentImage, 0, 0);
+      boxHitAreas = [];
       drawBoxes(currentBoxes, currentImage.naturalWidth, currentImage.naturalHeight);
       if (draftBox) drawBoxes([draftBox], currentImage.naturalWidth, currentImage.naturalHeight, true);
     }
@@ -1143,26 +1262,124 @@ class Workstation:
       });
     }
 
+    function boxEdges(box) {
+      return {
+        left: box.cx - box.width / 2,
+        right: box.cx + box.width / 2,
+        top: box.cy - box.height / 2,
+        bottom: box.cy + box.height / 2,
+      };
+    }
+
+    function normalizeBoxEdges(edges, template) {
+      const left = Math.min(Math.max(edges.left, 0), 1);
+      const right = Math.min(Math.max(edges.right, 0), 1);
+      const top = Math.min(Math.max(edges.top, 0), 1);
+      const bottom = Math.min(Math.max(edges.bottom, 0), 1);
+      return {
+        ...template,
+        cx: (left + right) / 2,
+        cy: (top + bottom) / 2,
+        width: Math.max(0.003, right - left),
+        height: Math.max(0.003, bottom - top),
+      };
+    }
+
+    function drawSelectedAnchors(box, imageWidth, imageHeight, color) {
+      const edges = boxEdges(box);
+      const points = [
+        [edges.left, edges.top],
+        [box.cx, edges.top],
+        [edges.right, edges.top],
+        [edges.right, box.cy],
+        [edges.right, edges.bottom],
+        [box.cx, edges.bottom],
+        [edges.left, edges.bottom],
+        [edges.left, box.cy],
+      ];
+      const size = Math.max(7, Math.round(Math.min(imageWidth, imageHeight) / 120));
+      ctx.save();
+      ctx.fillStyle = "#fff";
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      for (const [x, y] of points) {
+        ctx.fillRect(x * imageWidth - size / 2, y * imageHeight - size / 2, size, size);
+        ctx.strokeRect(x * imageWidth - size / 2, y * imageHeight - size / 2, size, size);
+      }
+      ctx.restore();
+    }
+
+    function anchorHitAreas(box, imageWidth, imageHeight) {
+      const edges = boxEdges(box);
+      const size = Math.max(10, Math.round(Math.min(imageWidth, imageHeight) / 95));
+      const halfX = size / imageWidth / 2;
+      const halfY = size / imageHeight / 2;
+      return [
+        ["nw", edges.left, edges.top],
+        ["n", box.cx, edges.top],
+        ["ne", edges.right, edges.top],
+        ["e", edges.right, box.cy],
+        ["se", edges.right, edges.bottom],
+        ["s", box.cx, edges.bottom],
+        ["sw", edges.left, edges.bottom],
+        ["w", edges.left, box.cy],
+      ].map(([name, x, y]) => ({
+        name,
+        left: x - halfX,
+        right: x + halfX,
+        top: y - halfY,
+        bottom: y + halfY,
+      }));
+    }
+
     function drawBoxes(boxes, imageWidth, imageHeight, draft = false) {
       ctx.lineWidth = Math.max(2, Math.round(Math.min(imageWidth, imageHeight) / 360));
       ctx.font = `${Math.max(14, Math.round(imageWidth / 80))}px sans-serif`;
-      for (const box of boxes) {
+      boxes.forEach((box, index) => {
         const color = colors[Math.abs(box.class_id) % colors.length];
         const x = (box.cx - box.width / 2) * imageWidth;
         const y = (box.cy - box.height / 2) * imageHeight;
         const width = box.width * imageWidth;
         const height = box.height * imageHeight;
         ctx.strokeStyle = color;
+        if (maskEnabled) {
+          ctx.save();
+          ctx.globalAlpha = draft ? 0.18 : 0.26;
+          ctx.fillStyle = color;
+          ctx.fillRect(x, y, width, height);
+          ctx.restore();
+        }
         if (draft) ctx.setLineDash([8, 6]);
         ctx.strokeRect(x, y, width, height);
         ctx.setLineDash([]);
         const text = box.label;
         const metrics = ctx.measureText(text);
+        const labelTop = Math.max(0, y - 22);
+        const labelWidth = metrics.width + 10;
         ctx.fillStyle = color;
-        ctx.fillRect(x, Math.max(0, y - 22), metrics.width + 10, 22);
+        ctx.fillRect(x, labelTop, labelWidth, 22);
         ctx.fillStyle = "#fff";
         ctx.fillText(text, x + 5, Math.max(16, y - 6));
-      }
+        if (!draft) {
+          boxHitAreas.push({
+            index,
+            box: {
+              left: x / imageWidth,
+              top: y / imageHeight,
+              right: (x + width) / imageWidth,
+              bottom: (y + height) / imageHeight,
+            },
+            label: {
+              left: x / imageWidth,
+              top: labelTop / imageHeight,
+              right: (x + labelWidth) / imageWidth,
+              bottom: (labelTop + 22) / imageHeight,
+            },
+            anchors: anchorHitAreas(box, imageWidth, imageHeight),
+          });
+          if (index === selectedBoxIndex) drawSelectedAnchors(box, imageWidth, imageHeight, color);
+        }
+      });
     }
 
     function cloneBoxes(boxes) {
@@ -1341,8 +1558,31 @@ class Workstation:
       shareButton.addEventListener("click", shareCurrentLocation);
       downloadImage.addEventListener("click", downloadCurrentImage);
       queryButton.addEventListener("click", queryLocation);
+      shortcutButton.addEventListener("click", () => {
+        shortcutPopover.hidden = !shortcutPopover.hidden;
+      });
+      closeShortcuts.addEventListener("click", () => {
+        shortcutPopover.hidden = true;
+      });
       datasetButton.addEventListener("click", () => alert("数据集功能入口已预留"));
       trainButton.addEventListener("click", () => alert("训练功能入口已预留"));
+    }
+
+    function visibleTreeButtons() {
+      return Array.from(document.querySelectorAll("#tree .tree-select"))
+        .filter(button => button.offsetParent !== null);
+    }
+
+    async function selectAdjacentTree(direction) {
+      const buttons = visibleTreeButtons();
+      if (!buttons.length) return;
+      const currentIndex = buttons.findIndex(button => button.dataset.path === currentDir);
+      const index = currentIndex < 0
+        ? 0
+        : Math.min(Math.max(currentIndex + direction, 0), buttons.length - 1);
+      const button = buttons[index];
+      await selectDir(button.dataset.path || "", button);
+      button.scrollIntoView({block: "nearest"});
     }
 
     function downloadCurrentImage() {
@@ -1430,8 +1670,33 @@ class Workstation:
 
     function initKeyboardShortcuts() {
       window.addEventListener("keydown", event => {
-        if (event.key === "Escape" && currentImage) {
-          resetImageZoom();
+        if (event.target instanceof Element && event.target.closest("input, textarea, select")) return;
+        if (event.key === "Escape") {
+          if (!shortcutPopover.hidden) {
+            shortcutPopover.hidden = true;
+          } else if (currentImage) {
+            resetImageZoom();
+          }
+          return;
+        }
+        if (!event.metaKey && !event.ctrlKey && event.key === "ArrowUp") {
+          event.preventDefault();
+          selectAdjacentTree(-1);
+          return;
+        }
+        if (!event.metaKey && !event.ctrlKey && event.key === "ArrowDown") {
+          event.preventDefault();
+          selectAdjacentTree(1);
+          return;
+        }
+        if (!event.metaKey && !event.ctrlKey && event.key === "ArrowLeft") {
+          event.preventDefault();
+          selectAdjacentImage(-1);
+          return;
+        }
+        if (!event.metaKey && !event.ctrlKey && event.key === "ArrowRight") {
+          event.preventDefault();
+          selectAdjacentImage(1);
           return;
         }
         if (!(event.metaKey || event.ctrlKey)) return;
@@ -1439,6 +1704,9 @@ class Workstation:
         if (key === "d") {
           event.preventDefault();
           if (!deleteAnnotation.disabled) deleteAnnotation.click();
+        } else if (key === "m") {
+          event.preventDefault();
+          maskAnnotation.click();
         } else if (key === "r") {
           event.preventDefault();
           if (!resetAnnotation.disabled) resetAnnotation.click();
@@ -1455,6 +1723,46 @@ class Workstation:
         x: Math.min(Math.max((event.clientX - rect.left) / rect.width, 0), 1),
         y: Math.min(Math.max((event.clientY - rect.top) / rect.height, 0), 1),
       };
+    }
+
+    function rectContains(rect, point) {
+      return point.x >= rect.left && point.x <= rect.right && point.y >= rect.top && point.y <= rect.bottom;
+    }
+
+    function hitTestBox(point) {
+      for (let areaIndex = boxHitAreas.length - 1; areaIndex >= 0; areaIndex -= 1) {
+        const area = boxHitAreas[areaIndex];
+        for (const anchor of area.anchors) {
+          if (rectContains(anchor, point)) return {type: "anchor", index: area.index, anchor: anchor.name};
+        }
+        if (rectContains(area.label, point)) return {type: "label", index: area.index};
+        if (rectContains(area.box, point)) return {type: "box", index: area.index};
+      }
+      return null;
+    }
+
+    function moveBox(box, dx, dy) {
+      const halfWidth = box.width / 2;
+      const halfHeight = box.height / 2;
+      return {
+        ...box,
+        cx: Math.min(Math.max(box.cx + dx, halfWidth), 1 - halfWidth),
+        cy: Math.min(Math.max(box.cy + dy, halfHeight), 1 - halfHeight),
+      };
+    }
+
+    function resizeBox(box, anchor, point) {
+      const edges = boxEdges(box);
+      const minSize = 0.003;
+      if (anchor.includes("w")) edges.left = Math.min(point.x, edges.right - minSize);
+      if (anchor.includes("e")) edges.right = Math.max(point.x, edges.left + minSize);
+      if (anchor.includes("n")) edges.top = Math.min(point.y, edges.bottom - minSize);
+      if (anchor.includes("s")) edges.bottom = Math.max(point.y, edges.top + minSize);
+      edges.left = Math.max(0, edges.left);
+      edges.right = Math.min(1, edges.right);
+      edges.top = Math.max(0, edges.top);
+      edges.bottom = Math.min(1, edges.bottom);
+      return normalizeBoxEdges(edges, box);
     }
 
     function boxFromPoints(start, end) {
@@ -1474,27 +1782,94 @@ class Workstation:
 
     function initCanvasAnnotation() {
       canvas.addEventListener("mousedown", event => {
-        if (!annotateMode || !currentImage || event.button !== 0) return;
-        dragStart = canvasPoint(event);
-        draftBox = null;
+        if (!currentImage || event.button !== 0) return;
+        const point = canvasPoint(event);
+        const hit = hitTestBox(point);
+        if (hit) {
+          selectedBoxIndex = hit.index;
+          draftBox = null;
+          dragStart = null;
+          if (hit.type === "anchor") {
+            canvasInteraction = {
+              type: "resize",
+              index: hit.index,
+              anchor: hit.anchor,
+              startBox: {...currentBoxes[hit.index]},
+            };
+          } else if (hit.type === "label") {
+            canvasInteraction = {
+              type: "move",
+              index: hit.index,
+              startPoint: point,
+              startBox: {...currentBoxes[hit.index]},
+            };
+          } else {
+            canvasInteraction = {type: "select"};
+          }
+          redrawImage();
+          event.preventDefault();
+          return;
+        }
+        selectedBoxIndex = -1;
+        if (annotateMode) {
+          dragStart = point;
+          draftBox = null;
+          canvasInteraction = {type: "create"};
+        } else {
+          const wrapper = canvas.parentElement;
+          canvasInteraction = {
+            type: "pan",
+            startClientX: event.clientX,
+            startClientY: event.clientY,
+            scrollLeft: wrapper.scrollLeft,
+            scrollTop: wrapper.scrollTop,
+          };
+          canvas.classList.add("panning");
+        }
+        redrawImage();
         event.preventDefault();
       });
       window.addEventListener("mousemove", event => {
-        if (!dragStart) return;
+        if (!canvasInteraction) return;
+        if (canvasInteraction.type === "pan") {
+          const wrapper = canvas.parentElement;
+          wrapper.scrollLeft = canvasInteraction.scrollLeft - (event.clientX - canvasInteraction.startClientX);
+          wrapper.scrollTop = canvasInteraction.scrollTop - (event.clientY - canvasInteraction.startClientY);
+          return;
+        }
         const point = canvasPoint(event);
-        draftBox = boxFromPoints(dragStart, point);
+        if (canvasInteraction.type === "create" && dragStart) {
+          draftBox = boxFromPoints(dragStart, point);
+        } else if (canvasInteraction.type === "move") {
+          const dx = point.x - canvasInteraction.startPoint.x;
+          const dy = point.y - canvasInteraction.startPoint.y;
+          currentBoxes[canvasInteraction.index] = moveBox(canvasInteraction.startBox, dx, dy);
+        } else if (canvasInteraction.type === "resize") {
+          currentBoxes[canvasInteraction.index] = resizeBox(
+            canvasInteraction.startBox,
+            canvasInteraction.anchor,
+            point,
+          );
+        }
         redrawImage();
       });
       window.addEventListener("mouseup", event => {
-        if (!dragStart) return;
-        const point = canvasPoint(event);
-        const box = boxFromPoints(dragStart, point);
-        dragStart = null;
-        draftBox = null;
-        if (box.width >= 0.003 && box.height >= 0.003) {
-          currentBoxes.push(box);
+        if (!canvasInteraction) return;
+        if (canvasInteraction.type === "create" && dragStart) {
+          const point = canvasPoint(event);
+          const box = boxFromPoints(dragStart, point);
+          if (box.width >= 0.003 && box.height >= 0.003) {
+            currentBoxes.push(box);
+            selectedBoxIndex = currentBoxes.length - 1;
+            setBoxesDirty(true);
+          }
+        } else if (canvasInteraction.type === "move" || canvasInteraction.type === "resize") {
           setBoxesDirty(true);
         }
+        canvasInteraction = null;
+        dragStart = null;
+        draftBox = null;
+        canvas.classList.remove("panning");
         redrawImage();
       });
     }
@@ -1503,9 +1878,15 @@ class Workstation:
       autoAnnotate.addEventListener("click", () => {
         autoAnnotate.classList.toggle("active");
       });
+      maskAnnotation.addEventListener("click", () => {
+        maskEnabled = !maskEnabled;
+        maskAnnotation.classList.toggle("active", maskEnabled);
+        redrawImage();
+      });
       deleteAnnotation.addEventListener("click", () => {
         if (!currentPath || !currentBoxes.length) return;
         currentBoxes = [];
+        selectedBoxIndex = -1;
         setBoxesDirty(true);
         redrawImage();
       });
@@ -1514,6 +1895,8 @@ class Workstation:
         currentBoxes = cloneBoxes(savedBoxes);
         draftBox = null;
         dragStart = null;
+        selectedBoxIndex = -1;
+        canvasInteraction = null;
         setBoxesDirty(false);
         redrawImage();
       });

@@ -292,6 +292,7 @@ class YoloUtils:
         self.workstation.add_argument('-s', "--dataset", type=str, default=None, help="数据集目录")
         self.workstation.add_argument('-r', "--run", type=str, default=None, help="训练目录")
         self.workstation.add_argument("-c", "--classes", type=str, default=None, help="classes.txt 文件")
+        self.workstation.add_argument("--open", action="store_true", default=False, help="启动服务后打开无地址栏应用窗口")
 
         self.parser = parser
 
@@ -438,7 +439,7 @@ class YoloUtils:
                 args = self.workstation.parse_args(argv[1:])
                 run = Workstation(args.host, args.port, args.daemon)
                 if args.workspace:
-                    run.main(args.workspace, args.dataset, args.run, args.classes)
+                    run.main(args.workspace, args.dataset, args.run, args.classes, args.open)
                 else:
                     self.workstation.print_help()
             except SystemExit as e:
