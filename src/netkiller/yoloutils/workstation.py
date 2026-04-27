@@ -27,17 +27,29 @@ except ImportError:
 
 
 class Workstation:
-    def __init__(self):
+    def __init__(
+        self,
+        host: str = "127.0.0.1",
+        port: int = 8000,
+        daemon: bool = False,
+    ):
+        self.host = host
+        self.port = port
+        self.daemon = daemon
         self.workspace = None
+        self.dataset = None
+        self.run = None
+        self.requested_classes_file = None
         self.classes_file = None
+        self.class_groups = []
         self.classes = []
 
     def main(
         self,
         workspace: str,
-        host: str = "127.0.0.1",
-        port: int = 8000,
-        daemon: bool = False,
+        dataset: str = None,
+        run: str = None,
+        classes_file: str = None,
     ):
         if FastAPI is None or uvicorn is None:
             print("缺少依赖: fastapi/uvicorn，请先安装: pip install fastapi uvicorn")
@@ -47,22 +59,34 @@ class Workstation:
         if not self.workspace.is_dir():
             print(f"workspace 目录不存在: {self.workspace}")
             return
+        self.dataset = Path(dataset).expanduser().resolve() if dataset else None
+        self.run = Path(run).expanduser().resolve() if run else None
+        self.requested_classes_file = classes_file
 
-        if daemon:
-            self._start_daemon(host, port)
+        if self.daemon:
+            self._start_daemon()
             return
 
-        self.classes_file = self._find_classes_file()
-        self.classes = self._load_classes()
+        try:
+            self.class_groups = self._load_class_groups()
+        except FileNotFoundError as error:
+            print(error)
+            return
+        self.classes_file = self.class_groups[0]["path"] if self.class_groups else None
+        self.classes = self.class_groups[0]["classes"] if self.class_groups else []
         app = self._create_app()
 
-        print(f"Yolo Workstation: http://{host}:{port}")
+        print(f"Yolo Workstation: http://{self.host}:{self.port}")
         print(f"Workspace: {self.workspace}")
+        if self.dataset:
+            print(f"Dataset: {self.dataset}")
+        if self.run:
+            print(f"Run: {self.run}")
         if self.classes_file:
             print(f"Classes: {self.classes_file}")
         else:
             print("Classes: 未找到 classes.txt")
-        uvicorn.run(app, host=host, port=port)
+        uvicorn.run(app, host=self.host, port=self.port)
 
     def _pid_file(self):
         return self.workspace / ".yoloutils-workstation.pid"
@@ -101,11 +125,11 @@ class Workstation:
             return [sys.executable] + args
         return args
 
-    def _start_daemon(self, host: str, port: int):
+    def _start_daemon(self):
         pid = self._existing_pid()
         if pid is not None:
             print(f"Yolo Workstation 已在后台运行: pid={pid}")
-            print(f"Yolo Workstation: http://{host}:{port}")
+            print(f"Yolo Workstation: http://{self.host}:{self.port}")
             print(f"PID: {self._pid_file()}")
             print(f"LOG: {self._log_file()}")
             return
@@ -123,7 +147,7 @@ class Workstation:
             )
         self._pid_file().write_text(str(process.pid), encoding="utf-8")
         print(f"Yolo Workstation 已后台启动: pid={process.pid}")
-        print(f"Yolo Workstation: http://{host}:{port}")
+        print(f"Yolo Workstation: http://{self.host}:{self.port}")
         print(f"PID: {self._pid_file()}")
         print(f"LOG: {log_file}")
 
@@ -137,15 +161,53 @@ class Workstation:
     def _relative(self, path: Path):
         return path.relative_to(self.workspace).as_posix()
 
-    def _find_classes_file(self):
-        files = sorted(self.workspace.rglob("classes.txt"))
-        return files[0] if files else None
+    def _is_inside_workspace(self, path: Path):
+        try:
+            path.relative_to(self.workspace)
+            return True
+        except ValueError:
+            return False
 
-    def _load_classes(self):
-        if not self.classes_file:
-            return []
-        with open(self.classes_file, "r", encoding="utf-8") as file:
+    def _resolve_classes_file(self, classes_file: str):
+        path = Path(classes_file).expanduser()
+        if not path.is_absolute():
+            path = self.workspace / path
+        path = path.resolve()
+        if not path.is_file():
+            raise FileNotFoundError(f"classes.txt 文件不存在: {path}")
+        return path
+
+    def _find_classes_files(self):
+        if self.requested_classes_file:
+            return [self._resolve_classes_file(self.requested_classes_file)]
+
+        files = sorted(self.workspace.rglob("classes.txt"), key=lambda item: self._relative(item).lower())
+        root_classes = self.workspace / "classes.txt"
+        if root_classes in files:
+            files.remove(root_classes)
+            files.insert(0, root_classes)
+        return files
+
+    def _load_classes_file(self, classes_file: Path):
+        with open(classes_file, "r", encoding="utf-8") as file:
             return [line.strip() for line in file if line.strip()]
+
+    def _load_class_groups(self):
+        groups = []
+        for classes_file in self._find_classes_files():
+            groups.append(
+                {
+                    "path": classes_file,
+                    "classes_file": self._relative(classes_file)
+                    if self._is_inside_workspace(classes_file)
+                    else str(classes_file),
+                    "classes": self._load_classes_file(classes_file),
+                }
+            )
+        return groups
+
+    def _max_class_count(self):
+        return max([len(group["classes"]) for group in self.class_groups] + [len(self.classes), 0])
 
     def _is_image(self, path: Path):
         return path.is_file() and path.name.lower().endswith(Common.image_exts)
@@ -162,9 +224,21 @@ class Workstation:
             for child in sorted(path.iterdir(), key=lambda item: item.name.lower())
             if child.is_dir()
         ]
+        images = [item for item in path.iterdir() if self._is_image(item)]
+        direct_complete = all(
+            not self._is_damaged_image(image)
+            and self._validate_label_file(image.with_suffix(".txt")) == "valid"
+            for image in images
+        )
+        has_images = bool(images) or any(child["has_images"] for child in children)
+        complete = has_images and direct_complete and all(
+            child["complete"] for child in children if child["has_images"]
+        )
         return {
             "name": path.name if path != self.workspace else self.workspace.name,
             "path": "" if path == self.workspace else self._relative(path),
+            "has_images": has_images,
+            "complete": complete,
             "children": children,
         }
 
@@ -180,16 +254,24 @@ class Workstation:
             label_file = item.with_suffix(".txt")
             label_status = self._validate_label_file(label_file)
             damaged = self._is_damaged_image(item)
+            label_count = self._label_count(label_file) if label_status == "valid" else 0
             files.append(
                 {
                     "name": item.name,
                     "path": self._relative(item),
                     "label": self._relative(label_file) if label_file.exists() else None,
                     "label_status": label_status,
+                    "label_count": label_count,
                     "damaged": damaged,
                 }
             )
         return files
+
+    def _label_count(self, label_file: Path):
+        try:
+            return len([line for line in label_file.read_text(encoding="utf-8").splitlines() if line.strip()])
+        except (OSError, UnicodeDecodeError):
+            return 0
 
     def _validate_label_file(self, label_file: Path):
         if not label_file.exists():
@@ -213,7 +295,7 @@ class Workstation:
                 [float(value) for value in parts[1:]]
             except ValueError:
                 return "invalid"
-            if class_id < 0 or class_id >= len(self.classes):
+            if class_id < 0 or class_id >= self._max_class_count():
                 return "invalid"
         return "valid"
 
@@ -261,6 +343,7 @@ class Workstation:
         )
         result["txt_invalid_total"] = result["txt_empty"] + result["txt_invalid"]
         result["classes"] = len(self.classes)
+        result["classes_files"] = len(self.class_groups)
         return result
 
     def _read_annotation(self, image_path: str):
@@ -317,7 +400,7 @@ class Workstation:
                 height = float(box["height"])
             except (KeyError, TypeError, ValueError):
                 raise HTTPException(status_code=400, detail="invalid box")
-            if class_id < 0 or (self.classes and class_id >= len(self.classes)):
+            if class_id < 0 or (self._max_class_count() and class_id >= self._max_class_count()):
                 raise HTTPException(status_code=400, detail="invalid class_id")
             lines.append(f"{class_id} {cx:.6f} {cy:.6f} {width:.6f} {height:.6f}")
 
@@ -382,8 +465,15 @@ class Workstation:
         @app.get("/api/classes")
         def classes():
             return {
-                "classes_file": self._relative(self.classes_file) if self.classes_file else None,
+                "classes_file": self.class_groups[0]["classes_file"] if self.class_groups else None,
                 "classes": self.classes,
+                "class_groups": [
+                    {
+                        "classes_file": group["classes_file"],
+                        "classes": group["classes"],
+                    }
+                    for group in self.class_groups
+                ],
             }
 
         @app.get("/api/statistics")
@@ -422,36 +512,59 @@ class Workstation:
   <style>
     * { box-sizing: border-box; }
     body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #1f2933; background: #f5f7fa; }
-    header { height: 48px; display: flex; align-items: center; padding: 0 16px; border-bottom: 1px solid #d9e2ec; background: #fff; font-weight: 650; }
-    main { height: calc(100vh - 88px); display: grid; grid-template-columns: minmax(360px, 520px) 8px minmax(420px, 1fr) 220px; overflow: hidden; }
-    main.tree-hidden { grid-template-columns: 280px 8px minmax(420px, 1fr) 220px; }
-    main.right-hidden { grid-template-columns: minmax(360px, 520px) 8px minmax(420px, 1fr) 0; }
-    main.tree-hidden.right-hidden { grid-template-columns: 280px 8px minmax(420px, 1fr) 0; }
+    header { height: 48px; display: grid; grid-template-columns: minmax(160px, 1fr) auto minmax(160px, 1fr); align-items: center; gap: 16px; padding: 0 16px; border-bottom: 1px solid #d9e2ec; background: #fff; font-weight: 650; }
+    .header-title { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .header-modes { display: flex; align-items: center; justify-content: center; gap: 8px; }
+    .header-actions { min-width: 0; display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+    .header-button { width: auto; min-width: 62px; height: 30px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 0 9px; border: 1px solid #d9e2ec; border-radius: 6px; background: #fff; color: #334e68; font-size: 12px; line-height: 1; white-space: nowrap; }
+    .header-button:hover { background: #e6f0ff; color: #243b53; }
+    .header-button.active { border-color: #2563eb; background: #dbeafe; color: #1d4ed8; }
+    .header-icon { font-size: 15px; line-height: 1; }
+    button:disabled { cursor: not-allowed; opacity: .42; }
+    button:disabled:hover { background: transparent; color: inherit; }
+    main { height: calc(100vh - 88px); display: grid; grid-template-columns: minmax(360px, 520px) 1px minmax(420px, 1fr) 220px; overflow: hidden; }
+    main.tree-hidden { grid-template-columns: 280px 1px minmax(420px, 1fr) 220px; }
+    main.right-hidden { grid-template-columns: minmax(360px, 520px) 1px minmax(420px, 1fr) 0; }
+    main.tree-hidden.right-hidden { grid-template-columns: 280px 1px minmax(420px, 1fr) 0; }
+    main.viewer-focus { display: flex; }
+    main.viewer-focus .left-panel, main.viewer-focus .main-splitter, main.viewer-focus .right-panel { display: none; }
+    main.viewer-focus section.viewer { flex: 1 1 auto; width: 100%; border-right: 0; }
     aside, section { min-width: 0; overflow: auto; border-right: 1px solid #d9e2ec; background: #fff; }
     section.viewer { background: #f5f7fa; display: flex; flex-direction: column; }
     h2 { margin: 0; padding: 12px 14px; font-size: 13px; border-bottom: 1px solid #e4e7eb; background: #f8fafc; }
-    .pane-header { flex: 0 0 42px; height: 42px; min-height: 42px; max-height: 42px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 10px 0 14px; overflow: hidden; border-bottom: 1px solid #e4e7eb; background: #f8fafc; }
+    .pane-header { flex: 0 0 34px; height: 34px; min-height: 34px; max-height: 34px; display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 0 8px 0 12px; overflow: hidden; border-bottom: 1px solid #e4e7eb; background: #f8fafc; }
     .pane-header h2 { flex: 1 1 auto; min-width: 0; padding: 0; overflow: hidden; border: 0; background: transparent; line-height: 1; white-space: nowrap; text-overflow: ellipsis; }
-    .icon-button { flex: 0 0 28px; width: 28px; min-width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; padding: 0; text-align: center; border-radius: 6px; font-size: 16px; color: #52606d; }
+    .viewer-header { position: relative; }
+    .viewer-header h2 { padding-right: 76px; }
+    .pane-title-icon { display: inline-block; width: 16px; margin-right: 6px; color: #52606d; font-size: 15px; line-height: 1; font-weight: 500; text-align: center; }
+    .icon-button { flex: 0 0 24px; width: 24px; min-width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; padding: 0; text-align: center; border-radius: 5px; font-size: 14px; color: #52606d; }
     .icon-button:hover { background: #e6f0ff; color: #243b53; }
     .viewer-tools { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; }
-    .tool-button { width: auto; min-width: 34px; height: 28px; padding: 0 8px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid #d9e2ec; border-radius: 6px; background: #fff; color: #334e68; font-size: 12px; line-height: 1; white-space: nowrap; }
+    .tool-button { width: auto; min-width: 34px; height: 28px; padding: 0 8px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid #d9e2ec; border-radius: 6px; background: #fff; color: #334e68; font-size: 12px; line-height: 1; white-space: nowrap; }
     .tool-button:hover { background: #e6f0ff; color: #243b53; }
     .tool-button.active { border-color: #2563eb; background: #dbeafe; color: #1d4ed8; }
-    .left-panel { display: grid; grid-template-columns: minmax(120px, 46%) 8px minmax(160px, 1fr); overflow: hidden; border-right: 1px solid #d9e2ec; background: #fff; }
+    .shortcut-hint { margin-left: 2px; color: #7b8794; font-size: 11px; font-weight: 650; }
+    .left-panel { display: grid; grid-template-columns: minmax(120px, 46%) 1px minmax(160px, 1fr); overflow: hidden; border-right: 1px solid #d9e2ec; background: #fff; }
     .left-panel.tree-hidden { display: block; }
     .left-panel.tree-hidden .files-pane { height: 100%; }
     .left-pane { min-width: 0; overflow: hidden; background: #fff; display: flex; flex-direction: column; }
     .left-panel.tree-hidden .tree-pane, .left-panel.tree-hidden .vertical-splitter { display: none; }
-    .vertical-splitter { cursor: col-resize; background: #e4e7eb; border-left: 1px solid #d9e2ec; border-right: 1px solid #d9e2ec; }
+    .vertical-splitter { cursor: col-resize; background: #d9e2ec; }
     .vertical-splitter:hover, .vertical-splitter.dragging { background: #bcccdc; }
-    .main-splitter { cursor: col-resize; background: #e4e7eb; border-left: 1px solid #d9e2ec; border-right: 1px solid #d9e2ec; }
+    .main-splitter { cursor: col-resize; background: #d9e2ec; }
     .main-splitter:hover, .main-splitter.dragging { background: #bcccdc; }
     .tree, .files, .labels, .exif { padding: 8px; }
     .tree, .files { flex: 1 1 auto; min-height: 0; overflow: auto; }
     button { width: 100%; border: 0; background: transparent; text-align: left; padding: 7px 8px; border-radius: 6px; cursor: pointer; color: #243b53; font: inherit; }
     button:hover, button.active { background: #e6f0ff; }
-    .tree button { padding-left: calc(8px + var(--level) * 14px); }
+    .tree-node { position: relative; }
+    .tree-row { display: flex; align-items: center; min-width: 0; }
+    .tree-children { margin-left: 14px; padding-left: 8px; border-left: 1px solid #d9e2ec; }
+    .tree-toggle { flex: 0 0 22px; width: 22px; min-width: 22px; height: 28px; display: inline-flex; align-items: center; justify-content: center; padding: 0; color: #7b8794; font-size: 13px; }
+    .tree-toggle-placeholder { flex: 0 0 22px; width: 22px; min-width: 22px; }
+    .tree-select { flex: 1 1 auto; display: flex; align-items: center; gap: 7px; min-width: 0; padding: 6px 8px; }
+    .tree-icon { flex: 0 0 auto; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 10px; line-height: 1; font-weight: 700; }
+    .tree-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .file-meta { display: block; margin-top: 2px; color: #7b8794; font-size: 12px; }
     .file-valid { color: #166534; }
     .file-valid .file-meta { color: #15803d; }
@@ -459,10 +572,20 @@ class Workstation:
     .file-invalid .file-meta { color: #dc2626; }
     .file-valid.active { background: #dcfce7; }
     .file-invalid.active { background: #fee2e2; }
-    .canvas-wrap { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 16px; overflow: auto; }
-    #canvas { max-width: 100%; max-height: 100%; background: #fff; box-shadow: 0 1px 8px rgba(31, 41, 51, .18); }
+    .files button { font-size: 12px; line-height: 1.25; }
+    .file-name { display: flex; align-items: center; gap: 6px; min-width: 0; }
+    .file-icon { flex: 0 0 auto; color: #52606d; font-size: 14px; line-height: 1; }
+    .file-name-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pane-tools { flex: 0 0 auto; display: flex; align-items: center; gap: 4px; }
+    .canvas-wrap { flex: 1; min-height: 0; display: flex; align-items: flex-start; justify-content: flex-start; padding: 16px; overflow: auto; }
+    .viewer-zoom { position: absolute; left: 50%; top: 50%; min-width: 64px; transform: translate(-50%, -50%); text-align: center; color: #52606d; font-size: 12px; font-weight: 700; line-height: 1; pointer-events: none; }
+    .zoom-reset-hint { margin-left: 8px; color: #7b8794; font-size: 11px; font-weight: 650; }
+    #canvas { margin: auto; max-width: none; max-height: none; background: #fff; box-shadow: 0 1px 8px rgba(31, 41, 51, .18); }
+    #canvas.annotating { cursor: crosshair; }
     .empty { color: #7b8794; padding: 16px; }
-    .label-row { display: flex; align-items: center; gap: 8px; padding: 6px 4px; font-size: 13px; }
+    .label-source { margin: 8px 0 4px; color: #52606d; font-size: 12px; font-weight: 700; overflow-wrap: anywhere; }
+    .label-row { width: 100%; display: flex; align-items: center; gap: 8px; padding: 6px 4px; font-size: 13px; }
+    .label-row.active { background: #dbeafe; color: #1d4ed8; }
     .swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
     .right-panel { display: flex; flex-direction: column; overflow: hidden; }
     main.right-hidden .right-panel { display: none; }
@@ -472,55 +595,88 @@ class Workstation:
     .labels { flex: 1 1 auto; min-height: 0; overflow: auto; }
     .histogram-pane { flex: 1 1 45%; min-height: 42px; overflow: hidden; display: flex; flex-direction: column; }
     .right-panel.histogram-collapsed .labels-pane { flex-grow: 0; }
-    .right-panel.histogram-collapsed .histogram-pane { flex: 0 0 42px; }
+    .right-panel.histogram-collapsed .histogram-pane { flex: 0 0 34px; }
     .right-panel.histogram-collapsed .histogram-splitter { display: none; }
     .right-panel.histogram-collapsed .histogram { display: none; }
     .right-pane.exif-pane { flex: 1 1 auto; }
     .right-panel.exif-collapsed .top-info-pane { flex: 1 1 auto; }
     .right-panel.exif-collapsed .splitter { display: none; }
-    .right-panel.exif-collapsed .exif-pane { flex: 0 0 42px; min-height: 42px; overflow: hidden; }
+    .right-panel.exif-collapsed .exif-pane { flex: 0 0 34px; min-height: 34px; overflow: hidden; }
     .right-panel.exif-collapsed .exif { display: none; }
     .histogram { flex: 1 1 auto; min-height: 0; padding: 8px; }
     #histogramCanvas { width: 100%; height: 100%; display: block; background: #fff; border: 1px solid #e4e7eb; border-radius: 4px; }
-    .splitter { flex: 0 0 8px; cursor: row-resize; background: #e4e7eb; border-top: 1px solid #d9e2ec; border-bottom: 1px solid #d9e2ec; }
+    .splitter { flex: 0 0 1px; cursor: row-resize; background: #d9e2ec; }
     .splitter:hover, .splitter.dragging { background: #bcccdc; }
-    .histogram-splitter { flex: 0 0 8px; cursor: row-resize; background: #edf2f7; border-top: 1px solid #d9e2ec; border-bottom: 1px solid #d9e2ec; }
+    .histogram-splitter { flex: 0 0 1px; cursor: row-resize; background: #d9e2ec; }
     .histogram-splitter:hover, .histogram-splitter.dragging { background: #bcccdc; }
     .kv-row { display: grid; grid-template-columns: minmax(76px, 38%) minmax(0, 1fr); gap: 8px; padding: 6px 4px; border-bottom: 1px solid #edf2f7; font-size: 12px; }
     .kv-key { color: #52606d; overflow-wrap: anywhere; }
     .kv-value { color: #1f2933; overflow-wrap: anywhere; }
     footer { height: 40px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 16px; border-top: 1px solid #d9e2ec; background: #fff; font-size: 13px; color: #52606d; }
-    .stats-left { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .stats-left { min-width: 0; display: flex; align-items: center; overflow: hidden; white-space: nowrap; }
+    .breadcrumb { min-width: 0; display: flex; align-items: center; overflow: hidden; color: #52606d; }
+    .breadcrumb button { width: auto; min-width: 0; flex: 0 1 auto; padding: 3px 4px; border-radius: 4px; color: #1f2933; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .breadcrumb button:hover { background: #e6f0ff; }
+    .breadcrumb-home { flex: 0 0 auto; padding-right: 6px; color: #52606d; font-size: 17px; line-height: 1; }
+    .breadcrumb-separator { flex: 0 0 auto; color: #9aa5b1; padding: 0 2px; }
+    .breadcrumb-file { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #1f2933; padding-left: 4px; }
     .stats-right { flex: 0 0 auto; display: flex; align-items: center; justify-content: flex-end; gap: 18px; white-space: nowrap; }
+    .stat-icon { display: inline-block; margin-right: 4px; color: #52606d; font-size: 14px; line-height: 1; }
     .stat strong { color: #1f2933; font-weight: 700; }
     .stat.warn strong { color: #b45309; }
     .stat.bad strong { color: #be123c; }
   </style>
 </head>
 <body>
-  <header>Yolo Workstation</header>
+  <header>
+    <div class="header-title">Yolo Workstation</div>
+    <div class="header-modes">
+      <button id="annotateModeButton" class="header-button active" title="当前窗口：标注"><span class="header-icon">▧</span><span>标注</span></button>
+      <button id="datasetButton" class="header-button" title="数据集"><span class="header-icon">▦</span><span>数据集</span></button>
+      <button id="trainButton" class="header-button" title="训练"><span class="header-icon">▶</span><span>训练</span></button>
+    </div>
+    <div class="header-actions">
+      <button id="autoAnnotate" class="header-button" title="自动标注激活"><span class="header-icon">◎</span><span>自动</span></button>
+      <button id="editModeToggle" class="header-button" title="只读/打标切换"><span class="header-icon">◌</span><span>只读</span></button>
+      <button id="shareButton" class="header-button" title="分享当前页面或当前位置"><span class="header-icon">⇪</span><span>分享</span></button>
+      <button id="downloadImage" class="header-button" title="下载当前图片"><span class="header-icon">⇩</span><span>下载</span></button>
+      <button id="queryButton" class="header-button" title="查询目录或当前文件列表"><span class="header-icon">⌕</span><span>查询</span></button>
+    </div>
+  </header>
   <main id="appMain">
     <div id="leftPanel" class="left-panel">
       <aside id="treePane" class="left-pane tree-pane">
-        <div class="pane-header"><h2>目录</h2><button id="toggleTree" class="icon-button" title="隐藏目录栏">‹</button></div>
+        <div class="pane-header">
+          <h2><span class="pane-title-icon">▰</span>目录</h2>
+          <div class="pane-tools">
+            <button id="reloadTree" class="icon-button" title="重载目录">↻</button>
+            <button id="toggleTree" class="icon-button" title="隐藏目录栏">‹</button>
+          </div>
+        </div>
         <div id="tree" class="tree"></div>
       </aside>
       <div id="leftSplitter" class="vertical-splitter" title="拖动调整目录和文件列表比例"></div>
       <aside class="left-pane files-pane">
-        <div class="pane-header"><h2>文件</h2><button id="showTree" class="icon-button" title="显示目录栏">☰</button></div>
+        <div class="pane-header">
+          <h2><span class="pane-title-icon">▯</span>文件</h2>
+          <div class="pane-tools">
+            <button id="toggleFileSort" class="icon-button" title="未达标排在上面">↑</button>
+            <button id="showTree" class="icon-button" title="显示目录栏">☰</button>
+          </div>
+        </div>
         <div id="files" class="files"></div>
       </aside>
     </div>
     <div id="mainSplitter" class="main-splitter" title="拖动调整文件列表和图像区域比例"></div>
     <section class="viewer">
-      <div class="pane-header">
-        <h2 id="viewerTitle">图像</h2>
+      <div id="viewerHeader" class="pane-header viewer-header">
+        <h2 id="viewerTitle"><span class="pane-title-icon">▧</span>图像</h2>
+        <div id="zoomIndicator" class="viewer-zoom">100%</div>
         <div class="viewer-tools">
-          <button id="autoAnnotate" class="tool-button" title="自动标注激活">自动</button>
-          <button id="deleteAnnotation" class="tool-button" title="删除当前标注">删除</button>
-          <button id="resetAnnotation" class="tool-button" title="重新读取标注">重置</button>
-          <button id="saveAnnotation" class="tool-button" title="保存当前标注">保存</button>
-          <button id="showRight" class="icon-button" title="显示标签/EXIF 栏">☰</button>
+          <button id="deleteAnnotation" class="tool-button" title="删除当前标注"><span class="header-icon">×</span><span>删除</span><span class="shortcut-hint">⌘D</span></button>
+          <button id="resetAnnotation" class="tool-button" title="重新读取标注"><span class="header-icon">↺</span><span>重置</span><span class="shortcut-hint">⌘R</span></button>
+          <button id="saveAnnotation" class="tool-button" title="保存当前标注"><span class="header-icon">✓</span><span>保存</span><span class="shortcut-hint">⌘S</span></button>
+          <button id="showRight" class="icon-button" title="显示标签/信息栏">☰</button>
         </div>
       </div>
       <div class="canvas-wrap"><canvas id="canvas"></canvas><div id="empty" class="empty">请选择图片</div></div>
@@ -528,29 +684,31 @@ class Workstation:
     <aside id="rightPanel" class="right-panel">
       <div id="topInfoPane" class="right-pane top-info-pane">
         <div id="labelsPane" class="labels-pane">
-          <div class="pane-header"><h2>标签</h2><button id="hideRight" class="icon-button" title="隐藏标签/EXIF 栏">›</button></div>
+          <div class="pane-header"><h2><span class="pane-title-icon">⌑</span>标签</h2><button id="hideRight" class="icon-button" title="隐藏标签/信息栏">›</button></div>
           <div id="labels" class="labels"></div>
         </div>
         <div id="histogramSplitter" class="histogram-splitter" title="拖动调整标签和直方图比例"></div>
         <div id="histogramPane" class="histogram-pane">
-          <div class="pane-header"><h2>直方图</h2><button id="toggleHistogram" class="icon-button" title="折叠/展开直方图">⌄</button></div>
+          <div class="pane-header"><h2><span class="pane-title-icon">▥</span>直方图</h2><button id="toggleHistogram" class="icon-button" title="折叠/展开直方图">⌄</button></div>
           <div id="histogram" class="histogram"><canvas id="histogramCanvas"></canvas></div>
         </div>
       </div>
       <div id="splitter" class="splitter" title="拖动调整标签和 EXIF 面板比例"></div>
       <div id="exifPane" class="right-pane exif-pane">
-        <div class="pane-header"><h2>EXIF</h2><button id="toggleExif" class="icon-button" title="折叠/展开 EXIF">⌄</button></div>
+        <div class="pane-header"><h2><span class="pane-title-icon">※</span>信息</h2><button id="toggleExif" class="icon-button" title="折叠/展开信息">⌄</button></div>
         <div id="exif" class="exif"><div class="empty">请选择图片</div></div>
       </div>
     </aside>
   </main>
   <footer id="stats">
-    <div class="stats-left">位置：-</div>
+    <div class="stats-left">-</div>
     <div class="stats-right">
-      <span class="stat">图像 <strong>-</strong></span>
-      <span class="stat">.txt <strong>-</strong></span>
-      <span class="stat bad">损坏图像 <strong>-</strong></span>
-      <span class="stat bad">无效 .txt <strong>-</strong></span>
+      <span class="stat"><span class="stat-icon">▧</span>图像 <strong>-</strong></span>
+      <span class="stat"><span class="stat-icon">✓</span>已完成 <strong>-/-</strong></span>
+      <span class="stat"><span class="stat-icon">▯</span>.txt <strong>-</strong></span>
+      <span class="stat"><span class="stat-icon">⌑</span>classes.txt <strong>-</strong></span>
+      <span class="stat bad"><span class="stat-icon">✕</span>损坏图像 <strong>-</strong></span>
+      <span class="stat bad"><span class="stat-icon">!</span>无效 .txt <strong>-</strong></span>
     </div>
   </footer>
   <script>
@@ -562,7 +720,9 @@ class Workstation:
     const leftSplitter = document.getElementById("leftSplitter");
     const mainSplitter = document.getElementById("mainSplitter");
     const toggleTree = document.getElementById("toggleTree");
+    const reloadTree = document.getElementById("reloadTree");
     const showTree = document.getElementById("showTree");
+    const toggleFileSort = document.getElementById("toggleFileSort");
     const labelsEl = document.getElementById("labels");
     const exifEl = document.getElementById("exif");
     const topInfoPane = document.getElementById("topInfoPane");
@@ -576,20 +736,42 @@ class Workstation:
     const hideRight = document.getElementById("hideRight");
     const showRight = document.getElementById("showRight");
     const autoAnnotate = document.getElementById("autoAnnotate");
+    const editModeToggle = document.getElementById("editModeToggle");
     const deleteAnnotation = document.getElementById("deleteAnnotation");
     const resetAnnotation = document.getElementById("resetAnnotation");
     const saveAnnotation = document.getElementById("saveAnnotation");
     const toggleHistogram = document.getElementById("toggleHistogram");
     const toggleExif = document.getElementById("toggleExif");
+    const shareButton = document.getElementById("shareButton");
+    const downloadImage = document.getElementById("downloadImage");
+    const queryButton = document.getElementById("queryButton");
+    const annotateModeButton = document.getElementById("annotateModeButton");
+    const datasetButton = document.getElementById("datasetButton");
+    const trainButton = document.getElementById("trainButton");
     const statsEl = document.getElementById("stats");
     const canvas = document.getElementById("canvas");
     const ctx = canvas.getContext("2d");
     const empty = document.getElementById("empty");
     const viewerTitle = document.getElementById("viewerTitle");
+    const viewerHeader = document.getElementById("viewerHeader");
+    const zoomIndicator = document.getElementById("zoomIndicator");
     let currentDir = "";
     let currentPath = "";
     let currentImage = null;
+    let imageZoom = 1;
     let currentBoxes = [];
+    let savedBoxes = [];
+    let draftBox = null;
+    let dragStart = null;
+    let currentFiles = [];
+    let fileSortDirection = "asc";
+    let annotateMode = false;
+    let boxesDirty = false;
+    let classLabels = [];
+    let selectedClassId = 0;
+    let selectedClassLabel = "0";
+    const collapsedDirs = new Set();
+    let statisticsData = null;
     let histogramExpandedTopHeight = null;
 
     async function getJson(url) {
@@ -618,27 +800,134 @@ class Workstation:
       }[char]));
     }
 
-    function renderTree(node, level = 0) {
+    function hashColor(value) {
+      let hash = 0;
+      for (let index = 0; index < value.length; index += 1) {
+        hash = ((hash << 5) - hash + value.charCodeAt(index)) | 0;
+      }
+      return colors[Math.abs(hash) % colors.length];
+    }
+
+    function renderTree(node, parent = treeEl) {
+      const wrapper = document.createElement("div");
+      wrapper.className = "tree-node";
+      const row = document.createElement("div");
+      row.className = "tree-row";
+      const hasChildren = node.children.length > 0;
+      const isCollapsed = collapsedDirs.has(node.path);
+      if (hasChildren) {
+        const toggle = document.createElement("button");
+        toggle.type = "button";
+        toggle.className = "tree-toggle";
+        toggle.textContent = isCollapsed ? "▸" : "▾";
+        toggle.title = isCollapsed ? "展开目录" : "折叠目录";
+        toggle.onclick = event => {
+          event.stopPropagation();
+          if (collapsedDirs.has(node.path)) collapsedDirs.delete(node.path);
+          else collapsedDirs.add(node.path);
+          loadTree();
+        };
+        row.appendChild(toggle);
+      } else {
+        const placeholder = document.createElement("span");
+        placeholder.className = "tree-toggle-placeholder";
+        row.appendChild(placeholder);
+      }
       const button = document.createElement("button");
-      button.textContent = node.name || "/";
-      button.style.setProperty("--level", level);
+      button.className = "tree-select";
       button.dataset.path = node.path;
+      button.title = node.path || node.name || "/";
+      const icon = document.createElement("span");
+      icon.className = "tree-icon";
+      icon.textContent = node.complete ? "[x]" : "[]";
+      icon.style.color = hashColor(node.path || node.name || "/");
+      const name = document.createElement("span");
+      name.className = "tree-name";
+      name.textContent = node.name || "/";
+      button.appendChild(icon);
+      button.appendChild(name);
       button.onclick = () => selectDir(node.path, button);
-      treeEl.appendChild(button);
-      for (const child of node.children) renderTree(child, level + 1);
+      row.appendChild(button);
+      wrapper.appendChild(row);
+      if (hasChildren) {
+        const children = document.createElement("div");
+        children.className = "tree-children";
+        children.hidden = isCollapsed;
+        wrapper.appendChild(children);
+        for (const child of node.children) renderTree(child, children);
+      }
+      parent.appendChild(wrapper);
+    }
+
+    async function loadTree() {
+      const tree = await getJson("/api/tree");
+      treeEl.innerHTML = "";
+      renderTree(tree);
+      setActiveTreeButton(currentDir);
+      return tree;
+    }
+
+    function findTreeButton(path) {
+      return Array.from(document.querySelectorAll("#tree button"))
+        .find(item => item.dataset.path === path);
+    }
+
+    function setActiveTreeButton(path, button = null) {
+      document.querySelectorAll("#tree button").forEach(item => item.classList.remove("active"));
+      const activeButton = button || findTreeButton(path);
+      if (activeButton) activeButton.classList.add("active");
     }
 
     async function selectDir(path, button) {
       currentDir = path;
-      document.querySelectorAll("#tree button").forEach(item => item.classList.remove("active"));
-      if (button) button.classList.add("active");
+      setActiveTreeButton(path, button);
       const data = await getJson(`/api/files?directory=${encodeURIComponent(path)}`);
+      currentFiles = data.files;
+      renderStatistics();
+      renderFiles();
+      if (!currentFiles.some(file => file.path === currentPath)) {
+        await selectFirstCurrentFile();
+      }
+    }
+
+    function fileSortRank(file) {
+      return !file.damaged && file.label_status === "valid" ? 1 : 0;
+    }
+
+    function sortedCurrentFiles() {
+      const direction = fileSortDirection === "desc" ? -1 : 1;
+      return [...currentFiles].sort((left, right) => {
+        const rankDiff = (fileSortRank(left) - fileSortRank(right)) * direction;
+        if (rankDiff !== 0) return rankDiff;
+        return left.name.localeCompare(right.name, "zh-Hans-CN", {numeric: true, sensitivity: "base"});
+      });
+    }
+
+    function fileIcon(name) {
+      const extension = name.toLowerCase().slice(name.lastIndexOf("."));
+      return {
+        ".jpg": "▣",
+        ".jpeg": "▧",
+        ".png": "◩",
+        ".bmp": "▥",
+        ".webp": "◫",
+        ".tif": "◬",
+        ".tiff": "◭",
+        ".heic": "◈",
+        ".heif": "◆",
+        ".avif": "◇",
+      }[extension] || "▯";
+    }
+
+    function renderFiles() {
       filesEl.innerHTML = "";
-      if (!data.files.length) {
+      toggleFileSort.textContent = fileSortDirection === "asc" ? "↑" : "↓";
+      toggleFileSort.title = fileSortDirection === "asc" ? "未达标排在上面" : "已达标排在上面";
+      if (!currentFiles.length) {
         filesEl.innerHTML = '<div class="empty">没有图片</div>';
         return;
       }
-      for (const file of data.files) {
+      for (const file of sortedCurrentFiles()) {
         const row = document.createElement("button");
         const isInvalid = file.damaged || file.label_status === "empty" || file.label_status === "invalid";
         const isValid = !file.damaged && file.label_status === "valid";
@@ -647,25 +936,77 @@ class Workstation:
         const statusText = file.damaged
           ? "损坏图像"
           : file.label_status === "valid"
-            ? "已标注"
+            ? `已标注 ${file.label_count || 0}`
             : file.label_status === "missing"
               ? "未标注"
               : file.label_status === "empty"
                 ? "空 .txt"
                 : "无效 .txt";
-        row.innerHTML = `${escapeHtml(file.name)}<span class="file-meta">${statusText}</span>`;
+        row.innerHTML = `<span class="file-name"><span class="file-icon">${fileIcon(file.name)}</span><span class="file-name-text">${escapeHtml(file.name)}</span></span><span class="file-meta">${statusText}</span>`;
+        row.dataset.path = file.path;
         row.onclick = () => selectImage(file.path, row);
         filesEl.appendChild(row);
       }
+      if (currentPath) {
+        const activeRow = Array.from(document.querySelectorAll("#files button"))
+          .find(button => button.dataset.path === currentPath);
+        if (activeRow) activeRow.classList.add("active");
+      }
+    }
+
+    async function refreshCurrentFiles() {
+      const data = await getJson(`/api/files?directory=${encodeURIComponent(currentDir)}`);
+      currentFiles = data.files;
+      renderStatistics();
+      renderFiles();
+    }
+
+    function fileRow(path) {
+      return Array.from(document.querySelectorAll("#files button"))
+        .find(button => button.dataset.path === path);
+    }
+
+    function nextAnnotationFilePath(savedPath) {
+      const files = sortedCurrentFiles().filter(file => file.path !== savedPath);
+      if (!files.length) return "";
+      const incomplete = files.find(file => fileSortRank(file) === 0);
+      return (incomplete || files[0]).path;
+    }
+
+    async function selectFirstCurrentFile() {
+      const [firstFile] = sortedCurrentFiles();
+      if (!firstFile) {
+        currentPath = "";
+        currentImage = null;
+        currentBoxes = [];
+        savedBoxes = [];
+        draftBox = null;
+        dragStart = null;
+        setBoxesDirty(false);
+        resetImageZoom();
+        viewerTitle.innerHTML = '<span class="pane-title-icon">▧</span>图像';
+        canvas.style.display = "none";
+        empty.style.display = "block";
+        exifEl.innerHTML = '<div class="empty">请选择图片</div>';
+        return;
+      }
+      const row = Array.from(document.querySelectorAll("#files button"))
+        .find(button => button.dataset.path === firstFile.path);
+      await selectImage(firstFile.path, row);
     }
 
     async function selectImage(path, button) {
       document.querySelectorAll("#files button").forEach(item => item.classList.remove("active"));
       if (button) button.classList.add("active");
-      viewerTitle.textContent = path;
+      viewerTitle.innerHTML = `<span class="pane-title-icon">▧</span>${escapeHtml(path)}`;
       currentPath = path;
+      renderStatistics();
       const annotation = await getJson(`/api/annotation?path=${encodeURIComponent(path)}`);
-      currentBoxes = annotation.boxes;
+      currentBoxes = cloneBoxes(annotation.boxes);
+      savedBoxes = cloneBoxes(annotation.boxes);
+      draftBox = null;
+      dragStart = null;
+      setBoxesDirty(false);
       loadExif(path);
       const image = new Image();
       image.onload = () => {
@@ -674,6 +1015,7 @@ class Workstation:
         canvas.style.display = "block";
         canvas.width = image.naturalWidth;
         canvas.height = image.naturalHeight;
+        resetImageZoom();
         drawHistogram(image);
         redrawImage();
       };
@@ -685,6 +1027,51 @@ class Workstation:
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(currentImage, 0, 0);
       drawBoxes(currentBoxes, currentImage.naturalWidth, currentImage.naturalHeight);
+      if (draftBox) drawBoxes([draftBox], currentImage.naturalWidth, currentImage.naturalHeight, true);
+    }
+
+    function resetImageZoom() {
+      imageZoom = 1;
+      applyImageZoom();
+    }
+
+    function updateZoomIndicator() {
+      const percent = Math.round(imageZoom * 100);
+      zoomIndicator.innerHTML = `${percent}%<span class="zoom-reset-hint">↺ ESC</span>`;
+      zoomIndicator.hidden = percent === 100;
+    }
+
+    function applyImageZoom() {
+      if (!currentImage) {
+        canvas.style.width = "";
+        canvas.style.height = "";
+        updateZoomIndicator();
+        return;
+      }
+      const wrapper = canvas.parentElement;
+      const availableWidth = Math.max(1, wrapper.clientWidth - 32);
+      const availableHeight = Math.max(1, wrapper.clientHeight - 32);
+      const fitScale = Math.min(
+        1,
+        availableWidth / currentImage.naturalWidth,
+        availableHeight / currentImage.naturalHeight,
+      );
+      canvas.style.width = `${Math.max(1, Math.round(currentImage.naturalWidth * fitScale * imageZoom))}px`;
+      canvas.style.height = `${Math.max(1, Math.round(currentImage.naturalHeight * fitScale * imageZoom))}px`;
+      updateZoomIndicator();
+    }
+
+    function setImageZoom(nextZoom, clientX, clientY) {
+      if (!currentImage) return;
+      const wrapper = canvas.parentElement;
+      const before = canvas.getBoundingClientRect();
+      const ratioX = before.width ? (clientX - before.left) / before.width : 0.5;
+      const ratioY = before.height ? (clientY - before.top) / before.height : 0.5;
+      imageZoom = Math.min(Math.max(nextZoom, 0.1), 8);
+      applyImageZoom();
+      const after = canvas.getBoundingClientRect();
+      wrapper.scrollLeft += ratioX * (after.width - before.width);
+      wrapper.scrollTop += ratioY * (after.height - before.height);
     }
 
     function drawHistogram(image) {
@@ -756,7 +1143,7 @@ class Workstation:
       });
     }
 
-    function drawBoxes(boxes, imageWidth, imageHeight) {
+    function drawBoxes(boxes, imageWidth, imageHeight, draft = false) {
       ctx.lineWidth = Math.max(2, Math.round(Math.min(imageWidth, imageHeight) / 360));
       ctx.font = `${Math.max(14, Math.round(imageWidth / 80))}px sans-serif`;
       for (const box of boxes) {
@@ -766,7 +1153,9 @@ class Workstation:
         const width = box.width * imageWidth;
         const height = box.height * imageHeight;
         ctx.strokeStyle = color;
+        if (draft) ctx.setLineDash([8, 6]);
         ctx.strokeRect(x, y, width, height);
+        ctx.setLineDash([]);
         const text = box.label;
         const metrics = ctx.measureText(text);
         ctx.fillStyle = color;
@@ -776,42 +1165,147 @@ class Workstation:
       }
     }
 
+    function cloneBoxes(boxes) {
+      return boxes.map(box => ({...box}));
+    }
+
+    function setBoxesDirty(dirty) {
+      boxesDirty = dirty;
+      updateAnnotationButtons();
+    }
+
+    function defaultBoxLabel() {
+      return selectedClassLabel || classLabels[selectedClassId] || String(selectedClassId);
+    }
+
+    function selectClassLabel(classId, label, row) {
+      selectedClassId = classId;
+      selectedClassLabel = label;
+      document.querySelectorAll(".label-row").forEach(item => item.classList.remove("active"));
+      if (row) row.classList.add("active");
+    }
+
+    function updateAnnotationButtons() {
+      editModeToggle.classList.toggle("active", annotateMode);
+      editModeToggle.querySelector(".header-icon").textContent = annotateMode ? "●" : "◌";
+      editModeToggle.querySelector("span:last-child").textContent = annotateMode ? "打标" : "只读";
+      editModeToggle.title = annotateMode ? "当前为打标状态" : "当前为只读状态";
+      canvas.classList.toggle("annotating", annotateMode);
+      saveAnnotation.disabled = !boxesDirty;
+      resetAnnotation.disabled = !boxesDirty;
+      deleteAnnotation.disabled = !currentBoxes.length;
+    }
+
     async function loadLabels() {
       const data = await getJson("/api/classes");
+      classLabels = data.classes;
       labelsEl.innerHTML = "";
-      if (data.classes_file) {
+      const groups = data.class_groups?.length
+        ? data.class_groups
+        : data.classes_file
+          ? [{classes_file: data.classes_file, classes: data.classes}]
+          : [];
+      let selectedAssigned = false;
+      groups.forEach((group, groupIndex) => {
         const source = document.createElement("div");
-        source.className = "file-meta";
-        source.textContent = data.classes_file;
+        source.className = "label-source";
+        source.textContent = group.classes_file;
         labelsEl.appendChild(source);
-      }
-      data.classes.forEach((label, index) => {
-        const row = document.createElement("div");
-        row.className = "label-row";
-        row.innerHTML = `<span class="swatch" style="background:${colors[index % colors.length]}"></span><span>${index}: ${label}</span>`;
-        labelsEl.appendChild(row);
+        group.classes.forEach((label, index) => {
+          const row = document.createElement("button");
+          row.type = "button";
+          row.className = "label-row";
+          row.innerHTML = `<span class="swatch" style="background:${colors[index % colors.length]}"></span><span>${index}: ${escapeHtml(label)}</span>`;
+          row.onclick = () => selectClassLabel(index, label, row);
+          labelsEl.appendChild(row);
+          if (!selectedAssigned) {
+            selectClassLabel(index, label, row);
+            selectedAssigned = true;
+          }
+        });
       });
-      if (!data.classes.length) labelsEl.innerHTML = '<div class="empty">未找到 classes.txt</div>';
+      if (!groups.length) {
+        selectedClassId = 0;
+        selectedClassLabel = "0";
+        labelsEl.innerHTML = '<div class="empty">未找到 classes.txt</div>';
+      }
     }
 
     async function loadStatistics() {
-      const data = await getJson("/api/statistics");
-      const workspace = escapeHtml(data.workspace);
+      statisticsData = await getJson("/api/statistics");
+      renderStatistics();
+    }
+
+    function renderBreadcrumb() {
+      const container = document.createElement("div");
+      container.className = "breadcrumb";
+      const home = document.createElement("span");
+      home.className = "breadcrumb-home";
+      home.textContent = "⌂";
+      home.title = "Home";
+      container.appendChild(home);
+      const currentPathParts = currentPath ? currentPath.split("/").filter(Boolean) : [];
+      const fileName = currentPathParts.length ? currentPathParts[currentPathParts.length - 1] : "";
+      const parts = currentPathParts.length
+        ? currentPathParts.slice(0, -1)
+        : currentDir ? currentDir.split("/").filter(Boolean) : [];
+      const crumbs = [];
+      let path = "";
+      for (const part of parts) {
+        path = path ? `${path}/${part}` : part;
+        crumbs.push({name: part, path});
+      }
+      container.title = currentPath || currentDir || ".";
+      crumbs.forEach((crumb, index) => {
+        if (index > 0) {
+          const separator = document.createElement("span");
+          separator.className = "breadcrumb-separator";
+          separator.textContent = ">";
+          container.appendChild(separator);
+        }
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = crumb.name;
+        button.title = crumb.path || ".";
+        button.onclick = () => selectDir(crumb.path);
+        container.appendChild(button);
+      });
+      if (fileName) {
+        if (crumbs.length) {
+          const separator = document.createElement("span");
+          separator.className = "breadcrumb-separator";
+          separator.textContent = ">";
+          container.appendChild(separator);
+        }
+        const file = document.createElement("span");
+        file.className = "breadcrumb-file";
+        file.textContent = fileName;
+        file.title = currentPath;
+        container.appendChild(file);
+      }
+      return container;
+    }
+
+    function renderStatistics() {
+      if (!statisticsData) return;
+      const data = statisticsData;
       statsEl.innerHTML = `
-        <div class="stats-left" title="${workspace}">位置：${workspace}</div>
+        <div class="stats-left"></div>
         <div class="stats-right">
-          <span class="stat">图像 <strong>${data.images}</strong></span>
-          <span class="stat">.txt <strong>${data.txt_total}</strong></span>
-          <span class="stat bad">损坏图像 <strong>${data.images_damaged}</strong></span>
-          <span class="stat bad">无效 .txt <strong>${data.txt_invalid_total}</strong></span>
+          <span class="stat"><span class="stat-icon">▧</span>图像 <strong>${data.images}</strong></span>
+          <span class="stat"><span class="stat-icon">✓</span>已完成 <strong>${data.txt_valid}/${data.images}</strong></span>
+          <span class="stat"><span class="stat-icon">▯</span>.txt <strong>${data.txt_total}</strong></span>
+          <span class="stat"><span class="stat-icon">⌑</span>classes.txt <strong>${data.classes_files}</strong></span>
+          <span class="stat bad"><span class="stat-icon">✕</span>损坏图像 <strong>${data.images_damaged}</strong></span>
+          <span class="stat bad"><span class="stat-icon">!</span>无效 .txt <strong>${data.txt_invalid_total}</strong></span>
         </div>
       `;
+      statsEl.querySelector(".stats-left").appendChild(renderBreadcrumb());
     }
 
     async function init() {
       canvas.style.display = "none";
-      const tree = await getJson("/api/tree");
-      renderTree(tree);
+      await loadTree();
       await loadLabels();
       await loadStatistics();
       initSplitter();
@@ -820,8 +1314,189 @@ class Workstation:
       initMainSplitter();
       initRightPanel();
       initViewerTools();
+      initViewerFocus();
+      initHeaderActions();
+      initFileSorting();
+      initImageZoom();
+      initKeyboardShortcuts();
+      initCanvasAnnotation();
+      updateAnnotationButtons();
       const rootButton = document.querySelector("#tree button");
       if (rootButton) await selectDir("", rootButton);
+    }
+
+    function initFileSorting() {
+      toggleFileSort.addEventListener("click", () => {
+        fileSortDirection = fileSortDirection === "asc" ? "desc" : "asc";
+        renderFiles();
+      });
+    }
+
+    function initHeaderActions() {
+      annotateModeButton.addEventListener("click", () => alert("当前窗口就是标注窗口"));
+      editModeToggle.addEventListener("click", () => {
+        annotateMode = !annotateMode;
+        updateAnnotationButtons();
+      });
+      shareButton.addEventListener("click", shareCurrentLocation);
+      downloadImage.addEventListener("click", downloadCurrentImage);
+      queryButton.addEventListener("click", queryLocation);
+      datasetButton.addEventListener("click", () => alert("数据集功能入口已预留"));
+      trainButton.addEventListener("click", () => alert("训练功能入口已预留"));
+    }
+
+    function downloadCurrentImage() {
+      if (!currentPath) {
+        alert("请选择图片");
+        return;
+      }
+      const link = document.createElement("a");
+      link.href = `/media?path=${encodeURIComponent(currentPath)}`;
+      link.download = currentPath.split("/").pop() || "image";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    }
+
+    async function shareCurrentLocation() {
+      const text = currentPath
+        ? `图像: ${currentPath}`
+        : `目录: ${currentDir || "."}`;
+      const payload = {
+        title: "Yolo Workstation",
+        text,
+        url: window.location.href,
+      };
+      try {
+        if (navigator.share) {
+          await navigator.share(payload);
+          return;
+        }
+        await navigator.clipboard.writeText(`${text}\n${window.location.href}`);
+        alert("已复制分享信息");
+      } catch (error) {
+        if (navigator.clipboard) {
+          await navigator.clipboard.writeText(`${text}\n${window.location.href}`);
+          alert("已复制分享信息");
+        }
+      }
+    }
+
+    async function queryLocation() {
+      const keyword = prompt("查询目录或当前文件", currentPath || currentDir || "");
+      if (!keyword || !keyword.trim()) return;
+      const query = keyword.trim().toLowerCase();
+      const dirButton = Array.from(document.querySelectorAll("#tree button")).find(button => {
+        const path = (button.dataset.path || "").toLowerCase();
+        const name = button.querySelector(".tree-name")?.textContent.toLowerCase() || "";
+        return path === query || path.includes(query) || name === query || name.includes(query);
+      });
+      if (dirButton) {
+        await selectDir(dirButton.dataset.path || "", dirButton);
+        return;
+      }
+      const file = currentFiles.find(item => {
+        const name = item.name.toLowerCase();
+        const path = item.path.toLowerCase();
+        return name === query || path === query || name.includes(query) || path.includes(query);
+      });
+      if (file) {
+        const row = Array.from(document.querySelectorAll("#files button"))
+          .find(button => button.dataset.path === file.path);
+        await selectImage(file.path, row);
+        return;
+      }
+      alert("没有找到匹配的目录或文件");
+    }
+
+    function initViewerFocus() {
+      viewerHeader.addEventListener("dblclick", event => {
+        if (event.target.closest("button")) return;
+        appMain.classList.toggle("viewer-focus");
+        applyImageZoom();
+        redrawHistogram();
+      });
+    }
+
+    function initImageZoom() {
+      canvas.parentElement.addEventListener("wheel", event => {
+        if (!currentImage) return;
+        event.preventDefault();
+        const factor = event.deltaY < 0 ? 1.12 : 1 / 1.12;
+        setImageZoom(imageZoom * factor, event.clientX, event.clientY);
+      }, {passive: false});
+      window.addEventListener("resize", applyImageZoom);
+    }
+
+    function initKeyboardShortcuts() {
+      window.addEventListener("keydown", event => {
+        if (event.key === "Escape" && currentImage) {
+          resetImageZoom();
+          return;
+        }
+        if (!(event.metaKey || event.ctrlKey)) return;
+        const key = event.key.toLowerCase();
+        if (key === "d") {
+          event.preventDefault();
+          if (!deleteAnnotation.disabled) deleteAnnotation.click();
+        } else if (key === "r") {
+          event.preventDefault();
+          if (!resetAnnotation.disabled) resetAnnotation.click();
+        } else if (key === "s") {
+          event.preventDefault();
+          if (!saveAnnotation.disabled) saveAnnotation.click();
+        }
+      });
+    }
+
+    function canvasPoint(event) {
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: Math.min(Math.max((event.clientX - rect.left) / rect.width, 0), 1),
+        y: Math.min(Math.max((event.clientY - rect.top) / rect.height, 0), 1),
+      };
+    }
+
+    function boxFromPoints(start, end) {
+      const left = Math.min(start.x, end.x);
+      const right = Math.max(start.x, end.x);
+      const top = Math.min(start.y, end.y);
+      const bottom = Math.max(start.y, end.y);
+      return {
+        class_id: selectedClassId,
+        label: defaultBoxLabel(),
+        cx: (left + right) / 2,
+        cy: (top + bottom) / 2,
+        width: right - left,
+        height: bottom - top,
+      };
+    }
+
+    function initCanvasAnnotation() {
+      canvas.addEventListener("mousedown", event => {
+        if (!annotateMode || !currentImage || event.button !== 0) return;
+        dragStart = canvasPoint(event);
+        draftBox = null;
+        event.preventDefault();
+      });
+      window.addEventListener("mousemove", event => {
+        if (!dragStart) return;
+        const point = canvasPoint(event);
+        draftBox = boxFromPoints(dragStart, point);
+        redrawImage();
+      });
+      window.addEventListener("mouseup", event => {
+        if (!dragStart) return;
+        const point = canvasPoint(event);
+        const box = boxFromPoints(dragStart, point);
+        dragStart = null;
+        draftBox = null;
+        if (box.width >= 0.003 && box.height >= 0.003) {
+          currentBoxes.push(box);
+          setBoxesDirty(true);
+        }
+        redrawImage();
+      });
     }
 
     function initViewerTools() {
@@ -829,25 +1504,37 @@ class Workstation:
         autoAnnotate.classList.toggle("active");
       });
       deleteAnnotation.addEventListener("click", () => {
-        if (!currentPath) return;
+        if (!currentPath || !currentBoxes.length) return;
         currentBoxes = [];
+        setBoxesDirty(true);
         redrawImage();
       });
-      resetAnnotation.addEventListener("click", async () => {
+      resetAnnotation.addEventListener("click", () => {
         if (!currentPath) return;
-        const annotation = await getJson(`/api/annotation?path=${encodeURIComponent(currentPath)}`);
-        currentBoxes = annotation.boxes;
+        currentBoxes = cloneBoxes(savedBoxes);
+        draftBox = null;
+        dragStart = null;
+        setBoxesDirty(false);
         redrawImage();
       });
       saveAnnotation.addEventListener("click", async () => {
-        if (!currentPath) return;
+        if (!currentPath || !boxesDirty) return;
+        const savedPath = currentPath;
         const annotation = await postJson("/api/annotation", {
           path: currentPath,
           boxes: currentBoxes,
         });
-        currentBoxes = annotation.boxes;
+        currentBoxes = cloneBoxes(annotation.boxes);
+        savedBoxes = cloneBoxes(annotation.boxes);
+        setBoxesDirty(false);
         redrawImage();
         await loadStatistics();
+        await loadTree();
+        await refreshCurrentFiles();
+        const nextPath = nextAnnotationFilePath(savedPath);
+        if (nextPath) {
+          await selectImage(nextPath, fileRow(nextPath));
+        }
       });
     }
 
@@ -911,6 +1598,11 @@ class Workstation:
 
     function initLeftPanel() {
       let dragging = false;
+      reloadTree.addEventListener("click", async () => {
+        await loadTree();
+        await loadStatistics();
+        await selectDir(currentDir);
+      });
       leftSplitter.addEventListener("mousedown", event => {
         dragging = true;
         leftSplitter.classList.add("dragging");

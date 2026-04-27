@@ -284,10 +284,15 @@ class YoloUtils:
             epilog="Yolo workstation",
             formatter_class=nowrap_formatter,
         )
-        self.workstation.add_argument('-w', "--workspace", type=str, default=None, help="工作目录")
-        self.workstation.add_argument('-d', '--daemon', action="store_true", default=False, help='后台运行')
+
         self.workstation.add_argument("--host", type=str, default="127.0.0.1", help="监听地址")
         self.workstation.add_argument("-p", "--port", type=int, default=8000, help="监听端口")
+        self.workstation.add_argument('-d', '--daemon', action="store_true", default=False, help='后台运行')
+        self.workstation.add_argument('-w', "--workspace", type=str, default=None, help="标注工作目录")
+        self.workstation.add_argument('-s', "--dataset", type=str, default=None, help="数据集目录")
+        self.workstation.add_argument('-r', "--run", type=str, default=None, help="训练目录")
+        self.workstation.add_argument("-c", "--classes", type=str, default=None, help="classes.txt 文件")
+
         self.parser = parser
 
     def main(self):
@@ -431,9 +436,9 @@ class YoloUtils:
 
             try:
                 args = self.workstation.parse_args(argv[1:])
-                run = Workstation()
+                run = Workstation(args.host, args.port, args.daemon)
                 if args.workspace:
-                    run.main(args.workspace, args.host, args.port, args.daemon)
+                    run.main(args.workspace, args.dataset, args.run, args.classes)
                 else:
                     self.workstation.print_help()
             except SystemExit as e:
