@@ -29,6 +29,7 @@ license-files = ["LICEN[CS]E*"]
 
 dependencies = [
     "pillow",
+    "pillow-heif",
     "opencv-python",
     "pyyaml",
     "tqdm",

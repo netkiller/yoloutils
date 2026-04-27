@@ -9,6 +9,7 @@ numpy
 #matplotlib
 opencv-python
 pillow
+pillow-heif
 texttable
 tqdm
 #dominate

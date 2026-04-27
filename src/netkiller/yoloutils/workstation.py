@@ -1,18 +1,23 @@
 import os
-import socket
 import subprocess
 import sys
 import threading
 import time
 import urllib.request
+from io import BytesIO
 from datetime import datetime
 from pathlib import Path
 
 try:
     from fastapi import FastAPI, HTTPException, Query, Request
-    from fastapi.responses import FileResponse, HTMLResponse
+    from fastapi.responses import FileResponse, HTMLResponse, Response
     import uvicorn
     from PIL import ExifTags, Image
+    try:
+        import pillow_heif
+        pillow_heif.register_heif_opener()
+    except ImportError:
+        pillow_heif = None
 except ImportError:
     FastAPI = None
     HTTPException = None
@@ -20,9 +25,11 @@ except ImportError:
     Request = None
     FileResponse = None
     HTMLResponse = None
+    Response = None
     uvicorn = None
     ExifTags = None
     Image = None
+    pillow_heif = None
 
 try:
     from . import Common
@@ -46,7 +53,7 @@ class Workstation:
         self.requested_classes_file = None
         self.open_browser = False
         self.team_mode = False
-        self.share_url = ""
+        self.mdns = "netkiller.local"
         self.presence = {}
         self.locks = {}
         self.classes_file = None
@@ -61,7 +68,7 @@ class Workstation:
         classes_file: str = None,
         open_browser: bool = False,
         team_mode: bool = False,
-        share_url: str = "",
+        mdns: str = "netkiller.local",
     ):
         if FastAPI is None or uvicorn is None:
             print("缺少依赖: fastapi/uvicorn，请先安装: pip install fastapi uvicorn")
@@ -76,7 +83,7 @@ class Workstation:
         self.requested_classes_file = classes_file
         self.open_browser = open_browser
         self.team_mode = team_mode
-        self.share_url = share_url.strip().rstrip("/") if share_url else ""
+        self.mdns = self._normalize_mdns(mdns)
 
         if self.daemon:
             self._start_daemon()
@@ -114,40 +121,14 @@ class Workstation:
         return f"http://{host}:{self.port}"
 
     def _share_url(self):
-        if self.share_url:
-            return self.share_url
-        host = self._public_ip() or self.host
-        if host in ("", "0.0.0.0", "::", "127.0.0.1", "localhost"):
-            host = "127.0.0.1"
-        if ":" in host and not host.startswith("["):
-            host = f"[{host}]"
-        return f"http://{host}:{self.port}"
+        return f"http://{self.mdns}:{self.port}"
 
-    def _public_ip(self):
-        for url in (
-            "https://api.ipify.org",
-            "https://ifconfig.me/ip",
-            "https://icanhazip.com",
-        ):
-            try:
-                with urllib.request.urlopen(url, timeout=2) as response:
-                    ip = response.read().decode("utf-8", errors="ignore").strip()
-                if ip and len(ip) <= 64 and " " not in ip:
-                    return ip
-            except OSError:
-                continue
-        return ""
-
-    def _lan_ip(self):
-        try:
-            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-                sock.connect(("8.8.8.8", 80))
-                return sock.getsockname()[0]
-        except OSError:
-            try:
-                return socket.gethostbyname(socket.gethostname())
-            except OSError:
-                return "127.0.0.1"
+    def _normalize_mdns(self, value: str):
+        name = (value or "netkiller.local").strip().lower()
+        if "://" in name:
+            name = name.split("://", 1)[1]
+        name = name.split("/", 1)[0].split(":", 1)[0]
+        return name if name.endswith(".local") else f"{name}.local"
 
     def _start_browser_opener(self, url: str):
         def open_and_keep_alive():
@@ -320,6 +301,30 @@ class Workstation:
 
     def _is_image(self, path: Path):
         return path.is_file() and path.name.lower().endswith(Common.image_exts)
+
+    def _needs_browser_conversion(self, path: Path):
+        return path.suffix.lower() in (".heic", ".heif", ".tif", ".tiff")
+
+    def _image_response(self, path: Path):
+        if not self._needs_browser_conversion(path):
+            return FileResponse(path)
+        if path.suffix.lower() in (".heic", ".heif") and pillow_heif is None:
+            raise HTTPException(status_code=415, detail="HEIC/HEIF 需要安装 pillow-heif")
+        try:
+            with Image.open(path) as image:
+                if image.mode in ("RGBA", "LA") or (
+                    image.mode == "P" and "transparency" in image.info
+                ):
+                    canvas = Image.new("RGB", image.size, (255, 255, 255))
+                    canvas.paste(image.convert("RGBA"), mask=image.convert("RGBA").getchannel("A"))
+                    image = canvas
+                else:
+                    image = image.convert("RGB")
+                buffer = BytesIO()
+                image.save(buffer, format="JPEG", quality=92, optimize=True)
+        except Exception as error:
+            raise HTTPException(status_code=415, detail=f"图片转换失败: {error}") from error
+        return Response(buffer.getvalue(), media_type="image/jpeg")
 
     def _image_files(self):
         return sorted(
@@ -529,6 +534,33 @@ class Workstation:
             self._release_lock(relative_path, client_id)
         return self._read_annotation(image_path)
 
+    def _delete_image_file(self, image_path: str, client_id: str = "", username: str = ""):
+        path = self._safe_path(image_path)
+        if not self._is_image(path):
+            raise HTTPException(status_code=404, detail="image not found")
+        relative_path = self._relative(path)
+        if self.team_mode:
+            lock = self._lock_for(relative_path)
+            if lock and lock["client_id"] != client_id:
+                raise HTTPException(status_code=423, detail=f"文件已被 {lock['username']} 锁定")
+        label_file = path.with_suffix(".txt")
+        deleted = []
+        for item in (path, label_file):
+            if item.exists():
+                item.unlink()
+                deleted.append(self._relative(item))
+        if self.team_mode:
+            timestamp = datetime.now().isoformat(timespec="seconds")
+            message = f"[{timestamp}] {username or '未命名'} 删除 {relative_path}: {', '.join(deleted)}\n"
+            try:
+                with open(self._log_file(), "a", encoding="utf-8") as file:
+                    file.write(message)
+            except OSError:
+                pass
+        if self.team_mode and client_id:
+            self._release_lock(relative_path, client_id)
+        return {"deleted": deleted}
+
     def _append_operation_log(self, username: str, image_path: str, lines):
         timestamp = datetime.now().isoformat(timespec="seconds")
         summary = "; ".join(lines) if lines else "清空标注"
@@ -694,6 +726,13 @@ class Workstation:
             username = str(payload.get("username", "")).strip() or "独立用户"
             if not client_id:
                 raise HTTPException(status_code=400, detail="client_id required")
+            self._online_count()
+            username_key = username.casefold()
+            for current_client_id, info in self.presence.items():
+                if current_client_id == client_id:
+                    continue
+                if str(info.get("username", "")).casefold() == username_key:
+                    raise HTTPException(status_code=409, detail="用户名已被使用")
             self.presence[client_id] = {
                 "username": username,
                 "seen_at": time.time(),
@@ -740,16 +779,27 @@ class Workstation:
                 str(payload.get("username", "")).strip(),
             )
 
+        @app.post("/api/file/delete")
+        async def delete_file(request: Request):
+            payload = await request.json()
+            return self._delete_image_file(
+                payload.get("path", ""),
+                str(payload.get("client_id", "")).strip(),
+                str(payload.get("username", "")).strip(),
+            )
+
         @app.get("/api/exif")
         def exif(path: str):
             return self._read_exif(path)
 
         @app.get("/media")
-        def media(path: str):
+        def media(path: str, raw: bool = Query(default=False)):
             file_path = self._safe_path(path)
             if not self._is_image(file_path):
                 raise HTTPException(status_code=404, detail="image not found")
-            return FileResponse(file_path)
+            if raw:
+                return FileResponse(file_path)
+            return self._image_response(file_path)
 
         return app
 
@@ -778,7 +828,7 @@ class Workstation:
     button:disabled { cursor: not-allowed; opacity: .42; }
     button:disabled:hover { background: transparent; color: inherit; }
     main { height: calc(100vh - 88px); display: grid; grid-template-columns: minmax(360px, 520px) 1px minmax(420px, 1fr) 220px; overflow: hidden; }
-    body.console-open main { height: calc(100vh - 248px); }
+    body.console-open main { height: calc(100vh - 88px - var(--console-height, 160px) - 4px); }
     main.tree-hidden { grid-template-columns: 280px 1px minmax(420px, 1fr) 220px; }
     main.right-hidden { grid-template-columns: minmax(360px, 520px) 1px minmax(420px, 1fr) 0; }
     main.tree-hidden.right-hidden { grid-template-columns: 280px 1px minmax(420px, 1fr) 0; }
@@ -809,16 +859,21 @@ class Workstation:
     .vertical-splitter:hover, .vertical-splitter.dragging { background: #bcccdc; }
     .main-splitter { cursor: col-resize; background: #d9e2ec; }
     .main-splitter:hover, .main-splitter.dragging { background: #bcccdc; }
-    .tree, .files, .labels, .exif, .collaboration { padding: 8px; }
+    .tree, .files, .labels, .exif { padding: 8px; }
     .tree { flex: 4 1 80%; min-height: 0; overflow: auto; }
     .files { flex: 1 1 auto; min-height: 0; overflow: auto; }
     .collaboration { display: none; flex: 1 1 20%; min-height: 72px; overflow: hidden; border-top: 1px solid #d9e2ec; background: #fff; }
     body.team-mode .collaboration { display: block; }
-    .collaboration-header { height: 34px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 8px 0 12px; border-bottom: 1px solid #e4e7eb; background: #f8fafc; color: #1f2933; font-size: 13px; font-weight: 650; }
-    .online-count { min-width: 20px; color: #1f2933; font-size: 13px; font-weight: 750; text-align: right; }
-    .collaboration-users { max-height: calc(100% - 34px); overflow: auto; display: grid; gap: 2px; padding: 6px 8px; color: #52606d; font-size: 12px; line-height: 1.35; }
-    .collaboration-user { display: flex; align-items: center; gap: 6px; min-height: 22px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .collaboration-user::before { content: ""; flex: 0 0 7px; width: 7px; height: 7px; border-radius: 50%; background: #22c55e; }
+    .tree-pane.collaboration-collapsed .tree { flex: 1 1 auto; }
+    .tree-pane.collaboration-collapsed .collaboration { flex: 0 0 34px; min-height: 34px; }
+    .tree-pane.collaboration-collapsed .collaboration-users { display: none; }
+    .collaboration-header h2 { display: flex; align-items: center; }
+    .collaboration-tools { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 4px; }
+    .online-count { min-width: 16px; color: #1f2933; font-size: 13px; font-weight: 750; line-height: 1; text-align: right; }
+    .collaboration-users { height: calc(100% - 34px); overflow: auto; display: grid; align-content: start; gap: 2px; padding: 6px 8px; color: #52606d; font-size: 12px; line-height: 1.35; }
+    .collaboration-user { display: flex; align-items: center; gap: 7px; min-height: 22px; min-width: 0; overflow: hidden; white-space: nowrap; }
+    .collaboration-dot { flex: 0 0 7px; width: 7px; height: 7px; border-radius: 50%; background: var(--user-color, #22c55e); box-shadow: 0 0 0 1px rgba(31, 41, 51, .08); }
+    .collaboration-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
     .lock-note { color: #b45309; font-size: 12px; }
     button { width: 100%; border: 0; background: transparent; text-align: left; padding: 7px 8px; border-radius: 6px; cursor: pointer; color: #243b53; font: inherit; }
     button:hover, button.active { background: #e6f0ff; }
@@ -843,7 +898,8 @@ class Workstation:
     .file-name-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .pane-tools { flex: 0 0 auto; display: flex; align-items: center; gap: 4px; }
     .canvas-wrap { flex: 1; min-height: 0; display: flex; align-items: flex-start; justify-content: flex-start; padding: 16px; overflow: auto; }
-    .viewer-zoom { position: absolute; left: 50%; top: 50%; min-width: 64px; transform: translate(-50%, -50%); text-align: center; color: #52606d; font-size: 12px; font-weight: 700; line-height: 1; pointer-events: none; }
+    .viewer-zoom, .viewer-lock { position: absolute; left: 50%; top: 50%; min-width: 64px; transform: translate(-50%, -50%); text-align: center; color: #52606d; font-size: 12px; font-weight: 700; line-height: 1; pointer-events: none; }
+    .viewer-lock { color: #b45309; }
     .zoom-reset-hint { margin-left: 8px; color: #7b8794; font-size: 11px; font-weight: 650; }
     #canvas { margin: auto; max-width: none; max-height: none; background: #fff; box-shadow: 0 1px 8px rgba(31, 41, 51, .18); }
     #canvas.annotating { cursor: crosshair; }
@@ -866,6 +922,9 @@ class Workstation:
     .right-panel.histogram-collapsed .histogram { display: none; }
     .right-pane.exif-pane { flex: 1 1 auto; }
     .right-panel.exif-collapsed .top-info-pane { flex: 1 1 auto; }
+    .right-panel.exif-collapsed .labels-pane { flex: 1 1 auto; }
+    .right-panel.exif-collapsed .histogram-pane { flex: 0 0 34px; }
+    .right-panel.exif-collapsed .histogram-splitter, .right-panel.exif-collapsed .histogram { display: none; }
     .right-panel.exif-collapsed .splitter { display: none; }
     .right-panel.exif-collapsed .exif-pane { flex: 0 0 34px; min-height: 34px; overflow: hidden; }
     .right-panel.exif-collapsed .exif { display: none; }
@@ -893,7 +952,10 @@ class Workstation:
     .stat.bad strong { color: #be123c; }
     .footer-button { width: auto; height: 26px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 0 8px; border: 1px solid #d9e2ec; border-radius: 6px; background: #fff; color: #334e68; font-size: 12px; line-height: 1; white-space: nowrap; }
     .footer-button:hover, .footer-button.active { background: #e6f0ff; color: #243b53; }
-    .console-panel { height: 160px; display: none; border-top: 1px solid #d9e2ec; background: #111827; color: #d1d5db; overflow: auto; }
+    .console-splitter { height: 4px; display: none; cursor: row-resize; border-top: 1px solid #d9e2ec; border-bottom: 1px solid #d9e2ec; background: #e4e7eb; }
+    .console-splitter:hover, .console-splitter.dragging { background: #bcccdc; }
+    body.console-open .console-splitter { display: block; }
+    .console-panel { height: var(--console-height, 160px); display: none; background: #111827; color: #d1d5db; overflow: auto; }
     body.console-open .console-panel { display: block; }
     .console-log { margin: 0; padding: 10px 14px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; line-height: 1.45; white-space: pre-wrap; }
     .shortcut-popover { position: fixed; top: 56px; right: 16px; z-index: 20; width: 300px; padding: 12px; border: 1px solid #d9e2ec; border-radius: 8px; background: #fff; box-shadow: 0 12px 28px rgba(31, 41, 51, .18); color: #243b53; }
@@ -909,6 +971,9 @@ class Workstation:
     .username-dialog h3 { margin: 0 0 12px; font-size: 16px; color: #1f2933; }
     .username-dialog input { width: 100%; height: 34px; padding: 0 10px; border: 1px solid #bcccdc; border-radius: 6px; font: inherit; }
     .username-dialog button { width: auto; height: 30px; margin-top: 12px; padding: 0 12px; border: 1px solid #2563eb; background: #2563eb; color: #fff; text-align: center; }
+    .context-menu { position: fixed; z-index: 50; min-width: 132px; padding: 4px; border: 1px solid #d9e2ec; border-radius: 6px; background: #fff; box-shadow: 0 10px 24px rgba(31, 41, 51, .18); }
+    .context-menu[hidden] { display: none; }
+    .context-menu button { display: block; width: 100%; padding: 7px 10px; color: #991b1b; font-size: 12px; }
   </style>
 </head>
 <body class="__BODY_CLASS__" data-team-mode="__TEAM_MODE__">
@@ -939,6 +1004,7 @@ class Workstation:
       <span class="shortcut-key">⌘M</span><span class="shortcut-desc">切换 box 半透明遮罩</span>
       <span class="shortcut-key">⌘S</span><span class="shortcut-desc">保存当前标注</span>
       <span class="shortcut-key">⌘D</span><span class="shortcut-desc">删除当前标注</span>
+      <span class="shortcut-key">DEL</span><span class="shortcut-desc">删除选中的 box</span>
       <span class="shortcut-key">⌘R</span><span class="shortcut-desc">重置当前操作</span>
       <span class="shortcut-key">ESC</span><span class="shortcut-desc">还原图片缩放 / 关闭快捷键窗口</span>
       <span class="shortcut-key">滚轮</span><span class="shortcut-desc">快速放大或缩小图片</span>
@@ -957,13 +1023,59 @@ class Workstation:
     window.yoloutilsUsernameReady = new Promise(resolve => {
       window.yoloutilsResolveUsername = resolve;
     });
-    window.yoloutilsSubmitUsername = event => {
+    window.yoloutilsGetClientId = () => {
+      const key = "yoloutils-workstation-client-id";
+      let id = "";
+      try {
+        id = localStorage.getItem(key) || "";
+      } catch (error) {
+        id = window.yoloutilsClientId || "";
+      }
+      if (!id) {
+        id = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+        try {
+          localStorage.setItem(key, id);
+        } catch (error) {
+          window.yoloutilsClientId = id;
+        }
+      }
+      return id || window.yoloutilsClientId;
+    };
+    window.yoloutilsSubmitUsername = async event => {
       if (event) event.preventDefault();
       const input = document.getElementById("usernameInput");
+      const submit = document.getElementById("usernameSubmit");
       const name = (input?.value || "").trim();
       if (!name) {
         input?.focus();
         return;
+      }
+      if (document.body.dataset.teamMode === "true") {
+        try {
+          if (submit) submit.disabled = true;
+          const response = await fetch("/api/presence", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({client_id: window.yoloutilsGetClientId(), username: name})
+          });
+          if (!response.ok) {
+            let message = await response.text();
+            try {
+              message = JSON.parse(message).detail || message;
+            } catch (error) {
+              // Keep plain response text.
+            }
+            alert(message || "用户名不可用");
+            input?.focus();
+            return;
+          }
+        } catch (error) {
+          alert(`登录失败: ${error.message}`);
+          input?.focus();
+          return;
+        } finally {
+          if (submit) submit.disabled = false;
+        }
       }
       window.yoloutilsUsername = name;
       try {
@@ -998,7 +1110,13 @@ class Workstation:
         </div>
         <div id="tree" class="tree"></div>
         <div id="collaboration" class="collaboration">
-          <div class="collaboration-header"><span><span class="pane-title-icon">◌</span>协作</span><strong id="onlineCount" class="online-count">-</strong></div>
+          <div class="pane-header collaboration-header">
+            <h2><span class="pane-title-icon">◌</span>协作</h2>
+            <div class="collaboration-tools">
+              <strong id="onlineCount" class="online-count">-</strong>
+              <button id="toggleCollaboration" class="icon-button" title="折叠/展开协作">⌄</button>
+            </div>
+          </div>
           <div id="collaborationUsers" class="collaboration-users"></div>
         </div>
       </aside>
@@ -1019,6 +1137,7 @@ class Workstation:
       <div id="viewerHeader" class="pane-header viewer-header">
         <h2 id="viewerTitle"><span class="pane-title-icon">▧</span>图像</h2>
         <div id="zoomIndicator" class="viewer-zoom">100%</div>
+        <div id="lockBanner" class="viewer-lock" hidden></div>
         <div class="viewer-tools">
           <button id="maskAnnotation" class="tool-button" title="切换 box 遮罩"><span class="header-icon">◧</span><span>遮罩</span><span class="shortcut-hint">⌘M</span></button>
           <button id="deleteAnnotation" class="tool-button" title="删除当前标注"><span class="header-icon">×</span><span>删除</span><span class="shortcut-hint">⌘D</span></button>
@@ -1060,7 +1179,11 @@ class Workstation:
       <button id="consoleToggle" class="footer-button" type="button"><span class="stat-icon">▤</span>控制台</button>
     </div>
   </footer>
+  <div id="consoleSplitter" class="console-splitter" title="拖动调整控制台高度"></div>
   <section id="consolePanel" class="console-panel"><pre id="consoleLog" class="console-log">控制台未打开</pre></section>
+  <div id="imageContextMenu" class="context-menu" hidden>
+    <button id="deleteFileMenuItem" type="button">删除文件</button>
+  </div>
   <script>
     const colors = ["#e11d48", "#2563eb", "#16a34a", "#d97706", "#7c3aed", "#0891b2", "#be123c", "#4d7c0f"];
     const treeEl = document.getElementById("tree");
@@ -1070,6 +1193,7 @@ class Workstation:
     const leftSplitter = document.getElementById("leftSplitter");
     const mainSplitter = document.getElementById("mainSplitter");
     const toggleTree = document.getElementById("toggleTree");
+    const treePane = document.getElementById("treePane");
     const reloadTree = document.getElementById("reloadTree");
     const showTree = document.getElementById("showTree");
     const toggleFileSort = document.getElementById("toggleFileSort");
@@ -1105,17 +1229,22 @@ class Workstation:
     const statsEl = document.getElementById("stats");
     const onlineCount = document.getElementById("onlineCount");
     const collaborationUsers = document.getElementById("collaborationUsers");
+    const toggleCollaboration = document.getElementById("toggleCollaboration");
     const consoleToggle = document.getElementById("consoleToggle");
+    const consoleSplitter = document.getElementById("consoleSplitter");
     const consoleLog = document.getElementById("consoleLog");
     const usernameForm = document.getElementById("usernameForm");
     const usernameInput = document.getElementById("usernameInput");
     const usernameSubmit = document.getElementById("usernameSubmit");
+    const imageContextMenu = document.getElementById("imageContextMenu");
+    const deleteFileMenuItem = document.getElementById("deleteFileMenuItem");
     const canvas = document.getElementById("canvas");
     const ctx = canvas.getContext("2d");
     const empty = document.getElementById("empty");
     const viewerTitle = document.getElementById("viewerTitle");
     const viewerHeader = document.getElementById("viewerHeader");
     const zoomIndicator = document.getElementById("zoomIndicator");
+    const lockBanner = document.getElementById("lockBanner");
     let currentDir = "";
     let currentPath = "";
     let currentImage = null;
@@ -1185,8 +1314,9 @@ class Workstation:
       const row = document.createElement("div");
       row.className = "tree-row";
       const hasChildren = node.children.length > 0;
+      const isRoot = parent === treeEl;
       const isCollapsed = collapsedDirs.has(node.path);
-      if (hasChildren) {
+      if (hasChildren && !isRoot) {
         const toggle = document.createElement("button");
         toggle.type = "button";
         toggle.className = "tree-toggle";
@@ -1316,6 +1446,7 @@ class Workstation:
         row.innerHTML = `<span class="file-name"><span class="file-icon">${fileIcon(file.name)}</span><span class="file-name-text">${escapeHtml(file.name)}</span></span><span class="file-meta">${statusText}</span>`;
         row.dataset.path = file.path;
         row.onclick = () => selectImage(file.path, row);
+        row.oncontextmenu = showContextMenu;
         filesEl.appendChild(row);
       }
       if (currentPath) {
@@ -1355,6 +1486,14 @@ class Workstation:
       return (incomplete || files[0]).path;
     }
 
+    function nextFileAfterDelete(deletedPath) {
+      const files = sortedCurrentFiles();
+      const index = files.findIndex(file => file.path === deletedPath);
+      const remaining = files.filter(file => file.path !== deletedPath);
+      if (!remaining.length) return "";
+      return remaining[Math.min(Math.max(index, 0), remaining.length - 1)].path;
+    }
+
     async function selectFirstCurrentFile() {
       const [firstFile] = sortedCurrentFiles();
       if (!firstFile) {
@@ -1382,8 +1521,11 @@ class Workstation:
     async function selectImage(path, button) {
       document.querySelectorAll("#files button").forEach(item => item.classList.remove("active"));
       if (button) button.classList.add("active");
-      viewerTitle.innerHTML = `<span class="pane-title-icon">▧</span>${escapeHtml(path)}`;
+      viewerTitle.innerHTML = `<span class="pane-title-icon">▧</span>${escapeHtml(path.split("/").pop() || path)}`;
+      lockBanner.hidden = true;
+      lockBanner.textContent = "";
       currentPath = path;
+      currentImage = null;
       lockedByOther = null;
       renderStatistics();
       const annotation = await getJson(`/api/annotation?path=${encodeURIComponent(path)}`);
@@ -1397,6 +1539,9 @@ class Workstation:
       if (teamMode) await acquireCurrentLock();
       loadExif(path);
       const image = new Image();
+      empty.textContent = "读取中...";
+      empty.style.display = "block";
+      canvas.style.display = "none";
       image.onload = () => {
         currentImage = image;
         empty.style.display = "none";
@@ -1406,6 +1551,12 @@ class Workstation:
         resetImageZoom();
         drawHistogram(image);
         redrawImage();
+      };
+      image.onerror = () => {
+        currentImage = null;
+        canvas.style.display = "none";
+        empty.textContent = "图片读取失败";
+        empty.style.display = "block";
       };
       image.src = `/media?path=${encodeURIComponent(path)}`;
     }
@@ -1661,6 +1812,15 @@ class Workstation:
       updateAnnotationButtons();
     }
 
+    function deleteSelectedBox() {
+      if (selectedBoxIndex < 0 || lockedByOther) return false;
+      currentBoxes.splice(selectedBoxIndex, 1);
+      selectedBoxIndex = -1;
+      setBoxesDirty(true);
+      redrawImage();
+      return true;
+    }
+
     function defaultBoxLabel() {
       return selectedClassLabel || classLabels[selectedClassId] || String(selectedClassId);
     }
@@ -1754,10 +1914,13 @@ class Workstation:
 
     function requireUsername() {
       bindUsernameGate();
-      username = window.yoloutilsUsername || usernameInput.value.trim();
+      username = window.yoloutilsUsername || "";
       if (username) return Promise.resolve();
       document.body.classList.add("username-required");
-      setTimeout(() => usernameInput.focus(), 0);
+      setTimeout(() => {
+        usernameInput.focus();
+        usernameInput.select();
+      }, 0);
       return usernameReady;
     }
 
@@ -1770,11 +1933,6 @@ class Workstation:
     function bindUsernameGate() {
       if (usernameGateBound) return;
       usernameGateBound = true;
-      usernameForm.addEventListener("submit", submitUsername);
-      usernameSubmit.addEventListener("click", submitUsername);
-      usernameInput.addEventListener("keydown", event => {
-        if (event.key === "Enter") submitUsername(event);
-      });
     }
 
     async function loadConsoleLogs() {
@@ -1794,22 +1952,16 @@ class Workstation:
     }
 
     function clientId() {
-      const key = "yoloutils-workstation-client-id";
-      let id = "";
-      try {
-        id = localStorage.getItem(key);
-      } catch (error) {
-        id = "";
+      return window.yoloutilsGetClientId ? window.yoloutilsGetClientId() : window.yoloutilsClientId;
+    }
+
+    function userColor(value) {
+      const colors = ["#16a34a", "#2563eb", "#dc2626", "#9333ea", "#0891b2", "#ca8a04", "#db2777", "#0f766e", "#ea580c", "#4f46e5"];
+      let hash = 0;
+      for (const char of value || "") {
+        hash = ((hash << 5) - hash + char.charCodeAt(0)) | 0;
       }
-      if (!id) {
-        id = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
-        try {
-          localStorage.setItem(key, id);
-        } catch (error) {
-          window.yoloutilsClientId = id;
-        }
-      }
-      return id || window.yoloutilsClientId;
+      return colors[Math.abs(hash) % colors.length];
     }
 
     async function updatePresence() {
@@ -1819,7 +1971,11 @@ class Workstation:
         const data = await postJson("/api/presence", {client_id: clientId(), username: username || "独立用户"});
         onlineCount.textContent = data.online;
         collaborationUsers.innerHTML = data.users
-          .map(user => `<div class="collaboration-user">${escapeHtml(user.username)}</div>`)
+          .map(user => {
+            const name = escapeHtml(user.username);
+            const color = userColor(user.username);
+            return `<div class="collaboration-user" title="${name}"><span class="collaboration-dot" style="--user-color:${color}"></span><span class="collaboration-name">${name}</span></div>`;
+          })
           .join("");
       } catch (error) {
         onlineCount.textContent = "-";
@@ -1852,7 +2008,8 @@ class Workstation:
       lockedByOther = data.locked ? data.owner : null;
       if (lockedByOther) {
         annotateMode = false;
-        viewerTitle.innerHTML = `<span class="pane-title-icon">▧</span>${escapeHtml(currentPath)} <span class="lock-note">锁定：${escapeHtml(lockedByOther.username)}</span>`;
+        lockBanner.textContent = `锁定：${lockedByOther.username}`;
+        lockBanner.hidden = false;
       }
       updateAnnotationButtons();
     }
@@ -1950,6 +2107,7 @@ class Workstation:
       initHistogramSplitter();
       initLeftPanel();
       initMainSplitter();
+      initConsoleSplitter();
       initRightPanel();
       initViewerTools();
       initViewerFocus();
@@ -2033,11 +2191,58 @@ class Workstation:
         return;
       }
       const link = document.createElement("a");
-      link.href = `/media?path=${encodeURIComponent(currentPath)}`;
+      link.href = `/media?path=${encodeURIComponent(currentPath)}&raw=1`;
       link.download = currentPath.split("/").pop() || "image";
       document.body.appendChild(link);
       link.click();
       link.remove();
+    }
+
+    function hideContextMenu() {
+      imageContextMenu.hidden = true;
+    }
+
+    function showContextMenu(event) {
+      if (!currentPath) return;
+      event.preventDefault();
+      imageContextMenu.hidden = false;
+      const menuWidth = imageContextMenu.offsetWidth || 132;
+      const menuHeight = imageContextMenu.offsetHeight || 34;
+      imageContextMenu.style.left = `${Math.min(event.clientX, window.innerWidth - menuWidth - 8)}px`;
+      imageContextMenu.style.top = `${Math.min(event.clientY, window.innerHeight - menuHeight - 8)}px`;
+    }
+
+    async function deleteCurrentFile() {
+      hideContextMenu();
+      if (!currentPath || lockedByOther) return;
+      const deletedPath = currentPath;
+      if (!confirm(`删除 ${deletedPath} 和同名 .txt 文件？`)) return;
+      const nextPath = nextFileAfterDelete(deletedPath);
+      try {
+        await postJson("/api/file/delete", {
+          path: deletedPath,
+          client_id: clientId(),
+          username: username || "独立用户",
+        });
+      } catch (error) {
+        alert(error.message);
+        await acquireCurrentLock();
+        return;
+      }
+      currentPath = "";
+      currentImage = null;
+      currentBoxes = [];
+      savedBoxes = [];
+      selectedBoxIndex = -1;
+      setBoxesDirty(false);
+      await loadStatistics();
+      await loadTree();
+      await refreshCurrentFiles();
+      if (nextPath && currentFiles.some(file => file.path === nextPath)) {
+        await selectImage(nextPath, fileRow(nextPath));
+      } else {
+        await selectFirstCurrentFile();
+      }
     }
 
     async function shareCurrentLocation() {
@@ -2139,6 +2344,10 @@ class Workstation:
           selectAdjacentImage(1);
           return;
         }
+        if (!event.metaKey && !event.ctrlKey && (event.key === "Delete" || event.key === "Backspace")) {
+          if (deleteSelectedBox()) event.preventDefault();
+          return;
+        }
         if (!(event.metaKey || event.ctrlKey)) return;
         const key = event.key.toLowerCase();
         if (key === "d") {
@@ -2181,6 +2390,32 @@ class Workstation:
       return null;
     }
 
+    function anchorCursor(anchor) {
+      return {
+        n: "ns-resize",
+        s: "ns-resize",
+        e: "ew-resize",
+        w: "ew-resize",
+        nw: "nwse-resize",
+        se: "nwse-resize",
+        ne: "nesw-resize",
+        sw: "nesw-resize",
+      }[anchor] || "";
+    }
+
+    function selectedAnchorHit(point) {
+      if (selectedBoxIndex < 0) return null;
+      const area = boxHitAreas.find(item => item.index === selectedBoxIndex);
+      if (!area) return null;
+      return area.anchors.find(anchor => rectContains(anchor, point)) || null;
+    }
+
+    function updateCanvasHoverCursor(event) {
+      if (!currentImage || lockedByOther || canvasInteraction) return;
+      const anchor = selectedAnchorHit(canvasPoint(event));
+      canvas.style.cursor = anchor ? anchorCursor(anchor.name) : "";
+    }
+
     function moveBox(box, dx, dy) {
       const halfWidth = box.width / 2;
       const halfHeight = box.height / 2;
@@ -2221,7 +2456,16 @@ class Workstation:
     }
 
     function initCanvasAnnotation() {
+      canvas.addEventListener("mousemove", updateCanvasHoverCursor);
+      canvas.addEventListener("mouseleave", () => {
+        if (!canvasInteraction) canvas.style.cursor = "";
+      });
+      canvas.parentElement.addEventListener("contextmenu", showContextMenu);
+      document.addEventListener("click", hideContextMenu);
+      window.addEventListener("blur", hideContextMenu);
+      deleteFileMenuItem.addEventListener("click", deleteCurrentFile);
       canvas.addEventListener("mousedown", event => {
+        hideContextMenu();
         if (!currentImage || event.button !== 0 || lockedByOther) return;
         const point = canvasPoint(event);
         const hit = hitTestBox(point);
@@ -2236,6 +2480,7 @@ class Workstation:
               anchor: hit.anchor,
               startBox: {...currentBoxes[hit.index]},
             };
+            canvas.style.cursor = anchorCursor(hit.anchor);
           } else if (hit.type === "label") {
             canvasInteraction = {
               type: "move",
@@ -2265,6 +2510,7 @@ class Workstation:
             scrollTop: wrapper.scrollTop,
           };
           canvas.classList.add("panning");
+          canvas.style.cursor = "";
         }
         redrawImage();
         event.preventDefault();
@@ -2310,6 +2556,7 @@ class Workstation:
         dragStart = null;
         draftBox = null;
         canvas.classList.remove("panning");
+        canvas.style.cursor = "";
         redrawImage();
       });
     }
@@ -2448,7 +2695,7 @@ class Workstation:
         const minFiles = 160;
         const splitterWidth = leftSplitter.getBoundingClientRect().width;
         const treeWidth = Math.min(Math.max(event.clientX - rect.left, minTree), rect.width - minFiles - splitterWidth);
-        leftPanel.style.gridTemplateColumns = `${treeWidth}px 8px minmax(${minFiles}px, 1fr)`;
+        leftPanel.style.gridTemplateColumns = `${treeWidth}px 1px minmax(${minFiles}px, 1fr)`;
       });
       window.addEventListener("mouseup", () => {
         if (!dragging) return;
@@ -2464,15 +2711,19 @@ class Workstation:
         leftPanel.classList.remove("tree-hidden");
         appMain.classList.remove("tree-hidden");
         if (!leftPanel.style.gridTemplateColumns || leftPanel.style.gridTemplateColumns.startsWith("0px")) {
-          leftPanel.style.gridTemplateColumns = "minmax(120px, 46%) 8px minmax(160px, 1fr)";
+          leftPanel.style.gridTemplateColumns = "minmax(120px, 46%) 1px minmax(160px, 1fr)";
         }
         setMainColumns(520);
+      });
+      toggleCollaboration.addEventListener("click", () => {
+        treePane.classList.toggle("collaboration-collapsed");
+        toggleCollaboration.textContent = treePane.classList.contains("collaboration-collapsed") ? "⌃" : "⌄";
       });
     }
 
     function setMainColumns(leftWidth) {
       const rightWidth = appMain.classList.contains("right-hidden") ? 0 : 220;
-      appMain.style.gridTemplateColumns = `${leftWidth}px 8px minmax(420px, 1fr) ${rightWidth}px`;
+      appMain.style.gridTemplateColumns = `${leftWidth}px 1px minmax(420px, 1fr) ${rightWidth}px`;
     }
 
     function initMainSplitter() {
@@ -2498,6 +2749,27 @@ class Workstation:
         if (!dragging) return;
         dragging = false;
         mainSplitter.classList.remove("dragging");
+      });
+    }
+
+    function initConsoleSplitter() {
+      let dragging = false;
+      const minHeight = 90;
+      consoleSplitter.addEventListener("mousedown", event => {
+        dragging = true;
+        consoleSplitter.classList.add("dragging");
+        event.preventDefault();
+      });
+      window.addEventListener("mousemove", event => {
+        if (!dragging) return;
+        const maxHeight = Math.max(minHeight, window.innerHeight - 160);
+        const nextHeight = Math.min(Math.max(window.innerHeight - event.clientY - consoleSplitter.offsetHeight, minHeight), maxHeight);
+        document.documentElement.style.setProperty("--console-height", `${nextHeight}px`);
+      });
+      window.addEventListener("mouseup", () => {
+        if (!dragging) return;
+        dragging = false;
+        consoleSplitter.classList.remove("dragging");
       });
     }
 

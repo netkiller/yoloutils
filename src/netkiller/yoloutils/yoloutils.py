@@ -294,7 +294,7 @@ class YoloUtils:
         self.workstation.add_argument("-c", "--classes", type=str, default=None, help="classes.txt 文件")
         self.workstation.add_argument("--open", action="store_true", default=False, help="启动服务后打开无地址栏应用窗口")
         self.workstation.add_argument("-t", "--team", action="store_true", default=False, help="团队协作模式")
-        self.workstation.add_argument("--share-url", type=str, default="", help="分享给协作者的对外访问地址")
+        self.workstation.add_argument("--mDNS", dest="mdns", type=str, default="netkiller.local", help=".local 分享域名")
 
         self.parser = parser
 
@@ -441,7 +441,7 @@ class YoloUtils:
                 args = self.workstation.parse_args(argv[1:])
                 run = Workstation(args.host, args.port, args.daemon)
                 if args.workspace:
-                    run.main(args.workspace, args.dataset, args.run, args.classes, args.open, args.team, args.share_url)
+                    run.main(args.workspace, args.dataset, args.run, args.classes, args.open, args.team, args.mdns)
                 else:
                     self.workstation.print_help()
             except SystemExit as e:
