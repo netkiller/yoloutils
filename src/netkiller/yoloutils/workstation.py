@@ -1,4 +1,5 @@
 import os
+import socket
 import subprocess
 import sys
 import threading
@@ -32,7 +33,7 @@ except ImportError:
 class Workstation:
     def __init__(
         self,
-        host: str = "127.0.0.1",
+        host: str = "0.0.0.0",
         port: int = 8000,
         daemon: bool = False,
     ):
@@ -44,6 +45,10 @@ class Workstation:
         self.run = None
         self.requested_classes_file = None
         self.open_browser = False
+        self.team_mode = False
+        self.share_url = ""
+        self.presence = {}
+        self.locks = {}
         self.classes_file = None
         self.class_groups = []
         self.classes = []
@@ -55,6 +60,8 @@ class Workstation:
         run: str = None,
         classes_file: str = None,
         open_browser: bool = False,
+        team_mode: bool = False,
+        share_url: str = "",
     ):
         if FastAPI is None or uvicorn is None:
             print("缺少依赖: fastapi/uvicorn，请先安装: pip install fastapi uvicorn")
@@ -68,6 +75,8 @@ class Workstation:
         self.run = Path(run).expanduser().resolve() if run else None
         self.requested_classes_file = classes_file
         self.open_browser = open_browser
+        self.team_mode = team_mode
+        self.share_url = share_url.strip().rstrip("/") if share_url else ""
 
         if self.daemon:
             self._start_daemon()
@@ -103,6 +112,42 @@ class Workstation:
         if ":" in host and not host.startswith("["):
             host = f"[{host}]"
         return f"http://{host}:{self.port}"
+
+    def _share_url(self):
+        if self.share_url:
+            return self.share_url
+        host = self._public_ip() or self.host
+        if host in ("", "0.0.0.0", "::", "127.0.0.1", "localhost"):
+            host = "127.0.0.1"
+        if ":" in host and not host.startswith("["):
+            host = f"[{host}]"
+        return f"http://{host}:{self.port}"
+
+    def _public_ip(self):
+        for url in (
+            "https://api.ipify.org",
+            "https://ifconfig.me/ip",
+            "https://icanhazip.com",
+        ):
+            try:
+                with urllib.request.urlopen(url, timeout=2) as response:
+                    ip = response.read().decode("utf-8", errors="ignore").strip()
+                if ip and len(ip) <= 64 and " " not in ip:
+                    return ip
+            except OSError:
+                continue
+        return ""
+
+    def _lan_ip(self):
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+                sock.connect(("8.8.8.8", 80))
+                return sock.getsockname()[0]
+        except OSError:
+            try:
+                return socket.gethostbyname(socket.gethostname())
+            except OSError:
+                return "127.0.0.1"
 
     def _start_browser_opener(self, url: str):
         def open_and_keep_alive():
@@ -447,12 +492,17 @@ class Workstation:
             "boxes": boxes,
         }
 
-    def _write_annotation(self, image_path: str, boxes):
+    def _write_annotation(self, image_path: str, boxes, client_id: str = "", username: str = ""):
         path = self._safe_path(image_path)
         if not self._is_image(path):
             raise HTTPException(status_code=404, detail="image not found")
         if not isinstance(boxes, list):
             raise HTTPException(status_code=400, detail="boxes must be a list")
+        relative_path = self._relative(path)
+        if self.team_mode:
+            lock = self._lock_for(relative_path)
+            if lock and lock["client_id"] != client_id:
+                raise HTTPException(status_code=423, detail=f"文件已被 {lock['username']} 锁定")
 
         lines = []
         for box in boxes:
@@ -473,7 +523,21 @@ class Workstation:
             label_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
         else:
             label_file.write_text("", encoding="utf-8")
+        if self.team_mode:
+            self._append_operation_log(username or "未命名", relative_path, lines)
+        if self.team_mode and client_id:
+            self._release_lock(relative_path, client_id)
         return self._read_annotation(image_path)
+
+    def _append_operation_log(self, username: str, image_path: str, lines):
+        timestamp = datetime.now().isoformat(timespec="seconds")
+        summary = "; ".join(lines) if lines else "清空标注"
+        message = f"[{timestamp}] {username} 保存 {image_path}: {summary}\n"
+        try:
+            with open(self._log_file(), "a", encoding="utf-8") as file:
+                file.write(message)
+        except OSError:
+            pass
 
     def _json_value(self, value):
         if isinstance(value, bytes):
@@ -511,12 +575,91 @@ class Workstation:
 
         return {"info": info, "exif": exif}
 
+    def _online_count(self):
+        now = time.time()
+        self.presence = {
+            client_id: info
+            for client_id, info in self.presence.items()
+            if now - info["seen_at"] <= 12
+        }
+        return len(self.presence)
+
+    def _online_users(self):
+        self._online_count()
+        return [
+            {"client_id": client_id, "username": info["username"]}
+            for client_id, info in sorted(
+                self.presence.items(),
+                key=lambda item: item[1]["username"].lower(),
+            )
+        ]
+
+    def _lock_for(self, image_path: str):
+        lock = self.locks.get(image_path)
+        if not lock:
+            return None
+        if time.time() - lock["seen_at"] > 180:
+            self.locks.pop(image_path, None)
+            return None
+        return lock
+
+    def _acquire_lock(self, image_path: str, client_id: str, username: str):
+        if not self.team_mode:
+            return {"team_mode": False, "locked": False, "owner": None}
+        if not client_id:
+            raise HTTPException(status_code=400, detail="client_id required")
+        path = self._safe_path(image_path)
+        if not self._is_image(path):
+            raise HTTPException(status_code=404, detail="image not found")
+        relative_path = self._relative(path)
+        lock = self._lock_for(relative_path)
+        if lock and lock["client_id"] != client_id:
+            return {"team_mode": True, "locked": True, "owner": lock}
+        self.locks[relative_path] = {
+            "client_id": client_id,
+            "username": username or "未命名",
+            "path": relative_path,
+            "seen_at": time.time(),
+        }
+        return {"team_mode": True, "locked": False, "owner": self.locks[relative_path]}
+
+    def _release_lock(self, image_path: str, client_id: str):
+        lock = self._lock_for(image_path)
+        if lock and lock["client_id"] == client_id:
+            self.locks.pop(image_path, None)
+        return {"released": True}
+
+    def _leave_presence(self, client_id: str):
+        if client_id:
+            self.presence.pop(client_id, None)
+        return {"online": self._online_count(), "users": self._online_users()}
+
+    def _read_logs(self, lines: int = 200):
+        log_file = self._log_file()
+        if not log_file.exists():
+            return {
+                "file": str(log_file),
+                "lines": [
+                    "当前会话没有后台日志文件。",
+                    "使用 -d/--daemon 后，日志会写入 .yoloutils-workstation.log。",
+                ],
+            }
+        try:
+            content = log_file.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError as error:
+            return {"file": str(log_file), "lines": [f"读取日志失败: {error}"]}
+        return {"file": str(log_file), "lines": content[-lines:]}
+
     def _create_app(self):
         app = FastAPI(title="Yolo Workstation")
 
         @app.get("/", response_class=HTMLResponse)
         def index():
             return HTMLResponse(self._html())
+
+        @app.get("/api/config")
+        def config():
+            return {"team_mode": self.team_mode, "share_url": self._share_url()}
 
         @app.get("/api/tree")
         def tree():
@@ -544,6 +687,45 @@ class Workstation:
         def statistics():
             return self._statistics()
 
+        @app.post("/api/presence")
+        async def presence(request: Request):
+            payload = await request.json()
+            client_id = str(payload.get("client_id", "")).strip()
+            username = str(payload.get("username", "")).strip() or "独立用户"
+            if not client_id:
+                raise HTTPException(status_code=400, detail="client_id required")
+            self.presence[client_id] = {
+                "username": username,
+                "seen_at": time.time(),
+            }
+            return {"online": self._online_count(), "users": self._online_users()}
+
+        @app.post("/api/presence/leave")
+        async def leave_presence(request: Request):
+            payload = await request.json()
+            return self._leave_presence(str(payload.get("client_id", "")).strip())
+
+        @app.post("/api/lock")
+        async def lock(request: Request):
+            payload = await request.json()
+            return self._acquire_lock(
+                payload.get("path", ""),
+                str(payload.get("client_id", "")).strip(),
+                str(payload.get("username", "")).strip(),
+            )
+
+        @app.post("/api/lock/release")
+        async def release_lock(request: Request):
+            payload = await request.json()
+            return self._release_lock(
+                str(payload.get("path", "")).strip(),
+                str(payload.get("client_id", "")).strip(),
+            )
+
+        @app.get("/api/logs")
+        def logs(lines: int = Query(default=200, ge=1, le=1000)):
+            return self._read_logs(lines)
+
         @app.get("/api/annotation")
         def annotation(path: str):
             return self._read_annotation(path)
@@ -551,7 +733,12 @@ class Workstation:
         @app.post("/api/annotation")
         async def save_annotation(request: Request):
             payload = await request.json()
-            return self._write_annotation(payload.get("path", ""), payload.get("boxes", []))
+            return self._write_annotation(
+                payload.get("path", ""),
+                payload.get("boxes", []),
+                str(payload.get("client_id", "")).strip(),
+                str(payload.get("username", "")).strip(),
+            )
 
         @app.get("/api/exif")
         def exif(path: str):
@@ -591,6 +778,7 @@ class Workstation:
     button:disabled { cursor: not-allowed; opacity: .42; }
     button:disabled:hover { background: transparent; color: inherit; }
     main { height: calc(100vh - 88px); display: grid; grid-template-columns: minmax(360px, 520px) 1px minmax(420px, 1fr) 220px; overflow: hidden; }
+    body.console-open main { height: calc(100vh - 248px); }
     main.tree-hidden { grid-template-columns: 280px 1px minmax(420px, 1fr) 220px; }
     main.right-hidden { grid-template-columns: minmax(360px, 520px) 1px minmax(420px, 1fr) 0; }
     main.tree-hidden.right-hidden { grid-template-columns: 280px 1px minmax(420px, 1fr) 0; }
@@ -621,8 +809,17 @@ class Workstation:
     .vertical-splitter:hover, .vertical-splitter.dragging { background: #bcccdc; }
     .main-splitter { cursor: col-resize; background: #d9e2ec; }
     .main-splitter:hover, .main-splitter.dragging { background: #bcccdc; }
-    .tree, .files, .labels, .exif { padding: 8px; }
-    .tree, .files { flex: 1 1 auto; min-height: 0; overflow: auto; }
+    .tree, .files, .labels, .exif, .collaboration { padding: 8px; }
+    .tree { flex: 4 1 80%; min-height: 0; overflow: auto; }
+    .files { flex: 1 1 auto; min-height: 0; overflow: auto; }
+    .collaboration { display: none; flex: 1 1 20%; min-height: 72px; overflow: hidden; border-top: 1px solid #d9e2ec; background: #fff; }
+    body.team-mode .collaboration { display: block; }
+    .collaboration-header { height: 34px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 8px 0 12px; border-bottom: 1px solid #e4e7eb; background: #f8fafc; color: #1f2933; font-size: 13px; font-weight: 650; }
+    .online-count { min-width: 20px; color: #1f2933; font-size: 13px; font-weight: 750; text-align: right; }
+    .collaboration-users { max-height: calc(100% - 34px); overflow: auto; display: grid; gap: 2px; padding: 6px 8px; color: #52606d; font-size: 12px; line-height: 1.35; }
+    .collaboration-user { display: flex; align-items: center; gap: 6px; min-height: 22px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .collaboration-user::before { content: ""; flex: 0 0 7px; width: 7px; height: 7px; border-radius: 50%; background: #22c55e; }
+    .lock-note { color: #b45309; font-size: 12px; }
     button { width: 100%; border: 0; background: transparent; text-align: left; padding: 7px 8px; border-radius: 6px; cursor: pointer; color: #243b53; font: inherit; }
     button:hover, button.active { background: #e6f0ff; }
     .tree-node { position: relative; }
@@ -694,6 +891,11 @@ class Workstation:
     .stat strong { color: #1f2933; font-weight: 700; }
     .stat.warn strong { color: #b45309; }
     .stat.bad strong { color: #be123c; }
+    .footer-button { width: auto; height: 26px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 0 8px; border: 1px solid #d9e2ec; border-radius: 6px; background: #fff; color: #334e68; font-size: 12px; line-height: 1; white-space: nowrap; }
+    .footer-button:hover, .footer-button.active { background: #e6f0ff; color: #243b53; }
+    .console-panel { height: 160px; display: none; border-top: 1px solid #d9e2ec; background: #111827; color: #d1d5db; overflow: auto; }
+    body.console-open .console-panel { display: block; }
+    .console-log { margin: 0; padding: 10px 14px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; line-height: 1.45; white-space: pre-wrap; }
     .shortcut-popover { position: fixed; top: 56px; right: 16px; z-index: 20; width: 300px; padding: 12px; border: 1px solid #d9e2ec; border-radius: 8px; background: #fff; box-shadow: 0 12px 28px rgba(31, 41, 51, .18); color: #243b53; }
     .shortcut-popover[hidden] { display: none; }
     .shortcut-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; font-size: 13px; font-weight: 700; }
@@ -701,9 +903,15 @@ class Workstation:
     .shortcut-list { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 7px 12px; font-size: 12px; line-height: 1.35; }
     .shortcut-key { color: #1d4ed8; font-weight: 750; white-space: nowrap; }
     .shortcut-desc { color: #52606d; }
+    .username-gate { position: fixed; inset: 0; z-index: 40; display: none; align-items: center; justify-content: center; background: rgba(15, 23, 42, .42); }
+    body.username-required .username-gate { display: flex; }
+    .username-dialog { width: 320px; padding: 18px; border-radius: 10px; background: #fff; box-shadow: 0 18px 45px rgba(15, 23, 42, .24); }
+    .username-dialog h3 { margin: 0 0 12px; font-size: 16px; color: #1f2933; }
+    .username-dialog input { width: 100%; height: 34px; padding: 0 10px; border: 1px solid #bcccdc; border-radius: 6px; font: inherit; }
+    .username-dialog button { width: auto; height: 30px; margin-top: 12px; padding: 0 12px; border: 1px solid #2563eb; background: #2563eb; color: #fff; text-align: center; }
   </style>
 </head>
-<body>
+<body class="__BODY_CLASS__" data-team-mode="__TEAM_MODE__">
   <header>
     <div class="header-title">
       <a class="brand-link" href="https://www.netkiller.cn" target="_blank" rel="noopener noreferrer">Yolo Workstation</a>
@@ -737,6 +945,47 @@ class Workstation:
       <span class="shortcut-key">双击图像标题</span><span class="shortcut-desc">隐藏或显示左右栏</span>
     </div>
   </div>
+  <div id="usernameGate" class="username-gate">
+    <form id="usernameForm" class="username-dialog">
+      <h3>请输入用户名</h3>
+      <input id="usernameInput" type="text" autocomplete="name" placeholder="用户名">
+      <button id="usernameSubmit" type="submit">进入</button>
+    </form>
+  </div>
+  <script>
+    window.yoloutilsUsername = "";
+    window.yoloutilsUsernameReady = new Promise(resolve => {
+      window.yoloutilsResolveUsername = resolve;
+    });
+    window.yoloutilsSubmitUsername = event => {
+      if (event) event.preventDefault();
+      const input = document.getElementById("usernameInput");
+      const name = (input?.value || "").trim();
+      if (!name) {
+        input?.focus();
+        return;
+      }
+      window.yoloutilsUsername = name;
+      try {
+        localStorage.setItem("yoloutils-workstation-username", name);
+      } catch (error) {
+        // localStorage can be blocked in some app-window modes.
+      }
+      document.body.classList.remove("username-required");
+      window.yoloutilsResolveUsername?.();
+    };
+    document.addEventListener("DOMContentLoaded", () => {
+      const form = document.getElementById("usernameForm");
+      const input = document.getElementById("usernameInput");
+      try {
+        input.value = localStorage.getItem("yoloutils-workstation-username") || "";
+      } catch (error) {
+        input.value = "";
+      }
+      form?.addEventListener("submit", window.yoloutilsSubmitUsername);
+      if (document.body.classList.contains("username-required")) input?.focus();
+    });
+  </script>
   <main id="appMain">
     <div id="leftPanel" class="left-panel">
       <aside id="treePane" class="left-pane tree-pane">
@@ -748,6 +997,10 @@ class Workstation:
           </div>
         </div>
         <div id="tree" class="tree"></div>
+        <div id="collaboration" class="collaboration">
+          <div class="collaboration-header"><span><span class="pane-title-icon">◌</span>协作</span><strong id="onlineCount" class="online-count">-</strong></div>
+          <div id="collaborationUsers" class="collaboration-users"></div>
+        </div>
       </aside>
       <div id="leftSplitter" class="vertical-splitter" title="拖动调整目录和文件列表比例"></div>
       <aside class="left-pane files-pane">
@@ -804,8 +1057,10 @@ class Workstation:
       <span class="stat"><span class="stat-icon">⌑</span>classes.txt <strong>-</strong></span>
       <span class="stat bad"><span class="stat-icon">✕</span>损坏图像 <strong>-</strong></span>
       <span class="stat bad"><span class="stat-icon">!</span>无效 .txt <strong>-</strong></span>
+      <button id="consoleToggle" class="footer-button" type="button"><span class="stat-icon">▤</span>控制台</button>
     </div>
   </footer>
+  <section id="consolePanel" class="console-panel"><pre id="consoleLog" class="console-log">控制台未打开</pre></section>
   <script>
     const colors = ["#e11d48", "#2563eb", "#16a34a", "#d97706", "#7c3aed", "#0891b2", "#be123c", "#4d7c0f"];
     const treeEl = document.getElementById("tree");
@@ -848,6 +1103,13 @@ class Workstation:
     const datasetButton = document.getElementById("datasetButton");
     const trainButton = document.getElementById("trainButton");
     const statsEl = document.getElementById("stats");
+    const onlineCount = document.getElementById("onlineCount");
+    const collaborationUsers = document.getElementById("collaborationUsers");
+    const consoleToggle = document.getElementById("consoleToggle");
+    const consoleLog = document.getElementById("consoleLog");
+    const usernameForm = document.getElementById("usernameForm");
+    const usernameInput = document.getElementById("usernameInput");
+    const usernameSubmit = document.getElementById("usernameSubmit");
     const canvas = document.getElementById("canvas");
     const ctx = canvas.getContext("2d");
     const empty = document.getElementById("empty");
@@ -873,6 +1135,12 @@ class Workstation:
     let classLabels = [];
     let selectedClassId = 0;
     let selectedClassLabel = "0";
+    let teamMode = false;
+    let username = "";
+    let usernameReady = window.yoloutilsUsernameReady || Promise.resolve();
+    let usernameGateBound = false;
+    let lockedByOther = null;
+    let shareUrl = window.location.origin;
     const collapsedDirs = new Set();
     let statisticsData = null;
     let histogramExpandedTopHeight = null;
@@ -971,12 +1239,12 @@ class Workstation:
     }
 
     function findTreeButton(path) {
-      return Array.from(document.querySelectorAll("#tree button"))
+      return Array.from(document.querySelectorAll("#tree .tree-select"))
         .find(item => item.dataset.path === path);
     }
 
     function setActiveTreeButton(path, button = null) {
-      document.querySelectorAll("#tree button").forEach(item => item.classList.remove("active"));
+      document.querySelectorAll("#tree .tree-select").forEach(item => item.classList.remove("active"));
       const activeButton = button || findTreeButton(path);
       if (activeButton) activeButton.classList.add("active");
     }
@@ -1116,6 +1384,7 @@ class Workstation:
       if (button) button.classList.add("active");
       viewerTitle.innerHTML = `<span class="pane-title-icon">▧</span>${escapeHtml(path)}`;
       currentPath = path;
+      lockedByOther = null;
       renderStatistics();
       const annotation = await getJson(`/api/annotation?path=${encodeURIComponent(path)}`);
       currentBoxes = cloneBoxes(annotation.boxes);
@@ -1125,6 +1394,7 @@ class Workstation:
       selectedBoxIndex = -1;
       canvasInteraction = null;
       setBoxesDirty(false);
+      if (teamMode) await acquireCurrentLock();
       loadExif(path);
       const image = new Image();
       image.onload = () => {
@@ -1408,9 +1678,14 @@ class Workstation:
       editModeToggle.querySelector("span:last-child").textContent = annotateMode ? "打标" : "只读";
       editModeToggle.title = annotateMode ? "当前为打标状态" : "当前为只读状态";
       canvas.classList.toggle("annotating", annotateMode);
-      saveAnnotation.disabled = !boxesDirty;
-      resetAnnotation.disabled = !boxesDirty;
-      deleteAnnotation.disabled = !currentBoxes.length;
+      const locked = Boolean(lockedByOther);
+      saveAnnotation.disabled = locked || !boxesDirty;
+      resetAnnotation.disabled = locked || !boxesDirty;
+      deleteAnnotation.disabled = locked || !currentBoxes.length;
+      editModeToggle.disabled = locked;
+      if (locked) {
+        editModeToggle.title = `团队模式：${lockedByOther.username} 正在标注该图片`;
+      }
     }
 
     async function loadLabels() {
@@ -1451,6 +1726,144 @@ class Workstation:
     async function loadStatistics() {
       statisticsData = await getJson("/api/statistics");
       renderStatistics();
+    }
+
+    async function loadConfig() {
+      const embeddedTeamMode = document.body.dataset.teamMode === "true";
+      try {
+        const data = await getJson("/api/config");
+        teamMode = Boolean(data.team_mode);
+        shareUrl = data.share_url || window.location.origin;
+      } catch (error) {
+        teamMode = embeddedTeamMode;
+      }
+      document.body.classList.toggle("team-mode", teamMode);
+      if (!teamMode) {
+        document.body.classList.remove("username-required");
+        username = "";
+        usernameReady = Promise.resolve();
+        onlineCount.textContent = "-";
+        collaborationUsers.innerHTML = "";
+        return;
+      }
+      usernameReady = requireUsername();
+      await usernameReady;
+      username = window.yoloutilsUsername || usernameInput.value.trim();
+      await updatePresence();
+    }
+
+    function requireUsername() {
+      bindUsernameGate();
+      username = window.yoloutilsUsername || usernameInput.value.trim();
+      if (username) return Promise.resolve();
+      document.body.classList.add("username-required");
+      setTimeout(() => usernameInput.focus(), 0);
+      return usernameReady;
+    }
+
+    function submitUsername(event = null) {
+      window.yoloutilsSubmitUsername?.(event);
+      username = window.yoloutilsUsername || usernameInput.value.trim();
+      if (teamMode && username) updatePresence();
+    }
+
+    function bindUsernameGate() {
+      if (usernameGateBound) return;
+      usernameGateBound = true;
+      usernameForm.addEventListener("submit", submitUsername);
+      usernameSubmit.addEventListener("click", submitUsername);
+      usernameInput.addEventListener("keydown", event => {
+        if (event.key === "Enter") submitUsername(event);
+      });
+    }
+
+    async function loadConsoleLogs() {
+      try {
+        const data = await getJson("/api/logs?lines=200");
+        consoleLog.textContent = [`日志文件: ${data.file}`, "", ...data.lines].join("\\n");
+      } catch (error) {
+        consoleLog.textContent = `读取日志失败: ${error.message}`;
+      }
+    }
+
+    async function toggleConsole() {
+      document.body.classList.toggle("console-open");
+      const button = statsEl.querySelector("#consoleToggle");
+      if (button) button.classList.toggle("active", document.body.classList.contains("console-open"));
+      if (document.body.classList.contains("console-open")) await loadConsoleLogs();
+    }
+
+    function clientId() {
+      const key = "yoloutils-workstation-client-id";
+      let id = "";
+      try {
+        id = localStorage.getItem(key);
+      } catch (error) {
+        id = "";
+      }
+      if (!id) {
+        id = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+        try {
+          localStorage.setItem(key, id);
+        } catch (error) {
+          window.yoloutilsClientId = id;
+        }
+      }
+      return id || window.yoloutilsClientId;
+    }
+
+    async function updatePresence() {
+      if (!teamMode) return;
+      await usernameReady;
+      try {
+        const data = await postJson("/api/presence", {client_id: clientId(), username: username || "独立用户"});
+        onlineCount.textContent = data.online;
+        collaborationUsers.innerHTML = data.users
+          .map(user => `<div class="collaboration-user">${escapeHtml(user.username)}</div>`)
+          .join("");
+      } catch (error) {
+        onlineCount.textContent = "-";
+      }
+    }
+
+    function leavePresence() {
+      if (!teamMode) return;
+      const payload = JSON.stringify({client_id: clientId()});
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon("/api/presence/leave", new Blob([payload], {type: "application/json"}));
+        return;
+      }
+      fetch("/api/presence/leave", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: payload,
+        keepalive: true,
+      }).catch(() => {});
+    }
+
+    async function acquireCurrentLock() {
+      if (!teamMode || !currentPath) return;
+      await usernameReady;
+      const data = await postJson("/api/lock", {
+        path: currentPath,
+        client_id: clientId(),
+        username,
+      });
+      lockedByOther = data.locked ? data.owner : null;
+      if (lockedByOther) {
+        annotateMode = false;
+        viewerTitle.innerHTML = `<span class="pane-title-icon">▧</span>${escapeHtml(currentPath)} <span class="lock-note">锁定：${escapeHtml(lockedByOther.username)}</span>`;
+      }
+      updateAnnotationButtons();
+    }
+
+    async function releaseCurrentLock(path = currentPath) {
+      if (!teamMode || !path) return;
+      try {
+        await postJson("/api/lock/release", {path, client_id: clientId()});
+      } catch (error) {
+        // Ignore lock release errors; stale locks expire server-side.
+      }
     }
 
     function renderBreadcrumb() {
@@ -1515,16 +1928,24 @@ class Workstation:
           <span class="stat"><span class="stat-icon">⌑</span>classes.txt <strong>${data.classes_files}</strong></span>
           <span class="stat bad"><span class="stat-icon">✕</span>损坏图像 <strong>${data.images_damaged}</strong></span>
           <span class="stat bad"><span class="stat-icon">!</span>无效 .txt <strong>${data.txt_invalid_total}</strong></span>
+          <button id="consoleToggle" class="footer-button" type="button"><span class="stat-icon">▤</span>控制台</button>
         </div>
       `;
       statsEl.querySelector(".stats-left").appendChild(renderBreadcrumb());
+      const button = statsEl.querySelector("#consoleToggle");
+      button.classList.toggle("active", document.body.classList.contains("console-open"));
+      button.addEventListener("click", toggleConsole);
     }
 
     async function init() {
+      bindUsernameGate();
       canvas.style.display = "none";
+      await loadConfig();
       await loadTree();
       await loadLabels();
       await loadStatistics();
+      const rootButton = document.querySelector("#tree .tree-select");
+      if (rootButton) await selectDir("", rootButton);
       initSplitter();
       initHistogramSplitter();
       initLeftPanel();
@@ -1537,9 +1958,29 @@ class Workstation:
       initImageZoom();
       initKeyboardShortcuts();
       initCanvasAnnotation();
+      initPresence();
       updateAnnotationButtons();
-      const rootButton = document.querySelector("#tree button");
-      if (rootButton) await selectDir("", rootButton);
+    }
+
+    function initPresence() {
+      updatePresence();
+      setInterval(updatePresence, 5000);
+      setInterval(() => {
+        if (document.body.classList.contains("console-open")) loadConsoleLogs();
+      }, 5000);
+      window.addEventListener("pagehide", leavePresence);
+      window.addEventListener("beforeunload", () => {
+        leavePresence();
+        if (teamMode && currentPath) {
+          navigator.sendBeacon?.(
+            "/api/lock/release",
+            new Blob(
+              [JSON.stringify({path: currentPath, client_id: clientId()})],
+              {type: "application/json"},
+            ),
+          );
+        }
+      });
     }
 
     function initFileSorting() {
@@ -1552,6 +1993,7 @@ class Workstation:
     function initHeaderActions() {
       annotateModeButton.addEventListener("click", () => alert("当前窗口就是标注窗口"));
       editModeToggle.addEventListener("click", () => {
+        if (lockedByOther) return;
         annotateMode = !annotateMode;
         updateAnnotationButtons();
       });
@@ -1599,25 +2041,23 @@ class Workstation:
     }
 
     async function shareCurrentLocation() {
-      const text = currentPath
-        ? `图像: ${currentPath}`
-        : `目录: ${currentDir || "."}`;
+      const serverUrl = shareUrl || window.location.origin;
       const payload = {
         title: "Yolo Workstation",
-        text,
-        url: window.location.href,
+        text: serverUrl,
+        url: serverUrl,
       };
       try {
         if (navigator.share) {
           await navigator.share(payload);
           return;
         }
-        await navigator.clipboard.writeText(`${text}\n${window.location.href}`);
-        alert("已复制分享信息");
+        await navigator.clipboard.writeText(serverUrl);
+        alert("已复制服务地址");
       } catch (error) {
         if (navigator.clipboard) {
-          await navigator.clipboard.writeText(`${text}\n${window.location.href}`);
-          alert("已复制分享信息");
+          await navigator.clipboard.writeText(serverUrl);
+          alert("已复制服务地址");
         }
       }
     }
@@ -1782,7 +2222,7 @@ class Workstation:
 
     function initCanvasAnnotation() {
       canvas.addEventListener("mousedown", event => {
-        if (!currentImage || event.button !== 0) return;
+        if (!currentImage || event.button !== 0 || lockedByOther) return;
         const point = canvasPoint(event);
         const hit = hitTestBox(point);
         if (hit) {
@@ -1903,10 +2343,20 @@ class Workstation:
       saveAnnotation.addEventListener("click", async () => {
         if (!currentPath || !boxesDirty) return;
         const savedPath = currentPath;
-        const annotation = await postJson("/api/annotation", {
-          path: currentPath,
-          boxes: currentBoxes,
-        });
+        let annotation;
+        try {
+          annotation = await postJson("/api/annotation", {
+            path: currentPath,
+            client_id: clientId(),
+            username: username || "独立用户",
+            boxes: currentBoxes,
+          });
+        } catch (error) {
+          alert(error.message);
+          await acquireCurrentLock();
+          return;
+        }
+        lockedByOther = null;
         currentBoxes = cloneBoxes(annotation.boxes);
         savedBoxes = cloneBoxes(annotation.boxes);
         setBoxesDirty(false);
@@ -2095,4 +2545,7 @@ class Workstation:
     });
   </script>
 </body>
-</html>"""
+</html>""".replace(
+            "__BODY_CLASS__",
+            "team-mode username-required" if self.team_mode else "",
+        ).replace("__TEAM_MODE__", "true" if self.team_mode else "false")
