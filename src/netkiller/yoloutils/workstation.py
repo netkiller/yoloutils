@@ -2148,6 +2148,10 @@ class Workstation:
       });
     }
 
+    function showEnterpriseNotice() {
+      alert("请切换为企业版");
+    }
+
     function initHeaderActions() {
       annotateModeButton.addEventListener("click", () => alert("当前窗口就是标注窗口"));
       editModeToggle.addEventListener("click", () => {
@@ -2157,15 +2161,15 @@ class Workstation:
       });
       shareButton.addEventListener("click", shareCurrentLocation);
       downloadImage.addEventListener("click", downloadCurrentImage);
-      queryButton.addEventListener("click", queryLocation);
+      queryButton.addEventListener("click", showEnterpriseNotice);
       shortcutButton.addEventListener("click", () => {
         shortcutPopover.hidden = !shortcutPopover.hidden;
       });
       closeShortcuts.addEventListener("click", () => {
         shortcutPopover.hidden = true;
       });
-      datasetButton.addEventListener("click", () => alert("数据集功能入口已预留"));
-      trainButton.addEventListener("click", () => alert("训练功能入口已预留"));
+      datasetButton.addEventListener("click", showEnterpriseNotice);
+      trainButton.addEventListener("click", showEnterpriseNotice);
     }
 
     function visibleTreeButtons() {
@@ -2562,9 +2566,7 @@ class Workstation:
     }
 
     function initViewerTools() {
-      autoAnnotate.addEventListener("click", () => {
-        autoAnnotate.classList.toggle("active");
-      });
+      autoAnnotate.addEventListener("click", showEnterpriseNotice);
       maskAnnotation.addEventListener("click", () => {
         maskEnabled = !maskEnabled;
         maskAnnotation.classList.toggle("active", maskEnabled);
