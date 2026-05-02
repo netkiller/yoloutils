@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block title %}新建训练{% endblock %}
+
+{% block styles %}
+  <link rel="stylesheet" href="/static/css/train.css">
+{% endblock %}
+
+{% block content %}
+  <main>
+    <dialog class="train-dialog" open>
+      <form method="post" action="/train">
+        <div class="dialog-head">
+          <h1>新建训练任务</h1>
+          <a href="/dataset" aria-label="关闭">×</a>
+        </div>
+
+        <label>
+          <span>任务名称</span>
+          <input name="name" type="text" value="{{ dataset.name if dataset else 'train' }}" required>
+        </label>
+
+        <label>
+          <span>数据集</span>
+          <select name="dataset" required>
+            {% for item in datasets %}
+              <option value="{{ item.name }}" {% if dataset and item.path == dataset.path %}selected{% endif %}>{{ item.project }} / {{ item.name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <input type="hidden" name="project" value="{{ dataset.project if dataset else '' }}">
+
+        <div class="form-grid">
+          <label>
+            <span>模型</span>
+            <input name="model" type="text" value="yolov8n.pt" required>
+          </label>
+          <label>
+            <span>轮数</span>
+            <input name="epochs" type="number" min="1" value="200" required>
+          </label>
+          <label>
+            <span>图片尺寸</span>
+            <input name="imgsz" type="number" min="32" step="32" value="640" required>
+          </label>
+          <label>
+            <span>Batch</span>
+            <input name="batch" type="number" min="1" value="16" required>
+          </label>
+          <label>
+            <span>设备</span>
+            <input name="device" type="text" placeholder="cpu / 0 / 0,1">
+          </label>
+        </div>
+
+        <div class="dialog-actions">
+          <a class="secondary-link" href="/dataset">放弃</a>
+          <button type="submit">开始</button>
+        </div>
+      </form>
+    </dialog>
+  </main>
+{% endblock %}

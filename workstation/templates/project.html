@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block title %}项目{% endblock %}
+
+{% block styles %}
+  <link rel="stylesheet" href="/static/css/project.css">
+{% endblock %}
+
+{% block content %}
+  <main>
+    <section class="toolbar" aria-labelledby="project-title">
+      <div>
+        <h1 id="project-title">项目</h1>
+        <p class="workspace">Workspace: {{ workspace }}</p>
+      </div>
+      <button type="button" id="openCreateDialog">创建项目</button>
+    </section>
+
+    {% if error %}
+      <p class="error">{{ error }}</p>
+    {% endif %}
+
+    <section aria-labelledby="project-list-title">
+      <div class="list-head">
+        <h2 id="project-list-title">Project 列表</h2>
+        <span class="count">{{ projects | length }} 个项目</span>
+      </div>
+
+      {% if projects %}
+        <div class="projects">
+        {% for project in projects %}
+          <article class="project-card">
+            <a class="project-link" href="/project/{{ project.directory }}" aria-label="进入 {{ project.name }} 项目页面">
+              <div>
+                <h3>{{ project.name }}</h3>
+                {% if project.description %}
+                  <p class="project-description">{{ project.description }}</p>
+                {% else %}
+                  <p class="project-description muted">暂无描述</p>
+                {% endif %}
+                <div class="project-path">{{ project.path }}</div>
+              </div>
+              <div class="folders" aria-label="项目目录">
+                <span class="folder{% if not project.images %} missing{% endif %}">images</span>
+                <span class="folder{% if not project.dataset %} missing{% endif %}">dataset</span>
+                <span class="folder{% if not project.models %} missing{% endif %}">models</span>
+              </div>
+            </a>
+            <div class="card-menu">
+              <button class="menu-button" type="button" aria-label="项目操作" aria-expanded="false">⋮</button>
+              <div class="menu-panel" hidden>
+                <form method="post" action="/project/{{ project.directory }}/delete" data-confirm="确认删除项目 {{ project.name }}？">
+                  <button type="submit" class="danger-button">删除</button>
+                </form>
+              </div>
+            </div>
+          </article>
+        {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty">暂无项目</div>
+      {% endif %}
+    </section>
+  </main>
+
+  <dialog id="createProjectDialog" class="project-dialog">
+    <form method="post" action="/project">
+      <div class="dialog-head">
+        <h2>创建项目</h2>
+        <button type="button" class="icon-button" data-close-dialog aria-label="关闭">×</button>
+      </div>
+      <label>
+        <span>项目名</span>
+        <input name="name" type="text" autocomplete="off" required>
+      </label>
+      <label>
+        <span>目录名</span>
+        <input name="directory" type="text" autocomplete="off" required>
+      </label>
+      <label>
+        <span>项目描述</span>
+        <textarea name="description" rows="4"></textarea>
+      </label>
+      <div class="dialog-actions">
+        <button type="button" class="secondary-button" data-close-dialog>取消</button>
+        <button type="submit">确认</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="/static/js/project.js"></script>
+{% endblock %}

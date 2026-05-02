@@ -1,0 +1,11 @@
+<header>
+  <strong>Yolo Workstation</strong>
+  <nav aria-label="主导航">
+    <a{% if active_page == "project" %} class="active"{% endif %} href="/project"><span class="nav-icon">▤</span><span>项目</span></a>
+    <a{% if active_page == "annotate" %} class="active"{% endif %} href="/annotate"><span class="nav-icon">▧</span><span>标注</span></a>
+    <a{% if active_page == "dataset" %} class="active"{% endif %} href="/dataset"><span class="nav-icon">▦</span><span>数据集</span></a>
+    <a{% if active_page == "train" %} class="active"{% endif %} href="/train"><span class="nav-icon">▶</span><span>训练</span></a>
+    <a{% if active_page == "validate" %} class="active"{% endif %} href="/validate"><span class="nav-icon">✓</span><span>验证</span></a>
+  </nav>
+  <span class="header-spacer" aria-hidden="true"></span>
+</header>

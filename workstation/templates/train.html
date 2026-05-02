@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}训练队列{% endblock %}
+
+{% block styles %}
+  <link rel="stylesheet" href="/static/css/train.css">
+{% endblock %}
+
+{% block content %}
+  <main>
+    <section class="train-head">
+      <div>
+        <h1>训练队列</h1>
+        <p>管理 YOLO 训练任务，查看状态和控制台输出。</p>
+      </div>
+      <a class="primary-link" href="/train/new">新建训练</a>
+    </section>
+
+    {% if tasks %}
+      <section class="task-list" aria-label="训练任务">
+        {% for task in tasks %}
+          <article class="task-card">
+            <div>
+              <h2>{{ task.name }}</h2>
+              <p>{{ task.project }} / {{ task.dataset }}</p>
+            </div>
+            <span class="status">{{ task.status }}</span>
+            <div class="task-meta">
+              <span>model: {{ task.model }}</span>
+              <span>epochs: {{ task.epochs }}</span>
+              <span>imgsz: {{ task.imgsz }}</span>
+              <span>batch: {{ task.batch }}</span>
+            </div>
+            <div class="task-actions">
+              <a href="/train/tasks/{{ task.id }}">查看</a>
+              {% if task.status in ["排队中", "进行中"] %}
+                <form method="post" action="/train/tasks/{{ task.id }}/cancel">
+                  <button type="submit">取消</button>
+                </form>
+              {% endif %}
+            </div>
+          </article>
+        {% endfor %}
+      </section>
+    {% else %}
+      <section class="empty">暂无训练任务</section>
+    {% endif %}
+  </main>
+{% endblock %}

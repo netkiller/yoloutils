@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block title %}数据集{% endblock %}
+
+{% block styles %}
+  <link rel="stylesheet" href="/static/css/dataset.css">
+{% endblock %}
+
+{% block content %}
+  <main>
+    <section class="dataset-head" aria-labelledby="dataset-title">
+      <div>
+        <h1 id="dataset-title">YOLO Dataset</h1>
+        <p class="workspace">Workspace: {{ workspace }}</p>
+      </div>
+      <a class="project-link-button" href="/project">返回项目</a>
+    </section>
+
+    {% if datasets %}
+      <section class="dataset-grid" aria-label="数据集列表">
+        {% for dataset in datasets %}
+          <article class="dataset-card">
+            <div class="card-title">
+              <div>
+                <h2>{{ dataset.name }}</h2>
+                <p>{{ dataset.project }}</p>
+              </div>
+              <span>{{ dataset.total_images }} images</span>
+            </div>
+
+            <div class="split-grid">
+              {% for split_name, split in dataset.splits.items() %}
+                <div class="split">
+                  <strong>{{ split_name }}</strong>
+                  <span>{{ split.images }} images</span>
+                  <span>{{ split.labels }} labels</span>
+                </div>
+              {% endfor %}
+            </div>
+
+            <div class="dataset-footer">
+              <div class="dataset-path">{{ dataset.path }}</div>
+              <a class="train-button" href="/train/new?project={{ dataset.project_dir }}&dataset={{ dataset.name }}">去训练</a>
+            </div>
+          </article>
+        {% endfor %}
+      </section>
+    {% else %}
+      <section class="empty">暂无数据集</section>
+    {% endif %}
+  </main>
+{% endblock %}

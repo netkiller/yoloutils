@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+
+{% block title %}{{ task.name }}{% endblock %}
+
+{% block styles %}
+  <link rel="stylesheet" href="/static/css/train.css">
+{% endblock %}
+
+{% block content %}
+  <main>
+    <section class="train-head">
+      <div>
+        <a class="back-link" href="/train">返回训练队列</a>
+        <h1>{{ task.name }}</h1>
+        <p>{{ task.project }} / {{ task.dataset }} · {{ task.status }}</p>
+      </div>
+    </section>
+    <pre class="console-output">{{ log }}</pre>
+  </main>
+{% endblock %}

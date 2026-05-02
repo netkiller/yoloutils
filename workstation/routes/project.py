@@ -1,0 +1,329 @@
+import json
+import os
+import re
+import shutil
+import traceback
+from email.parser import BytesParser
+from email.policy import default
+from pathlib import Path
+from urllib.parse import parse_qs, urlencode
+
+from fastapi import APIRouter, Request, status
+from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
+
+
+router = APIRouter()
+templates = Jinja2Templates(directory=Path(__file__).resolve().parent.parent / "templates")
+PROJECT_DIR_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
+IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff", ".heic", ".heif"}
+MODEL_EXTS = {".pt", ".onnx", ".engine", ".torchscript", ".tflite", ".mlmodel"}
+
+
+def workspace_path():
+    workspace = os.environ.get("YOLOUTILS_WORKSPACE")
+    return Path(workspace).expanduser().resolve() if workspace else Path.cwd().resolve()
+
+
+def is_inside(path: Path, parent: Path):
+    try:
+        path.relative_to(parent)
+        return True
+    except ValueError:
+        return False
+
+
+def project_dir(workspace: Path, directory: str):
+    path = (workspace / directory).resolve()
+    if path == workspace or not is_inside(path, workspace):
+        return None
+    return path
+
+
+def read_project_registry(workspace: Path):
+    registry_file = workspace / ".project"
+    if not registry_file.is_file():
+        return {}
+    try:
+        data = json.loads(registry_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    projects = data.get("projects", {})
+    return projects if isinstance(projects, dict) else {}
+
+
+def write_project_registry(workspace: Path, projects: dict):
+    payload = {"projects": projects}
+    (workspace / ".project").write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+def read_project_meta(path: Path, registry: dict | None = None):
+    meta_file = path / ".project"
+    fallback = {"name": path.name, "directory": path.name, "description": ""}
+    if registry and isinstance(registry.get(path.name), dict):
+        data = registry[path.name]
+        return {
+            "name": str(data.get("name") or path.name),
+            "directory": path.name,
+            "description": str(data.get("description") or ""),
+        }
+    if not meta_file.is_file():
+        return fallback
+    try:
+        data = json.loads(meta_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return fallback
+    return {
+        "name": str(data.get("name") or path.name),
+        "directory": path.name,
+        "description": str(data.get("description") or ""),
+    }
+
+
+def write_project_meta(workspace: Path, path: Path, name: str, description: str):
+    payload = {
+        "name": name.strip() or path.name,
+        "directory": path.name,
+        "description": description.strip(),
+    }
+    registry = read_project_registry(workspace)
+    registry[path.name] = payload
+    write_project_registry(workspace, registry)
+    (path / ".project").write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+def count_files(path: Path, exts: set[str]):
+    if not path.is_dir():
+        return 0
+    return sum(1 for item in path.iterdir() if item.is_file() and item.suffix.lower() in exts)
+
+
+def project_items(workspace: Path):
+    projects = []
+    if not workspace.is_dir():
+        return projects
+
+    registry = read_project_registry(workspace)
+    for path in sorted(workspace.iterdir(), key=lambda item: item.name.lower()):
+        if not path.is_dir() or path.name.startswith("."):
+            continue
+        children = {child.name for child in path.iterdir() if child.is_dir()}
+        meta = read_project_meta(path, registry)
+        projects.append(
+            {
+                **meta,
+                "path": path,
+                "images": "images" in children,
+                "dataset": "dataset" in children,
+                "models": "models" in children,
+                "image_count": count_files(path / "images", IMAGE_EXTS),
+                "model_count": count_files(path / "models", MODEL_EXTS),
+            }
+        )
+    return projects
+
+
+def write_error_log(workspace: Path, filename: str):
+    log_file = workspace / filename
+    try:
+        log_file.write_text(traceback.format_exc(), encoding="utf-8")
+    except OSError:
+        fallback = Path(__file__).resolve().parent.parent / filename
+        fallback.write_text(traceback.format_exc(), encoding="utf-8")
+
+
+def validate_project(directory: str, name: str):
+    directory = (directory or "").strip()
+    name = (name or "").strip()
+    if not name:
+        return None, None, "项目名不能为空"
+    if not directory:
+        return None, None, "目录名不能为空"
+    if "/" in directory or "\\" in directory or directory in (".", ".."):
+        return None, None, "目录名不能包含路径分隔符"
+    if not PROJECT_DIR_PATTERN.match(directory):
+        return None, None, "目录名只能包含字母、数字、点、下划线和连字符"
+    return directory, name, None
+
+
+def project_redirect(error: str = None):
+    url = "/project"
+    if error:
+        url = f"{url}?{urlencode({'error': error})}"
+    return RedirectResponse(url=url, status_code=status.HTTP_303_SEE_OTHER)
+
+
+def project_detail_redirect(directory: str, error: str = None):
+    url = f"/project/{directory}"
+    if error:
+        url = f"{url}?{urlencode({'error': error})}"
+    return RedirectResponse(url=url, status_code=status.HTTP_303_SEE_OTHER)
+
+
+async def form_fields(request: Request):
+    body = (await request.body()).decode("utf-8")
+    return parse_qs(body, keep_blank_values=True)
+
+
+def ensure_project_structure(path: Path):
+    for subdir in ("images", "dataset", "models"):
+        (path / subdir).mkdir(parents=True, exist_ok=True)
+
+
+def save_upload(filename: str, content: bytes, target_dir: Path):
+    filename = Path(filename or "").name
+    if not filename:
+        return None
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target = target_dir / filename
+    target.write_bytes(content)
+    return target
+
+
+async def uploaded_files(request: Request):
+    content_type = request.headers.get("content-type", "")
+    if "multipart/form-data" not in content_type:
+        return []
+
+    body = await request.body()
+    message = BytesParser(policy=default).parsebytes(
+        b"Content-Type: " + content_type.encode("utf-8") + b"\r\n\r\n" + body
+    )
+    files = []
+    for part in message.iter_parts():
+        filename = part.get_filename()
+        if not filename:
+            continue
+        payload = part.get_payload(decode=True) or b""
+        files.append((filename, payload))
+    return files
+
+
+@router.get("/project")
+def project(request: Request):
+    workspace = workspace_path()
+    try:
+        return templates.TemplateResponse(
+            request=request,
+            name="project.html",
+            context={
+                "request": request,
+                "workspace": workspace,
+                "projects": project_items(workspace),
+                "error": request.query_params.get("error"),
+                "active_page": "project",
+            },
+        )
+    except Exception:
+        write_error_log(workspace, ".yoloutils-project-error.log")
+        return PlainTextResponse(
+            "Project page error. See .yoloutils-project-error.log",
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@router.post("/project")
+async def create_project(request: Request):
+    form = await form_fields(request)
+    workspace = workspace_path()
+    directory, name, error = validate_project(
+        form.get("directory", [""])[0],
+        form.get("name", [""])[0],
+    )
+    description = form.get("description", [""])[0]
+    if error:
+        return project_redirect(error)
+
+    path = project_dir(workspace, directory)
+    if path is None:
+        error = "项目目录必须位于 workspace 内"
+    elif path.exists():
+        error = "项目已存在"
+    if error:
+        return project_redirect(error)
+
+    ensure_project_structure(path)
+    write_project_meta(workspace, path, name, description)
+    return RedirectResponse(url=f"/project/{directory}", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/project/{directory}/delete")
+def delete_project(directory: str):
+    workspace = workspace_path()
+    path = project_dir(workspace, directory)
+    if path is None or not path.is_dir():
+        return project_redirect("项目不存在")
+    shutil.rmtree(path)
+    registry = read_project_registry(workspace)
+    if directory in registry:
+        del registry[directory]
+        write_project_registry(workspace, registry)
+    return project_redirect()
+
+
+@router.get("/project/{directory}")
+def project_detail(directory: str, request: Request):
+    workspace = workspace_path()
+    path = project_dir(workspace, directory)
+    if path is None or not path.is_dir():
+        return project_redirect("项目不存在")
+
+    ensure_project_structure(path)
+    try:
+        meta = read_project_meta(path, read_project_registry(workspace))
+        image_count = count_files(path / "images", IMAGE_EXTS)
+        model_count = count_files(path / "models", MODEL_EXTS)
+        return templates.TemplateResponse(
+            request=request,
+            name="project/detail.html",
+            context={
+                "request": request,
+                "workspace": workspace,
+                "project": {
+                    **meta,
+                    "path": path,
+                    "image_count": image_count,
+                    "model_count": model_count,
+                    "has_images": image_count > 0,
+                    "has_models": model_count > 0,
+                },
+                "error": request.query_params.get("error"),
+                "active_page": "project",
+            },
+        )
+    except Exception:
+        write_error_log(workspace, ".yoloutils-project-detail-error.log")
+        return PlainTextResponse(
+            "Project detail error. See .yoloutils-project-detail-error.log",
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@router.post("/project/{directory}/upload/images")
+async def upload_images(directory: str, request: Request):
+    workspace = workspace_path()
+    path = project_dir(workspace, directory)
+    if path is None or not path.is_dir():
+        return JSONResponse({"ok": False, "error": "项目不存在"}, status_code=404)
+    files = await uploaded_files(request)
+    saved = [save_upload(filename, content, path / "images") for filename, content in files]
+    saved = [item for item in saved if item is not None]
+    return {"ok": True, "saved": len(saved), "count": count_files(path / "images", IMAGE_EXTS)}
+
+
+@router.post("/project/{directory}/upload/model")
+async def upload_model(directory: str, request: Request):
+    workspace = workspace_path()
+    path = project_dir(workspace, directory)
+    if path is None or not path.is_dir():
+        return JSONResponse({"ok": False, "error": "项目不存在"}, status_code=404)
+    files = await uploaded_files(request)
+    saved = [save_upload(filename, content, path / "models") for filename, content in files]
+    saved = [item for item in saved if item is not None]
+    return {"ok": True, "saved": len(saved), "count": count_files(path / "models", MODEL_EXTS)}

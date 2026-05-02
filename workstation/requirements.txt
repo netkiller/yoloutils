@@ -1,0 +1,15 @@
+# pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+# pip install setuptools wheel twine build
+ultralytics
+onnx
+numpy
+#matplotlib
+opencv-python
+pillow
+pillow-heif
+texttable
+tqdm
+#dominate
+fastapi
+uvicorn
+jinja2
