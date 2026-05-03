@@ -18,6 +18,25 @@ except ImportError:
 
 
 class YoloImage:
+    type_exts = {
+        "jpeg": (".jpg", ".jpeg"),
+        "png": (".png",),
+        "bmp": (".bmp",),
+        "webp": (".webp",),
+        "tiff": (".tif", ".tiff"),
+        "heif": (".heic", ".heif"),
+        "avif": (".avif",),
+    }
+    preferred_exts = {
+        "jpeg": ".jpg",
+        "png": ".png",
+        "bmp": ".bmp",
+        "webp": ".webp",
+        "tiff": ".tif",
+        "heif": ".heic",
+        "avif": ".avif",
+    }
+
     def __init__(self, **kwargs):
         if kwargs:
             self.args = kwargs
@@ -104,6 +123,81 @@ class YoloImage:
 
         self.logger.info(f"check rows saved csv={csv_path}")
         print(f"CSV 已保存: {csv_path}")
+
+    def _write_type_csv(self, csv_path: str):
+        if not csv_path:
+            return
+
+        csv_dir = os.path.dirname(csv_path)
+        if csv_dir:
+            os.makedirs(csv_dir, exist_ok=True)
+
+        with open(csv_path, "w", encoding="utf-8", newline="") as file:
+            writer = csv.writer(file)
+            writer.writerow(["源文件", "目标文件"])
+            writer.writerows((source, target) for source, target, _kind in self.matched)
+
+        self.logger.info(f"type rows saved csv={csv_path}")
+        print(f"CSV 已保存: {csv_path}")
+
+    def _detect_image_type(self, file: str):
+        try:
+            with open(file, "rb") as image:
+                header = image.read(64)
+        except OSError as e:
+            self.logger.warning(f"image type read failed source={file} err={repr(e)}")
+            return None
+
+        if header.startswith(b"\xff\xd8\xff"):
+            return "jpeg"
+        if header.startswith(b"\x89PNG\r\n\x1a\n"):
+            return "png"
+        if header.startswith(b"BM"):
+            return "bmp"
+        if header.startswith((b"II*\x00", b"MM\x00*")):
+            return "tiff"
+        if header.startswith(b"RIFF") and header[8:12] == b"WEBP":
+            return "webp"
+
+        if len(header) >= 12 and header[4:8] == b"ftyp":
+            brands = {header[8:12]}
+            brands.update(header[index:index + 4] for index in range(16, len(header) - 3, 4))
+            if brands.intersection({b"avif", b"avis"}):
+                return "avif"
+            if brands.intersection({b"heic", b"heix", b"hevc", b"hevx", b"mif1", b"msf1"}):
+                return "heif"
+
+        return None
+
+    def _type_matches_extension(self, image_type: str, file: str):
+        ext = os.path.splitext(file)[1].lower()
+        return ext in self.type_exts.get(image_type, ())
+
+    def _target_for_image_type(self, file: str, image_type: str):
+        root, _ext = os.path.splitext(file)
+        ext = self.preferred_exts.get(image_type)
+        if not ext:
+            return None
+
+        target = f"{root}{ext}"
+        if os.path.abspath(file) == os.path.abspath(target):
+            return target
+
+        if not os.path.exists(target):
+            return target
+
+        index = 1
+        while True:
+            numbered = f"{root}.{index}{ext}"
+            if not os.path.exists(numbered):
+                return numbered
+            index += 1
+
+    def _relative(self, file: str, source: str):
+        try:
+            return os.path.relpath(file, source)
+        except ValueError:
+            return file
 
     def _verify_jpg(self, file: str):
         with Image.open(file) as image:
@@ -197,6 +291,56 @@ class YoloImage:
 
         print(f"统计结果, 异常:{len(self.matched)}, 合计:{len(self.files)}")
         self._write_check_csv(csv_path)
+
+    def type(self, source: str, csv_path: str = None):
+        if not source or not os.path.isdir(source):
+            print(f"source 目录不存在: {source}")
+            return
+
+        self.matched = []
+        self.invalid = 0
+        self._scan_images(source)
+
+        with tqdm(total=len(self.files), ncols=120) as progress:
+            for file in self.files:
+                image_type = self._detect_image_type(file)
+                if image_type is None:
+                    self.invalid += 1
+                    self.logger.warning(f"image type unknown source={file}")
+                    progress.update(1)
+                    continue
+
+                if not self._type_matches_extension(image_type, file):
+                    target = self._target_for_image_type(file, image_type)
+                    try:
+                        os.rename(file, target)
+                    except OSError as e:
+                        self.invalid += 1
+                        self.logger.warning(
+                            f"image type rename failed source={file} target={target} err={repr(e)}"
+                        )
+                    else:
+                        source_name = self._relative(file, source)
+                        target_name = self._relative(target, source)
+                        self.matched.append((source_name, target_name, image_type))
+                        self.logger.info(
+                            f"image type renamed source={file} target={target} type={image_type}"
+                        )
+                progress.update(1)
+
+        tables = [["源文件", "目标文件", "类型"]]
+        for source_name, target_name, image_type in self.matched:
+            tables.append([source_name, target_name, image_type])
+
+        if self.matched:
+            table = Texttable(max_width=200)
+            table.add_rows(tables)
+            print(table.draw())
+        else:
+            print("没有找到内容与扩展名不匹配的图片")
+
+        print(f"统计结果, 修复:{len(self.matched)}, 无法识别:{self.invalid}, 合计:{len(self.files)}")
+        self._write_type_csv(csv_path)
 
 
 class YoloImageCrop:
