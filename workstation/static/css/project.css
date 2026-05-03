@@ -180,6 +180,17 @@ textarea {
   display: block;
 }
 
+.menu-action {
+  width: 100%;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+
+.menu-action:hover {
+  background: #f8fafc;
+}
+
 .danger-button {
   width: 100%;
   background: transparent;
@@ -250,6 +261,32 @@ textarea {
 
 .secondary-button:hover {
   background: #f8fafc;
+}
+
+.directory-button {
+  height: 36px;
+  justify-self: start;
+  padding: 0 14px;
+  border-radius: 6px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.classes-upload {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  justify-self: start;
+  padding: 0 14px;
+  border-radius: 6px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.classes-upload.uploading {
+  opacity: .7;
+  pointer-events: none;
 }
 
 .detail-head {

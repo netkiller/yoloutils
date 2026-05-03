@@ -3,11 +3,11 @@
 {% block title %}{{ task.name }}{% endblock %}
 
 {% block styles %}
-  <link rel="stylesheet" href="/static/css/train.css">
+  <link rel="stylesheet" href="/static/css/train.css?v=20260503-scroll">
 {% endblock %}
 
 {% block content %}
-  <main>
+  <main class="train-task-main">
     <section class="train-head">
       <div>
         <a class="back-link" href="/train">返回训练队列</a>
@@ -17,4 +17,8 @@
     </section>
     <pre class="console-output">{{ log }}</pre>
   </main>
+
+  {% set footer_id = "stats" %}
+  {% set footer_left = workspace %}
+  {% include "partials/footer.html" %}
 {% endblock %}

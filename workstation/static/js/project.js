@@ -1,10 +1,31 @@
 const createDialog = document.getElementById("createProjectDialog");
 const openCreateDialog = document.getElementById("openCreateDialog");
+const editDialog = document.getElementById("editProjectDialog");
+const editForm = document.getElementById("editProjectForm");
 
 if (createDialog && openCreateDialog) {
   openCreateDialog.addEventListener("click", () => createDialog.showModal());
   createDialog.querySelectorAll("[data-close-dialog]").forEach((button) => {
     button.addEventListener("click", () => createDialog.close());
+  });
+}
+
+if (editDialog && editForm) {
+  editDialog.querySelectorAll("[data-close-dialog]").forEach((button) => {
+    button.addEventListener("click", () => editDialog.close());
+  });
+
+  document.querySelectorAll("[data-edit-project]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      editForm.action = `/project/${button.dataset.directory}/edit`;
+      editForm.elements.name.value = button.dataset.name || "";
+      editForm.elements.description.value = button.dataset.description || "";
+      document.querySelectorAll(".menu-panel").forEach((panel) => {
+        panel.hidden = true;
+      });
+      editDialog.showModal();
+    });
   });
 }
 
@@ -48,8 +69,65 @@ function setActionEnabled(selector, enabled) {
   }
 }
 
+function fileEntryFile(entry) {
+  return new Promise((resolve, reject) => entry.file(resolve, reject));
+}
+
+function readDirectoryEntries(reader) {
+  return new Promise((resolve, reject) => reader.readEntries(resolve, reject));
+}
+
+async function filesFromEntry(entry, prefix = "") {
+  if (entry.isFile) {
+    const file = await fileEntryFile(entry);
+    return [{file, path: `${prefix}${file.name}`}];
+  }
+
+  if (!entry.isDirectory) {
+    return [];
+  }
+
+  const reader = entry.createReader();
+  const files = [];
+  while (true) {
+    const entries = await readDirectoryEntries(reader);
+    if (!entries.length) {
+      break;
+    }
+    for (const child of entries) {
+      files.push(...await filesFromEntry(child, `${prefix}${entry.name}/`));
+    }
+  }
+  return files;
+}
+
+function filesFromFileList(files) {
+  return Array.from(files).map((file) => ({
+    file,
+    path: file.webkitRelativePath || file.name,
+  }));
+}
+
+async function filesFromDataTransfer(dataTransfer) {
+  const items = Array.from(dataTransfer.items || []);
+  const entries = items
+    .map((item) => item.webkitGetAsEntry?.())
+    .filter(Boolean);
+
+  if (!entries.length) {
+    return filesFromFileList(dataTransfer.files);
+  }
+
+  const files = [];
+  for (const entry of entries) {
+    files.push(...await filesFromEntry(entry));
+  }
+  return files;
+}
+
 async function uploadFiles(zone, files) {
-  if (!files.length) {
+  const uploads = Array.from(files);
+  if (!uploads.length) {
     return;
   }
 
@@ -60,7 +138,11 @@ async function uploadFiles(zone, files) {
   }
 
   const formData = new FormData();
-  Array.from(files).forEach((file) => formData.append("files", file));
+  uploads.forEach((item) => {
+    const file = item.file || item;
+    const path = item.path || file.webkitRelativePath || file.name;
+    formData.append("files", file, path);
+  });
   zone.classList.add("uploading");
 
   try {
@@ -75,9 +157,14 @@ async function uploadFiles(zone, files) {
     if (kind === "images") {
       document.querySelector("[data-image-count]").textContent = `${data.count} 个文件`;
       setActionEnabled("[data-image-action]", data.count > 0);
-    } else {
+    } else if (kind === "model") {
       document.querySelector("[data-model-count]").textContent = `${data.count} 个文件`;
       setActionEnabled("[data-model-action]", data.count > 0);
+    } else if (kind === "classes") {
+      const label = zone.querySelector("[data-upload-label]");
+      if (label) {
+        label.textContent = "classes.txt 已上传";
+      }
     }
   } catch (error) {
     alert(error.message);
@@ -88,15 +175,21 @@ async function uploadFiles(zone, files) {
 
 document.querySelectorAll("[data-upload-zone]").forEach((zone) => {
   const input = zone.querySelector("input");
-  input.addEventListener("change", () => uploadFiles(zone, input.files));
+  const panel = zone.closest(".upload-panel");
+  const directoryInput = panel?.querySelector("[data-directory-input]");
+  const directoryButton = panel?.querySelector("[data-directory-button]");
+
+  input.addEventListener("change", () => uploadFiles(zone, filesFromFileList(input.files)));
+  directoryInput?.addEventListener("change", () => uploadFiles(zone, filesFromFileList(directoryInput.files)));
+  directoryButton?.addEventListener("click", () => directoryInput?.click());
   zone.addEventListener("dragover", (event) => {
     event.preventDefault();
     zone.classList.add("dragging");
   });
   zone.addEventListener("dragleave", () => zone.classList.remove("dragging"));
-  zone.addEventListener("drop", (event) => {
+  zone.addEventListener("drop", async (event) => {
     event.preventDefault();
     zone.classList.remove("dragging");
-    uploadFiles(zone, event.dataTransfer.files);
+    uploadFiles(zone, await filesFromDataTransfer(event.dataTransfer));
   });
 });

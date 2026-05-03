@@ -204,33 +204,51 @@ async def form_fields(request: Request):
 
 
 @router.get("/train")
-def train(request: Request):
+def train(request: Request, project: str = ""):
+    workspace = workspace_path()
+    current_project = project or request.cookies.get("current_project", "")
     with queue_lock:
         tasks = list(reversed(load_tasks()))
-    return templates.TemplateResponse(
+    if current_project:
+        tasks = [task for task in tasks if task.get("project") == current_project]
+    response = templates.TemplateResponse(
         request=request,
         name="train.html",
         context={
             "request": request,
+            "workspace": workspace,
             "tasks": tasks,
             "active_page": "train",
+            "current_project": current_project,
         },
     )
+    if current_project:
+        response.set_cookie("current_project", current_project, httponly=True, samesite="lax")
+    return response
 
 
 @router.get("/train/new")
 def new_train(request: Request, project: str = "", dataset: str = ""):
+    workspace = workspace_path()
+    current_project = request.cookies.get("current_project", "")
+    project = project or current_project
+    current_project = project
     dataset_item = selected_dataset(project, dataset)
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         request=request,
         name="train/new.html",
         context={
             "request": request,
+            "workspace": workspace,
             "dataset": dataset_item,
             "datasets": dataset_dirs(project),
             "active_page": "train",
+            "current_project": current_project,
         },
     )
+    if project:
+        response.set_cookie("current_project", project, httponly=True, samesite="lax")
+    return response
 
 
 @router.post("/train")
@@ -267,6 +285,8 @@ async def create_train(request: Request):
 
 @router.get("/train/tasks/{task_id}")
 def train_task(request: Request, task_id: str):
+    workspace = workspace_path()
+    current_project = request.cookies.get("current_project", "")
     tasks = load_tasks()
     task = next((item for item in tasks if item["id"] == task_id), None)
     if task is None:
@@ -277,9 +297,11 @@ def train_task(request: Request, task_id: str):
         name="train/task.html",
         context={
             "request": request,
+            "workspace": workspace,
             "task": task,
             "log": log,
             "active_page": "train",
+            "current_project": current_project,
         },
     )
 

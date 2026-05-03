@@ -1,1 +1,1 @@
-python3 site/start.py -w site/workspace
+python3 start.py -w workspace

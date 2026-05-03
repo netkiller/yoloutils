@@ -1,0 +1,249 @@
+{% extends "base.html" %}
+
+{% block title %}验证{% endblock %}
+
+{% block styles %}
+  <link rel="stylesheet" href="/static/css/validate.css?v=20260503">
+{% endblock %}
+
+{% block content %}
+  <main class="validate-main">
+    <section class="validate-head" aria-labelledby="validate-title">
+      <div>
+        <h1 id="validate-title">验证</h1>
+        <p>{{ project_name or current_project or "未选择项目" }}</p>
+      </div>
+      <span class="model-count">{{ models | length }} 个模型</span>
+    </section>
+
+    <section class="validate-tools" aria-label="验证操作">
+      <form class="tool-panel" method="post" action="/validate/run">
+        <input type="hidden" name="project" value="{{ current_project }}">
+        <input type="hidden" name="split" value="val">
+        <div>
+          <h2>检验</h2>
+          <p>val split</p>
+        </div>
+        <label>
+          <span>模型</span>
+          <select name="model" data-model-select required>
+            {% for model in models %}
+              <option value="{{ model.relative_path }}">{{ model.filename }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          <span>数据集</span>
+          <select name="dataset" required>
+            {% for dataset in datasets %}
+              <option value="{{ dataset.name }}">{{ dataset.name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <div class="inline-fields">
+          <label>
+            <span>图片尺寸</span>
+            <input name="imgsz" type="number" min="32" step="32" value="640">
+          </label>
+          <label>
+            <span>设备</span>
+            <input name="device" type="text" placeholder="cpu / 0">
+          </label>
+        </div>
+        <button type="submit">检验</button>
+      </form>
+
+      <form class="tool-panel" method="post" action="/validate/run">
+        <input type="hidden" name="project" value="{{ current_project }}">
+        <input type="hidden" name="split" value="test">
+        <div>
+          <h2>测试</h2>
+          <p>test split</p>
+        </div>
+        <label>
+          <span>模型</span>
+          <select name="model" data-model-select required>
+            {% for model in models %}
+              <option value="{{ model.relative_path }}">{{ model.filename }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          <span>数据集</span>
+          <select name="dataset" required>
+            {% for dataset in datasets %}
+              <option value="{{ dataset.name }}">{{ dataset.name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <div class="inline-fields">
+          <label>
+            <span>图片尺寸</span>
+            <input name="imgsz" type="number" min="32" step="32" value="640">
+          </label>
+          <label>
+            <span>设备</span>
+            <input name="device" type="text" placeholder="cpu / 0">
+          </label>
+        </div>
+        <button type="submit">测试</button>
+      </form>
+
+      <article class="tool-panel compare-panel">
+        <div>
+          <h2>对比</h2>
+          <p>metric table</p>
+        </div>
+        <div class="compare-targets" id="compareTargets">
+          <span>请选择模型</span>
+        </div>
+        <button type="button" id="clearCompare">清空</button>
+      </article>
+    </section>
+
+    {% if tasks %}
+      <section class="validate-task-list" aria-label="验证任务">
+        {% for task in tasks[:5] %}
+          <article class="validate-task-card">
+            <div>
+              <h2>{{ task.name }}</h2>
+              <p>{{ task.mode }} / {{ task.dataset }} / {{ task.model }}</p>
+            </div>
+            <span class="status">{{ task.status }}</span>
+            <a href="/validate/tasks/{{ task.id }}">查看日志</a>
+            {% if task.status in ["排队中", "进行中"] %}
+              <form method="post" action="/validate/tasks/{{ task.id }}/cancel">
+                <button type="submit">取消</button>
+              </form>
+            {% endif %}
+          </article>
+        {% endfor %}
+      </section>
+    {% endif %}
+
+    {% if models %}
+      <section class="model-grid" aria-label="模型列表">
+        {% for model in models %}
+          <article
+            class="model-card"
+            data-model-card
+            data-name="{{ model.filename }}"
+            data-path="{{ model.relative_path }}"
+            data-map50="{{ model.metrics.get('map50') if model.metrics.get('map50') is not none else '' }}"
+            data-map5095="{{ model.metrics.get('map5095') if model.metrics.get('map5095') is not none else '' }}"
+            data-precision="{{ model.metrics.get('precision') if model.metrics.get('precision') is not none else '' }}"
+            data-recall="{{ model.metrics.get('recall') if model.metrics.get('recall') is not none else '' }}"
+          >
+            <div class="model-title">
+              <div>
+                <h2>{{ model.filename }}</h2>
+                <p>{{ model.relative_path }}</p>
+              </div>
+              <span>{{ model.source }}</span>
+            </div>
+
+            <dl class="metric-grid">
+              <div>
+                <dt>mAP50</dt>
+                <dd>{{ model.metrics.get('map50') if model.metrics.get('map50') is not none else "-" }}</dd>
+              </div>
+              <div>
+                <dt>mAP50-95</dt>
+                <dd>{{ model.metrics.get('map5095') if model.metrics.get('map5095') is not none else "-" }}</dd>
+              </div>
+              <div>
+                <dt>Precision</dt>
+                <dd>{{ model.metrics.get('precision') if model.metrics.get('precision') is not none else "-" }}</dd>
+              </div>
+              <div>
+                <dt>Recall</dt>
+                <dd>{{ model.metrics.get('recall') if model.metrics.get('recall') is not none else "-" }}</dd>
+              </div>
+            </dl>
+
+            <div class="model-meta">
+              {% if model.run %}<span>run: {{ model.run }}</span>{% endif %}
+              <span>{{ model.size_mb }} MB</span>
+              <span>{{ model.modified }}</span>
+            </div>
+
+            <div class="model-actions">
+              <button type="button" data-select-model="{{ model.relative_path }}">选择</button>
+              <button type="button" data-compare-model>加入对比</button>
+            </div>
+          </article>
+        {% endfor %}
+      </section>
+    {% else %}
+      <section class="empty">暂无训练好的模型</section>
+    {% endif %}
+  </main>
+
+  {% set footer_id = "stats" %}
+  {% set footer_left = workspace %}
+  {% include "partials/footer.html" %}
+
+  <script>
+    (() => {
+      const compareTargets = document.getElementById("compareTargets");
+      const selected = new Map();
+
+      function renderCompare() {
+        if (!compareTargets) return;
+        if (!selected.size) {
+          compareTargets.innerHTML = "<span>请选择模型</span>";
+          return;
+        }
+        const rows = [...selected.values()].map(model => `
+          <div class="compare-row">
+            <strong>${model.name}</strong>
+            <span>mAP50 ${model.map50 || "-"}</span>
+            <span>mAP50-95 ${model.map5095 || "-"}</span>
+            <span>P ${model.precision || "-"}</span>
+            <span>R ${model.recall || "-"}</span>
+          </div>
+        `).join("");
+        compareTargets.innerHTML = rows;
+      }
+
+      document.querySelectorAll("[data-select-model]").forEach(button => {
+        button.addEventListener("click", () => {
+          document.querySelectorAll("[data-model-select]").forEach(select => {
+            select.value = button.dataset.selectModel;
+          });
+        });
+      });
+
+      document.querySelectorAll("[data-compare-model]").forEach(button => {
+        button.addEventListener("click", () => {
+          const card = button.closest("[data-model-card]");
+          if (!card) return;
+          selected.set(card.dataset.path, {
+            name: card.dataset.name,
+            map50: card.dataset.map50,
+            map5095: card.dataset.map5095,
+            precision: card.dataset.precision,
+            recall: card.dataset.recall,
+          });
+          renderCompare();
+        });
+      });
+
+      document.getElementById("clearCompare")?.addEventListener("click", () => {
+        selected.clear();
+        renderCompare();
+      });
+
+      document.querySelectorAll(".tool-panel").forEach(form => {
+        form.addEventListener("submit", event => {
+          const model = form.querySelector("[data-model-select]")?.value || "";
+          const dataset = form.querySelector("select[name='dataset']")?.value || "";
+          if (!model || !dataset) {
+            event.preventDefault();
+            alert("请选择模型和数据集");
+          }
+        });
+      });
+    })();
+  </script>
+{% endblock %}

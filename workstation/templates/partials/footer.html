@@ -1,0 +1,10 @@
+<footer{% if footer_id %} id="{{ footer_id }}"{% endif %} class="site-footer{% if footer_class %} {{ footer_class }}{% endif %}">
+  <div class="stats-left">
+    {% if footer_left %}
+      <span class="footer-text">{{ footer_left }}</span>
+    {% endif %}
+  </div>
+  <div class="stats-right">
+    {% if footer_right %}{{ footer_right }}{% endif %}
+  </div>
+</footer>

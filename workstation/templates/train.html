@@ -3,7 +3,7 @@
 {% block title %}训练队列{% endblock %}
 
 {% block styles %}
-  <link rel="stylesheet" href="/static/css/train.css">
+  <link rel="stylesheet" href="/static/css/train.css?v=20260503-scroll">
 {% endblock %}
 
 {% block content %}
@@ -46,4 +46,8 @@
       <section class="empty">暂无训练任务</section>
     {% endif %}
   </main>
+
+  {% set footer_id = "stats" %}
+  {% set footer_left = workspace %}
+  {% include "partials/footer.html" %}
 {% endblock %}

@@ -1,0 +1,291 @@
+.validate-main {
+  width: min(1180px, calc(100vw - 32px));
+}
+
+.validate-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.validate-head p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.model-count {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.validate-tools {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.tool-panel,
+.model-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.tool-panel {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+.tool-panel h2,
+.model-card h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.tool-panel p,
+.model-title p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.tool-panel label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.tool-panel select,
+.tool-panel input {
+  width: 100%;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #ffffff;
+  font: inherit;
+}
+
+.inline-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.compare-panel {
+  grid-template-rows: auto minmax(90px, 1fr) auto;
+}
+
+.compare-targets {
+  min-height: 90px;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.compare-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) repeat(4, auto);
+  gap: 8px;
+  align-items: center;
+  color: var(--text);
+}
+
+.compare-row span {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.model-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.validate-task-list {
+  display: grid;
+  gap: 10px;
+}
+
+.validate-task-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.validate-task-card h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.validate-task-card p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.validate-task-card a {
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #ffffff;
+  text-decoration: none;
+  font-weight: 650;
+}
+
+.validate-task-card form {
+  margin: 0;
+}
+
+.validate-task-card button {
+  height: 34px;
+  border: 1px solid var(--line);
+  background: #ffffff;
+  color: var(--text);
+}
+
+.status {
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #eef6ff;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.model-card {
+  display: grid;
+  gap: 16px;
+  padding: 16px;
+}
+
+.model-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.model-title h2,
+.model-title p {
+  overflow-wrap: anywhere;
+}
+
+.model-title > span {
+  flex: 0 0 auto;
+  align-self: start;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #eef6ff;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.metric-grid div {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.metric-grid dt {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.metric-grid dd {
+  margin: 0;
+  font-weight: 700;
+}
+
+.model-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.model-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.model-actions button {
+  height: 34px;
+}
+
+.model-actions button + button,
+#clearCompare {
+  border: 1px solid var(--line);
+  background: #ffffff;
+  color: var(--text);
+}
+
+.model-actions button + button:hover,
+#clearCompare:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.empty {
+  padding: 32px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--muted);
+  text-align: center;
+}
+
+@media (max-width: 900px) {
+  .validate-tools,
+  .model-grid,
+  .validate-task-card {
+    grid-template-columns: 1fr;
+  }
+
+  .compare-row,
+  .metric-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .validate-head,
+  .model-title {
+    display: grid;
+  }
+
+  .metric-grid {
+    grid-template-columns: 1fr;
+  }
+}

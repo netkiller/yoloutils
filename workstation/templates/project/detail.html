@@ -3,21 +3,19 @@
 {% block title %}{{ project.name }}{% endblock %}
 
 {% block styles %}
-  <link rel="stylesheet" href="/static/css/project.css">
+  <link rel="stylesheet" href="/static/css/project.css?v=20260503-footer">
 {% endblock %}
 
 {% block content %}
   <main>
     <section class="detail-head" aria-labelledby="project-title">
       <div>
-        <a class="back-link" href="/project">返回项目列表</a>
         <h1 id="project-title">{{ project.name }}</h1>
         {% if project.description %}
           <p class="project-description">{{ project.description }}</p>
         {% else %}
           <p class="project-description muted">暂无描述</p>
         {% endif %}
-        <p class="workspace">{{ project.path }}</p>
       </div>
     </section>
 
@@ -32,9 +30,13 @@
           <span class="count" data-image-count>{{ project.image_count }} 个文件</span>
         </div>
         <label class="drop-zone" data-upload-zone data-upload-kind="images">
-          <input type="file" name="files" accept="image/*" multiple hidden>
+          <input type="file" name="files" accept="image/*" multiple webkitdirectory directory hidden>
           <span class="upload-icon" aria-hidden="true">⇧</span>
           <span>点击上传图片，或拖拽到这里</span>
+        </label>
+        <label class="secondary-button classes-upload" data-upload-zone data-upload-kind="classes">
+          <input type="file" name="files" accept=".txt,text/plain" hidden>
+          <span data-upload-label>上传 classes.txt</span>
         </label>
         <a class="action-link{% if not project.has_images %} disabled{% endif %}" href="/annotate/?project={{ project.directory }}" data-image-action>去标注</a>
       </article>
@@ -45,7 +47,7 @@
           <span class="count" data-model-count>{{ project.model_count }} 个文件</span>
         </div>
         <label class="drop-zone" data-upload-zone data-upload-kind="model">
-          <input type="file" name="files" accept=".pt,.onnx,.engine,.torchscript,.tflite,.mlmodel" multiple hidden>
+          <input type="file" name="files" accept=".pt,.onnx,.engine,.torchscript,.tflite,.mlmodel" multiple webkitdirectory directory hidden>
           <span class="upload-icon" aria-hidden="true">⇧</span>
           <span>点击上传模型，或拖拽到这里</span>
         </label>
@@ -53,6 +55,10 @@
       </article>
     </section>
   </main>
+
+  {% set footer_id = "stats" %}
+  {% set footer_left = project.path %}
+  {% include "partials/footer.html" %}
 
   <script src="/static/js/project.js"></script>
 {% endblock %}

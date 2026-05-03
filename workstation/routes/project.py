@@ -6,6 +6,7 @@ import traceback
 from email.parser import BytesParser
 from email.policy import default
 from pathlib import Path
+from pathlib import PurePosixPath
 from urllib.parse import parse_qs, urlencode
 
 from fastapi import APIRouter, Request, status
@@ -101,7 +102,7 @@ def write_project_meta(workspace: Path, path: Path, name: str, description: str)
 def count_files(path: Path, exts: set[str]):
     if not path.is_dir():
         return 0
-    return sum(1 for item in path.iterdir() if item.is_file() and item.suffix.lower() in exts)
+    return sum(1 for item in path.rglob("*") if item.is_file() and item.suffix.lower() in exts)
 
 
 def project_items(workspace: Path):
@@ -152,6 +153,13 @@ def validate_project(directory: str, name: str):
     return directory, name, None
 
 
+def validate_project_update(name: str):
+    name = (name or "").strip()
+    if not name:
+        return None, "项目名不能为空"
+    return name, None
+
+
 def project_redirect(error: str = None):
     url = "/project"
     if error:
@@ -176,12 +184,25 @@ def ensure_project_structure(path: Path):
         (path / subdir).mkdir(parents=True, exist_ok=True)
 
 
-def save_upload(filename: str, content: bytes, target_dir: Path):
-    filename = Path(filename or "").name
+def upload_relative_path(filename: str):
+    filename = (filename or "").replace("\\", "/").strip("/")
     if not filename:
         return None
-    target_dir.mkdir(parents=True, exist_ok=True)
-    target = target_dir / filename
+    path = PurePosixPath(filename)
+    if path.is_absolute() or any(part in ("", ".", "..") for part in path.parts):
+        return None
+    return Path(*path.parts)
+
+
+def save_upload(filename: str, content: bytes, target_dir: Path):
+    relative = upload_relative_path(filename)
+    if relative is None:
+        return None
+    target = (target_dir / relative).resolve()
+    target_root = target_dir.resolve()
+    if not is_inside(target, target_root):
+        return None
+    target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(content)
     return target
 
@@ -209,17 +230,20 @@ async def uploaded_files(request: Request):
 def project(request: Request):
     workspace = workspace_path()
     try:
-        return templates.TemplateResponse(
+        response = templates.TemplateResponse(
             request=request,
-            name="project.html",
+            name="project/index.html",
             context={
                 "request": request,
                 "workspace": workspace,
                 "projects": project_items(workspace),
                 "error": request.query_params.get("error"),
                 "active_page": "project",
+                "show_create_project": True,
             },
         )
+        response.delete_cookie("current_project")
+        return response
     except Exception:
         write_error_log(workspace, ".yoloutils-project-error.log")
         return PlainTextResponse(
@@ -253,6 +277,23 @@ async def create_project(request: Request):
     return RedirectResponse(url=f"/project/{directory}", status_code=status.HTTP_303_SEE_OTHER)
 
 
+@router.post("/project/{directory}/edit")
+async def edit_project(directory: str, request: Request):
+    workspace = workspace_path()
+    path = project_dir(workspace, directory)
+    if path is None or not path.is_dir():
+        return project_redirect("项目不存在")
+
+    form = await form_fields(request)
+    name, error = validate_project_update(form.get("name", [""])[0])
+    if error:
+        return project_redirect(error)
+
+    description = form.get("description", [""])[0]
+    write_project_meta(workspace, path, name, description)
+    return project_redirect()
+
+
 @router.post("/project/{directory}/delete")
 def delete_project(directory: str):
     workspace = workspace_path()
@@ -279,7 +320,7 @@ def project_detail(directory: str, request: Request):
         meta = read_project_meta(path, read_project_registry(workspace))
         image_count = count_files(path / "images", IMAGE_EXTS)
         model_count = count_files(path / "models", MODEL_EXTS)
-        return templates.TemplateResponse(
+        response = templates.TemplateResponse(
             request=request,
             name="project/detail.html",
             context={
@@ -295,8 +336,12 @@ def project_detail(directory: str, request: Request):
                 },
                 "error": request.query_params.get("error"),
                 "active_page": "project",
+                "show_create_project": False,
+                "current_project": directory,
             },
         )
+        response.set_cookie("current_project", directory, httponly=True, samesite="lax")
+        return response
     except Exception:
         write_error_log(workspace, ".yoloutils-project-detail-error.log")
         return PlainTextResponse(
@@ -315,6 +360,24 @@ async def upload_images(directory: str, request: Request):
     saved = [save_upload(filename, content, path / "images") for filename, content in files]
     saved = [item for item in saved if item is not None]
     return {"ok": True, "saved": len(saved), "count": count_files(path / "images", IMAGE_EXTS)}
+
+
+@router.post("/project/{directory}/upload/classes")
+async def upload_classes(directory: str, request: Request):
+    workspace = workspace_path()
+    path = project_dir(workspace, directory)
+    if path is None or not path.is_dir():
+        return JSONResponse({"ok": False, "error": "项目不存在"}, status_code=404)
+
+    files = await uploaded_files(request)
+    for filename, content in files:
+        if PurePosixPath((filename or "").replace("\\", "/")).name.lower() != "classes.txt":
+            continue
+        target = path / "images" / "classes.txt"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(content)
+        return {"ok": True, "saved": 1}
+    return JSONResponse({"ok": False, "error": "请选择 classes.txt"}, status_code=400)
 
 
 @router.post("/project/{directory}/upload/model")

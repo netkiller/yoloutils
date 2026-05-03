@@ -3,7 +3,7 @@
 {% block title %}项目{% endblock %}
 
 {% block styles %}
-  <link rel="stylesheet" href="/static/css/project.css">
+  <link rel="stylesheet" href="/static/css/project.css?v=20260503-footer">
 {% endblock %}
 
 {% block content %}
@@ -11,9 +11,7 @@
     <section class="toolbar" aria-labelledby="project-title">
       <div>
         <h1 id="project-title">项目</h1>
-        <p class="workspace">Workspace: {{ workspace }}</p>
       </div>
-      <button type="button" id="openCreateDialog">创建项目</button>
     </section>
 
     {% if error %}
@@ -49,6 +47,14 @@
             <div class="card-menu">
               <button class="menu-button" type="button" aria-label="项目操作" aria-expanded="false">⋮</button>
               <div class="menu-panel" hidden>
+                <button
+                  class="menu-action"
+                  type="button"
+                  data-edit-project
+                  data-directory="{{ project.directory }}"
+                  data-name="{{ project.name }}"
+                  data-description="{{ project.description }}"
+                >编辑</button>
                 <form method="post" action="/project/{{ project.directory }}/delete" data-confirm="确认删除项目 {{ project.name }}？">
                   <button type="submit" class="danger-button">删除</button>
                 </form>
@@ -62,6 +68,10 @@
       {% endif %}
     </section>
   </main>
+
+  {% set footer_id = "stats" %}
+  {% set footer_left = workspace %}
+  {% include "partials/footer.html" %}
 
   <dialog id="createProjectDialog" class="project-dialog">
     <form method="post" action="/project">
@@ -84,6 +94,27 @@
       <div class="dialog-actions">
         <button type="button" class="secondary-button" data-close-dialog>取消</button>
         <button type="submit">确认</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="editProjectDialog" class="project-dialog">
+    <form id="editProjectForm" method="post">
+      <div class="dialog-head">
+        <h2>编辑项目</h2>
+        <button type="button" class="icon-button" data-close-dialog aria-label="关闭">×</button>
+      </div>
+      <label>
+        <span>项目名</span>
+        <input name="name" type="text" autocomplete="off" required>
+      </label>
+      <label>
+        <span>项目描述</span>
+        <textarea name="description" rows="4"></textarea>
+      </label>
+      <div class="dialog-actions">
+        <button type="button" class="secondary-button" data-close-dialog>取消</button>
+        <button type="submit">保存</button>
       </div>
     </form>
   </dialog>

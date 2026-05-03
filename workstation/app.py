@@ -8,6 +8,7 @@ from routes.annotate import create_annotate_app
 from routes.dataset import router as dataset_router
 from routes.project import router as project_router
 from routes.train import router as train_router
+from routes.validate import router as validate_router
 
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -17,6 +18,7 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 app.include_router(dataset_router)
 app.include_router(project_router)
 app.include_router(train_router)
+app.include_router(validate_router)
 
 
 @app.get("/", include_in_schema=False)

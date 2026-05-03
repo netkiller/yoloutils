@@ -1,11 +1,22 @@
 <header>
   <strong>Yolo Workstation</strong>
   <nav aria-label="主导航">
-    <a{% if active_page == "project" %} class="active"{% endif %} href="/project"><span class="nav-icon">▤</span><span>项目</span></a>
-    <a{% if active_page == "annotate" %} class="active"{% endif %} href="/annotate"><span class="nav-icon">▧</span><span>标注</span></a>
-    <a{% if active_page == "dataset" %} class="active"{% endif %} href="/dataset"><span class="nav-icon">▦</span><span>数据集</span></a>
-    <a{% if active_page == "train" %} class="active"{% endif %} href="/train"><span class="nav-icon">▶</span><span>训练</span></a>
-    <a{% if active_page == "validate" %} class="active"{% endif %} href="/validate"><span class="nav-icon">✓</span><span>验证</span></a>
+    <a{% if active_page == "project" %} class="active"{% endif %} href="{% if current_project %}/project/{{ current_project }}{% else %}/project{% endif %}"><span class="nav-icon">▤</span><span>项目</span></a>
+    {% if current_project %}
+      <a{% if active_page == "annotate" %} class="active"{% endif %} href="/annotate/?project={{ current_project }}"><span class="nav-icon">▧</span><span>标注</span></a>
+      <a{% if active_page == "dataset" %} class="active"{% endif %} href="/dataset?project={{ current_project }}"><span class="nav-icon">▦</span><span>数据集</span></a>
+      <a{% if active_page == "train" %} class="active"{% endif %} href="/train?project={{ current_project }}"><span class="nav-icon">▶</span><span>训练</span></a>
+      <a{% if active_page == "validate" %} class="active"{% endif %} href="/validate?project={{ current_project }}"><span class="nav-icon">✓</span><span>验证</span></a>
+    {% elif active_page != "project" %}
+      <a{% if active_page == "annotate" %} class="active"{% endif %} href="/annotate"><span class="nav-icon">▧</span><span>标注</span></a>
+      <a{% if active_page == "dataset" %} class="active"{% endif %} href="/dataset"><span class="nav-icon">▦</span><span>数据集</span></a>
+      <a{% if active_page == "train" %} class="active"{% endif %} href="/train"><span class="nav-icon">▶</span><span>训练</span></a>
+      <a{% if active_page == "validate" %} class="active"{% endif %} href="/validate"><span class="nav-icon">✓</span><span>验证</span></a>
+    {% endif %}
   </nav>
-  <span class="header-spacer" aria-hidden="true"></span>
+  <div class="header-actions">
+    {% if active_page == "project" and show_create_project | default(false) %}
+      <button type="button" id="openCreateDialog">创建项目</button>
+    {% endif %}
+  </div>
 </header>

@@ -29,6 +29,11 @@
   color: #ffffff;
 }
 
+.primary-link:hover,
+.task-actions a:hover {
+  background: var(--accent-dark);
+}
+
 .secondary-link {
   border: 1px solid var(--line);
   color: var(--text);
@@ -159,8 +164,18 @@
   text-decoration: none;
 }
 
+.back-link:hover {
+  text-decoration: underline;
+}
+
+.train-task-main {
+  align-content: stretch;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
 .console-output {
-  min-height: 520px;
+  min-height: 0;
+  height: 100%;
   margin: 0;
   padding: 16px;
   overflow: auto;

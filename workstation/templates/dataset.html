@@ -3,17 +3,16 @@
 {% block title %}数据集{% endblock %}
 
 {% block styles %}
-  <link rel="stylesheet" href="/static/css/dataset.css">
+  <link rel="stylesheet" href="/static/css/dataset.css?v=20260503-chart">
 {% endblock %}
 
 {% block content %}
   <main>
     <section class="dataset-head" aria-labelledby="dataset-title">
       <div>
-        <h1 id="dataset-title">YOLO Dataset</h1>
-        <p class="workspace">Workspace: {{ workspace }}</p>
+        <h1 id="dataset-title">数据集</h1>
       </div>
-      <a class="project-link-button" href="/project">返回项目</a>
+      <button class="project-link-button" id="openCreateDataset" type="button">新建数据集</button>
     </section>
 
     {% if datasets %}
@@ -28,6 +27,18 @@
               <span>{{ dataset.total_images }} images</span>
             </div>
 
+            <div class="dataset-chart" aria-label="train val test 比例">
+              <span class="pie-chart" style="background: {{ dataset.chart_style }}"></span>
+              <div class="chart-legend">
+                {% for segment in dataset.chart_segments %}
+                  <span class="legend-item legend-{{ segment.name }}">
+                    <i aria-hidden="true"></i>
+                    {{ segment.name }} {{ segment.percent }}%
+                  </span>
+                {% endfor %}
+              </div>
+            </div>
+
             <div class="split-grid">
               {% for split_name, split in dataset.splits.items() %}
                 <div class="split">
@@ -39,7 +50,7 @@
             </div>
 
             <div class="dataset-footer">
-              <div class="dataset-path">{{ dataset.path }}</div>
+              <a class="download-button" href="/dataset/{{ dataset.project_dir }}/{{ dataset.name }}/download">下载</a>
               <a class="train-button" href="/train/new?project={{ dataset.project_dir }}&dataset={{ dataset.name }}">去训练</a>
             </div>
           </article>
@@ -49,4 +60,55 @@
       <section class="empty">暂无数据集</section>
     {% endif %}
   </main>
+
+  {% set footer_id = "stats" %}
+  {% set footer_left = workspace %}
+  {% include "partials/footer.html" %}
+
+  <dialog id="datasetDialog" class="dataset-dialog">
+    <form id="datasetForm">
+      <div class="dataset-dialog-head">
+        <h2>新建数据集</h2>
+        <button type="button" id="closeDatasetDialog" class="dataset-dialog-close" aria-label="关闭">×</button>
+      </div>
+      <label>
+        <span>当前项目</span>
+        <input type="text" value="{{ current_project or '未选择项目' }}" disabled>
+      </label>
+      <label><span>数据集名称</span><input name="name" type="text" autocomplete="off" required></label>
+      <label><span>val 数量（百分比）</span><input name="val_percent" type="number" min="0" max="100" step="1" value="20" required></label>
+      <label><span>test 数量（百分比）</span><input name="test_percent" type="number" min="0" max="100" step="1" value="0" required></label>
+      <div class="dataset-dialog-actions">
+        <button type="button" id="cancelDatasetDialog">取消</button>
+        <button type="submit">确认</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script>
+    (() => {
+      const dialog = document.getElementById("datasetDialog");
+      const openButton = document.getElementById("openCreateDataset");
+      const form = document.getElementById("datasetForm");
+      const close = () => dialog?.close();
+      openButton?.addEventListener("click", () => dialog?.showModal());
+      document.getElementById("closeDatasetDialog")?.addEventListener("click", close);
+      document.getElementById("cancelDatasetDialog")?.addEventListener("click", close);
+      form?.addEventListener("submit", async event => {
+        event.preventDefault();
+        const data = Object.fromEntries(new FormData(form).entries());
+        const response = await fetch("/dataset", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify(data),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || !payload.ok) {
+          alert(payload.error || "创建数据集失败");
+          return;
+        }
+        location.href = "/dataset";
+      });
+    })();
+  </script>
 {% endblock %}
