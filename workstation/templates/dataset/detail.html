@@ -159,17 +159,26 @@
       const nextButton = document.querySelector("[data-page-next]");
       let activeSplit = document.querySelector("[data-split-tab].active")?.dataset.splitTab || "train";
 
+      function activePanel() {
+        return panels.get(activeSplit);
+      }
+
+      function pageSize(panel) {
+        return Number(panel?.dataset.pageSize || pageSizeSelect?.value || "100");
+      }
+
       function updatePanel(panel) {
+        if (!panel) return;
         const cards = Array.from(panel.querySelectorAll("[data-file-card]"));
-        const pageSize = Number(panel.dataset.pageSize || pageSizeSelect?.value || "100");
+        const size = pageSize(panel);
         const total = cards.length;
-        const totalPages = Math.max(1, Math.ceil(total / pageSize));
+        const totalPages = Math.max(1, Math.ceil(total / size));
         const page = Math.min(Math.max(Number(panel.dataset.page || "1"), 1), totalPages);
         panel.dataset.page = String(page);
-        const start = (page - 1) * pageSize;
-        const end = Math.min(start + pageSize, total);
+        const start = (page - 1) * size;
+        const end = Math.min(start + size, total);
         cards.forEach((card, index) => {
-          card.hidden = index < start || index >= end;
+          card.toggleAttribute("hidden", index < start || index >= end);
         });
         const tab = document.querySelector(`[data-split-tab="${panel.dataset.splitPanel}"]`);
         const range = tab?.querySelector("[data-tab-range]");
@@ -178,7 +187,7 @@
           if (pageLabel) pageLabel.textContent = `第 ${page} / ${totalPages} 页`;
           if (prevButton) prevButton.disabled = page <= 1;
           if (nextButton) nextButton.disabled = page >= totalPages;
-          if (pageSizeSelect) pageSizeSelect.value = String(pageSize);
+          if (pageSizeSelect) pageSizeSelect.value = String(size);
         }
       }
 
@@ -202,25 +211,28 @@
       });
 
       pageSizeSelect?.addEventListener("change", () => {
-        const panel = panels.get(activeSplit);
+        const panel = activePanel();
         if (!panel) return;
         panel.dataset.pageSize = pageSizeSelect.value;
         panel.dataset.page = "1";
         updatePanel(panel);
+        panel.scrollTop = 0;
       });
 
       prevButton?.addEventListener("click", () => {
-        const panel = panels.get(activeSplit);
+        const panel = activePanel();
         if (!panel) return;
         panel.dataset.page = String(Number(panel.dataset.page || "1") - 1);
         updatePanel(panel);
+        panel.scrollTop = 0;
       });
 
       nextButton?.addEventListener("click", () => {
-        const panel = panels.get(activeSplit);
+        const panel = activePanel();
         if (!panel) return;
         panel.dataset.page = String(Number(panel.dataset.page || "1") + 1);
         updatePanel(panel);
+        panel.scrollTop = 0;
       });
 
       panels.forEach((panel) => {
