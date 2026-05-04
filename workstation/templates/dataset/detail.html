@@ -3,7 +3,7 @@
 {% block title %}{{ dataset.name }}{% endblock %}
 
 {% block styles %}
-  <link rel="stylesheet" href="/static/css/dataset.css?v=20260504-classes-cards">
+  <link rel="stylesheet" href="/static/css/dataset.css?v=20260504-class-compact">
 {% endblock %}
 
 {% block content %}
@@ -41,7 +41,6 @@
                   <div class="class-column-bar" title="{{ item.name }}: {{ item.count }}">
                     <span style="height: {{ item.percent }}%"></span>
                   </div>
-                  <strong>{{ item.count }}</strong>
                   <em title="{{ item.name }}">{{ item.name }}</em>
                 </div>
               {% endfor %}
@@ -97,7 +96,7 @@
               aria-selected="{{ 'true' if loop.first else 'false' }}"
               data-split-tab="{{ split_name }}"
             >
-              <span>{{ split_name }}（<span data-tab-range>{{ "1-" ~ initial_end if total else "0-0" }}</span> / {{ total }} images）</span>
+              <span>{{ split_name }}（<span data-tab-range>{{ "1-" ~ initial_end if total else "0-0" }}</span> / {{ total }}）</span>
             </button>
           {% endfor %}
         </div>

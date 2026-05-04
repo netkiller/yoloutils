@@ -216,20 +216,16 @@ def class_annotations(path: Path, class_names: list[str]):
                 "percent": round(count / max_count * 100, 2) if max_count else 0,
             }
         )
+    def scale_label(value: float):
+        return str(int(value)) if value.is_integer() else f"{value:.1f}"
+
+    scale = [scale_label(max_count * ratio) for ratio in (1, 0.75, 0.5, 0.25, 0)] if max_count else ["0"]
     return {
         "rows": rows,
         "total_classes": total_classes,
         "total_annotations": total_annotations,
         "total_annotations_label": f"{total_annotations:,}",
-        "scale": [
-            max_count,
-            round(max_count * 0.75),
-            round(max_count * 0.5),
-            round(max_count * 0.25),
-            0,
-        ]
-        if max_count
-        else [0, 0, 0, 0, 0],
+        "scale": scale,
     }
 
 
