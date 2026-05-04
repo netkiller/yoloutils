@@ -1,10 +1,11 @@
 import os
+import json
 import traceback
 from pathlib import Path
 from urllib.parse import quote
 
 from fastapi import Request, status
-from fastapi.responses import HTMLResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 
@@ -28,6 +29,23 @@ class SiteWorkstation(Workstation):
 def site_workspace():
     workspace = os.environ.get("YOLOUTILS_WORKSPACE")
     return Path(workspace).expanduser().resolve() if workspace else PROJECT_ROOT
+
+
+def read_online_users():
+    path = site_workspace() / ".users"
+    if not path.is_file():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    users = data.get("users", [])
+    return [str(user).strip() for user in users if str(user).strip()] if isinstance(users, list) else []
+
+
+def current_username(request: Request):
+    username = (request.cookies.get("workstation_username") or "").strip()
+    return username if username in read_online_users() else ""
 
 
 def is_inside(path: Path, parent: Path):
@@ -60,7 +78,7 @@ def write_error_log(workstation: Workstation, error: Exception):
         fallback.write_text(traceback.format_exc(), encoding="utf-8")
 
 
-def workstation_html(workstation: Workstation, active_mode: str = "annotate", project: str = ""):
+def workstation_html(workstation: Workstation, active_mode: str = "annotate", project: str = "", username: str = ""):
     html = workstation._html()
     project_url = f"/project/{quote(project, safe='')}" if project else "/project"
     project_query = f"?project={quote(project, safe='')}" if project else ""
@@ -84,6 +102,13 @@ def workstation_html(workstation: Workstation, active_mode: str = "annotate", pr
         .replace(
             "padding: 0 16px; border-bottom:",
             "padding: 0 24px; border-bottom:",
+            1,
+        )
+        .replace(
+            '<a class="brand-link" href="https://www.netkiller.cn" target="_blank" rel="noopener noreferrer">Yolo Workstation</a>',
+            '<a class="brand-link" href="https://www.netkiller.cn" target="_blank" rel="noopener noreferrer">Yolo Workstation</a>'
+            f'<span class="enterprise-link">{username}</span>'
+            '<form method="post" action="/project/logout" style="margin:0"><button class="enterprise-link" type="submit">注销</button></form>',
             1,
         )
         .replace(
@@ -139,7 +164,14 @@ def workstation_html(workstation: Workstation, active_mode: str = "annotate", pr
             f'id="{active_button}" class="header-button"',
             f'id="{active_button}" class="header-button active"',
         )
-    return html
+    user_script = (
+        "<script>"
+        f"window.yoloutilsUsername = {json.dumps(username, ensure_ascii=False)};"
+        "try { localStorage.setItem('yoloutils-workstation-username', window.yoloutilsUsername); } catch (_) {}"
+        "document.addEventListener('DOMContentLoaded', () => document.body.classList.remove('username-required'));"
+        "</script>"
+    )
+    return html.replace("</head>", f"{user_script}</head>", 1)
 
 
 def create_workstation():
@@ -198,9 +230,12 @@ def create_annotate_app():
     @app.get("/")
     def index(request: Request):
         try:
+            username = current_username(request)
+            if not username:
+                return RedirectResponse(url="/project", status_code=status.HTTP_303_SEE_OTHER)
             project = request.query_params.get("project", "")
             apply_project_workspace(workstation, project)
-            return HTMLResponse(workstation_html(workstation, "annotate", project))
+            return HTMLResponse(workstation_html(workstation, "annotate", project, username))
         except Exception as error:
             write_error_log(workstation, error)
             return PlainTextResponse(

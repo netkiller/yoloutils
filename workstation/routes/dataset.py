@@ -204,7 +204,7 @@ def dataset(request: Request, project: str = ""):
     current_project = current_project_from_request(request, project)
     response = templates.TemplateResponse(
         request=request,
-        name="dataset.html",
+        name="dataset/index.html",
         context={
             "request": request,
             "workspace": workspace,

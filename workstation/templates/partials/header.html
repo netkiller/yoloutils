@@ -1,12 +1,28 @@
 <header>
-  <strong>Yolo Workstation</strong>
+  <div class="brand-title">
+    <strong>Yolo Workstation</strong>
+    {% if username %}
+      <span class="user-avatar" aria-hidden="true">{{ username[:1] }}</span>
+      <span class="username-badge">{{ username }}</span>
+      <form class="logout-form" method="post" action="/project/logout">
+        <button type="submit">注销</button>
+      </form>
+    {% endif %}
+  </div>
   <nav aria-label="主导航">
     <a{% if active_page == "project" %} class="active"{% endif %} href="{% if current_project %}/project/{{ current_project }}{% else %}/project{% endif %}"><span class="nav-icon">▤</span><span>项目</span></a>
     {% if current_project %}
-      <a{% if active_page == "annotate" %} class="active"{% endif %} href="/annotate/?project={{ current_project }}"><span class="nav-icon">▧</span><span>标注</span></a>
-      <a{% if active_page == "dataset" %} class="active"{% endif %} href="/dataset?project={{ current_project }}"><span class="nav-icon">▦</span><span>数据集</span></a>
-      <a{% if active_page == "train" %} class="active"{% endif %} href="/train?project={{ current_project }}"><span class="nav-icon">▶</span><span>训练</span></a>
-      <a{% if active_page == "validate" %} class="active"{% endif %} href="/validate?project={{ current_project }}"><span class="nav-icon">✓</span><span>验证</span></a>
+      {% if project_ready | default(true) %}
+        <a{% if active_page == "annotate" %} class="active"{% endif %} href="/annotate/?project={{ current_project }}"><span class="nav-icon">▧</span><span>标注</span></a>
+        <a{% if active_page == "dataset" %} class="active"{% endif %} href="/dataset?project={{ current_project }}"><span class="nav-icon">▦</span><span>数据集</span></a>
+        <a{% if active_page == "train" %} class="active"{% endif %} href="/train?project={{ current_project }}"><span class="nav-icon">▶</span><span>训练</span></a>
+        <a{% if active_page == "validate" %} class="active"{% endif %} href="/validate?project={{ current_project }}"><span class="nav-icon">✓</span><span>验证</span></a>
+      {% else %}
+        <span class="nav-disabled" aria-disabled="true" title="请先上传图片和 classes.txt"><span class="nav-icon">▧</span><span>标注</span></span>
+        <span class="nav-disabled" aria-disabled="true" title="请先上传图片和 classes.txt"><span class="nav-icon">▦</span><span>数据集</span></span>
+        <span class="nav-disabled" aria-disabled="true" title="请先上传图片和 classes.txt"><span class="nav-icon">▶</span><span>训练</span></span>
+        <span class="nav-disabled" aria-disabled="true" title="请先上传图片和 classes.txt"><span class="nav-icon">✓</span><span>验证</span></span>
+      {% endif %}
     {% elif active_page != "project" %}
       <a{% if active_page == "annotate" %} class="active"{% endif %} href="/annotate"><span class="nav-icon">▧</span><span>标注</span></a>
       <a{% if active_page == "dataset" %} class="active"{% endif %} href="/dataset"><span class="nav-icon">▦</span><span>数据集</span></a>

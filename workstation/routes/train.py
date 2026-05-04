@@ -213,7 +213,7 @@ def train(request: Request, project: str = ""):
         tasks = [task for task in tasks if task.get("project") == current_project]
     response = templates.TemplateResponse(
         request=request,
-        name="train.html",
+            name="train/index.html",
         context={
             "request": request,
             "workspace": workspace,

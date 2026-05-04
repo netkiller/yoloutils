@@ -26,6 +26,34 @@ def workspace_path():
     return Path(workspace).expanduser().resolve() if workspace else Path.cwd().resolve()
 
 
+def users_file(workspace: Path):
+    return workspace / ".users"
+
+
+def read_online_users(workspace: Path):
+    path = users_file(workspace)
+    if not path.is_file():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    users = data.get("users", [])
+    return [str(user).strip() for user in users if str(user).strip()] if isinstance(users, list) else []
+
+
+def write_online_users(workspace: Path, users: list[str]):
+    users_file(workspace).write_text(
+        json.dumps({"users": sorted(set(users), key=str.lower)}, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+def current_username(request: Request, workspace: Path):
+    username = (request.cookies.get("workstation_username") or "").strip()
+    return username if username in read_online_users(workspace) else ""
+
+
 def is_inside(path: Path, parent: Path):
     try:
         path.relative_to(parent)
@@ -229,6 +257,7 @@ async def uploaded_files(request: Request):
 @router.get("/project")
 def project(request: Request):
     workspace = workspace_path()
+    username = current_username(request, workspace)
     try:
         response = templates.TemplateResponse(
             request=request,
@@ -240,6 +269,9 @@ def project(request: Request):
                 "error": request.query_params.get("error"),
                 "active_page": "project",
                 "show_create_project": True,
+                "username": username,
+                "login_required": not username,
+                "online_users": read_online_users(workspace),
             },
         )
         response.delete_cookie("current_project")
@@ -250,6 +282,35 @@ def project(request: Request):
             "Project page error. See .yoloutils-project-error.log",
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
+
+
+@router.post("/project/login")
+async def login(request: Request):
+    form = await form_fields(request)
+    workspace = workspace_path()
+    username = (form.get("username", [""])[0] or "").strip()
+    users = read_online_users(workspace)
+    if not username:
+        return project_redirect("请输入用户名")
+    if username in users:
+        return project_redirect("用户名已存在，请更换用户名")
+    users.append(username)
+    write_online_users(workspace, users)
+    response = RedirectResponse(url="/project", status_code=status.HTTP_303_SEE_OTHER)
+    response.set_cookie("workstation_username", username, httponly=True, samesite="lax")
+    return response
+
+
+@router.post("/project/logout")
+def logout(request: Request):
+    workspace = workspace_path()
+    username = (request.cookies.get("workstation_username") or "").strip()
+    users = [user for user in read_online_users(workspace) if user != username]
+    write_online_users(workspace, users)
+    response = RedirectResponse(url="/project", status_code=status.HTTP_303_SEE_OTHER)
+    response.delete_cookie("workstation_username")
+    response.delete_cookie("current_project")
+    return response
 
 
 @router.post("/project")
@@ -311,6 +372,7 @@ def delete_project(directory: str):
 @router.get("/project/{directory}")
 def project_detail(directory: str, request: Request):
     workspace = workspace_path()
+    username = current_username(request, workspace)
     path = project_dir(workspace, directory)
     if path is None or not path.is_dir():
         return project_redirect("项目不存在")
@@ -320,6 +382,7 @@ def project_detail(directory: str, request: Request):
         meta = read_project_meta(path, read_project_registry(workspace))
         image_count = count_files(path / "images", IMAGE_EXTS)
         model_count = count_files(path / "models", MODEL_EXTS)
+        has_classes = (path / "images" / "classes.txt").is_file()
         response = templates.TemplateResponse(
             request=request,
             name="project/detail.html",
@@ -333,11 +396,14 @@ def project_detail(directory: str, request: Request):
                     "model_count": model_count,
                     "has_images": image_count > 0,
                     "has_models": model_count > 0,
+                    "has_classes": has_classes,
                 },
                 "error": request.query_params.get("error"),
                 "active_page": "project",
                 "show_create_project": False,
                 "current_project": directory,
+                "project_ready": image_count > 0 and has_classes,
+                "username": username,
             },
         )
         response.set_cookie("current_project", directory, httponly=True, samesite="lax")

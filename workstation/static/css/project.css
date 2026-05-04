@@ -237,6 +237,14 @@ textarea {
   gap: 12px;
 }
 
+.login-actions {
+  justify-content: flex-end;
+}
+
+.login-form {
+  width: min(680px, calc(100vw - 32px));
+}
+
 .dialog-head h2 {
   margin: 0;
   font-size: 18px;
@@ -251,6 +259,85 @@ textarea {
 
 .project-dialog input {
   width: 100%;
+}
+
+.login-layout {
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) minmax(240px, 1fr);
+  gap: 16px;
+}
+
+.online-users,
+.login-fields {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+
+.online-users {
+  min-height: 180px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.online-users h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.online-users p {
+  margin: 0;
+}
+
+.online-user-list {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+}
+
+.online-user {
+  min-width: 0;
+  min-height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.online-user-dot {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #dcfce7;
+  color: #166534;
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1;
+  box-shadow: 0 0 0 1px rgba(31, 41, 51, .08);
+}
+
+.online-user-name {
+  min-width: 0;
+  overflow: hidden;
+  color: #52606d;
+  text-overflow: ellipsis;
+}
+
+.login-fields label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 13px;
 }
 
 .secondary-button {
@@ -306,6 +393,25 @@ textarea {
 
 .back-link:hover {
   text-decoration: underline;
+}
+
+.close-project-link {
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #ffffff;
+  color: var(--text);
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.close-project-link:hover {
+  background: #f8fafc;
 }
 
 .upload-layout {

@@ -48,6 +48,56 @@ header {
   border-bottom: 1px solid var(--line);
 }
 
+.brand-title {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.username-badge {
+  max-width: 160px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-avatar {
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #dbeafe;
+  color: #1d4ed8;
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1;
+  box-shadow: 0 0 0 1px rgba(31, 41, 51, .08);
+}
+
+.logout-form {
+  margin: 0;
+}
+
+.logout-form button {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  background: #ffffff;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.logout-form button:hover {
+  background: #f8fafc;
+  color: var(--text);
+}
+
 nav {
   display: flex;
   gap: 8px;
@@ -65,6 +115,20 @@ nav a {
   padding: 8px 12px;
   border-radius: 6px;
   font-size: 14px;
+}
+
+nav .nav-disabled {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  color: #a0aec0;
+  background: #f1f5f9;
+  font-size: 14px;
+  cursor: not-allowed;
+  user-select: none;
 }
 
 nav a.active {
