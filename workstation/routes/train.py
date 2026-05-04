@@ -20,6 +20,31 @@ templates = Jinja2Templates(directory=Path(__file__).resolve().parent.parent / "
 queue_lock = threading.Lock()
 worker_thread = None
 running_processes = {}
+MODEL_VERSIONS = [f"YOLOv{number}" for number in range(3, 13)] + ["YOLO26"]
+MODEL_SIZES = ["N", "S", "M", "L", "X"]
+
+
+def clean_model_version(value: str):
+    value = (value or "").strip()
+    return value if value in MODEL_VERSIONS else "YOLO26"
+
+
+def clean_model_size(value: str):
+    value = (value or "").strip().upper()
+    return value if value in MODEL_SIZES else "N"
+
+
+def model_weight(version: str, size: str):
+    suffix = clean_model_size(size).lower()
+    version = clean_model_version(version)
+    if version == "YOLO26":
+        return f"yolo26{suffix}.pt"
+    return f"yolov{version.removeprefix('YOLOv')}{suffix}.pt"
+
+
+def optional_int(value: str):
+    value = (value or "").strip()
+    return int(value) if value else None
 
 
 def workspace_path():
@@ -135,19 +160,22 @@ def log_file(task_id):
 
 
 def train_command(task):
-    data_yaml = write_data_yaml(task)
-    return [
+    data_value = task.get("data") or str(write_data_yaml(task))
+    command = [
         "yolo",
         "detect",
         "train",
-        f"data={data_yaml}",
+        f"data={data_value}",
         f"model={task['model']}",
         f"epochs={task['epochs']}",
-        f"imgsz={task['imgsz']}",
-        f"batch={task['batch']}",
-        f"project={workspace_path() / task['project'] / 'train-runs'}",
+        f"project={workspace_path() / task['project'] / 'runs'}",
         f"name={task['name']}",
-    ] + ([f"device={task['device']}"] if task.get("device") else [])
+    ]
+    for key in ("imgsz", "batch", "device", "workers", "amp"):
+        value = task.get(key)
+        if value not in (None, ""):
+            command.append(f"{key}={value}")
+    return command
 
 
 def run_task(task):
@@ -245,6 +273,10 @@ def new_train(request: Request, project: str = "", dataset: str = ""):
             "workspace": workspace,
             "dataset": dataset_item,
             "datasets": dataset_dirs(project),
+            "model_versions": MODEL_VERSIONS,
+            "model_sizes": MODEL_SIZES,
+            "default_model_version": "YOLO26",
+            "default_model_size": "N",
             "active_page": "train",
             "current_project": current_project,
             **header_context(request, workspace),
@@ -264,17 +296,25 @@ async def create_train(request: Request):
     if dataset_item is None:
         return RedirectResponse(url="/train/new", status_code=status.HTTP_303_SEE_OTHER)
 
+    model_version = clean_model_version(form.get("model_version", ["YOLO26"])[0])
+    model_size = clean_model_size(form.get("model_size", ["N"])[0])
+    data_value = form.get("data", [""])[0].strip()
     task = {
         "id": uuid4().hex[:12],
         "name": form.get("name", ["train"])[0].strip() or "train",
         "project": dataset_item["project"],
         "dataset": dataset_item["name"],
         "dataset_path": str(dataset_item["path"]),
-        "model": form.get("model", ["yolov8n.pt"])[0].strip() or "yolov8n.pt",
+        "model_version": model_version,
+        "model_size": model_size,
+        "model": model_weight(model_version, model_size),
         "epochs": int(form.get("epochs", ["200"])[0] or 200),
-        "imgsz": int(form.get("imgsz", ["640"])[0] or 640),
-        "batch": int(form.get("batch", ["16"])[0] or 16),
+        "imgsz": optional_int(form.get("imgsz", [""])[0]),
+        "batch": optional_int(form.get("batch", [""])[0]),
         "device": form.get("device", [""])[0].strip(),
+        "workers": optional_int(form.get("workers", [""])[0]),
+        "amp": form.get("amp", [""])[0].strip(),
+        "data": data_value,
         "status": "排队中",
         "created_at": datetime.now().isoformat(timespec="seconds"),
     }

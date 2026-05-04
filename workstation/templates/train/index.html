@@ -3,7 +3,7 @@
 {% block title %}训练队列{% endblock %}
 
 {% block styles %}
-  <link rel="stylesheet" href="/static/css/train.css?v=20260504-live-logs">
+  <link rel="stylesheet" href="/static/css/train.css?v=20260504-train-options">
 {% endblock %}
 
 {% block content %}
@@ -11,9 +11,8 @@
     <section class="train-head">
       <div>
         <h1>训练队列</h1>
-        <p>管理 YOLO 训练任务，查看状态和控制台输出。</p>
       </div>
-      <a class="primary-link" href="/train/new">新建训练</a>
+      <a class="primary-link" href="/train/new{% if current_project %}?project={{ current_project }}{% endif %}">新建训练</a>
     </section>
 
     {% if tasks %}
@@ -28,8 +27,14 @@
             <div class="task-meta">
               <span>model: {{ task.model }}</span>
               <span>epochs: {{ task.epochs }}</span>
-              <span>imgsz: {{ task.imgsz }}</span>
-              <span>batch: {{ task.batch }}</span>
+              {% if task.get("model_version") %}<span>version: {{ task.model_version }}</span>{% endif %}
+              {% if task.get("model_size") %}<span>size: {{ task.model_size }}</span>{% endif %}
+              {% if task.get("imgsz") %}<span>imgsz: {{ task.imgsz }}</span>{% endif %}
+              {% if task.get("batch") %}<span>batch: {{ task.batch }}</span>{% endif %}
+              {% if task.get("device") %}<span>device: {{ task.device }}</span>{% endif %}
+              {% if task.get("workers") is not none %}<span>workers: {{ task.workers }}</span>{% endif %}
+              {% if task.get("amp") %}<span>amp: {{ task.amp }}</span>{% endif %}
+              {% if task.get("data") %}<span>data: {{ task.data }}</span>{% endif %}
             </div>
             <div class="task-actions">
               <a href="/train/tasks/{{ task.id }}">查看</a>

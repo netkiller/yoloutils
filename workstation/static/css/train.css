@@ -1,8 +1,13 @@
 .train-head {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
   gap: 16px;
+}
+
+.train-head h1 {
+  margin: 0;
+  font-size: 28px;
 }
 
 .train-head p {
@@ -151,10 +156,27 @@
   background: #ffffff;
 }
 
+.train-dialog .readonly-field {
+  color: var(--muted);
+  background: #f6f8fb;
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
+}
+
+.optional-params {
+  display: grid;
+  gap: 12px;
+  padding-top: 2px;
+}
+
+.optional-params h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 16px;
 }
 
 .back-link {
