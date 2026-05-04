@@ -263,6 +263,18 @@ def workstation_html(workstation: Workstation, active_mode: str = "annotate", pr
             f'id="{active_button}" class="header-button"',
             f'id="{active_button}" class="header-button active"',
         )
+    if username:
+        html = html.replace(
+            '<body class="team-mode username-required" data-team-mode="true">',
+            '<body class="team-mode" data-team-mode="true">',
+            1,
+        )
+    if not team_mode_enabled():
+        html = html.replace(
+            '<button id="shareButton" class="header-button" title="分享当前页面或当前位置"><span class="header-icon">⇪</span><span>分享</span></button>',
+            "",
+            1,
+        )
     user_script = (
         "<script>"
         f"window.yoloutilsUsername = {json.dumps(username, ensure_ascii=False)};"
@@ -309,6 +321,11 @@ def html_escape(value: str):
 
 def create_workstation():
     workstation = SiteWorkstation()
+    workstation.host = os.environ.get("YOLOUTILS_HOST", workstation.host)
+    try:
+        workstation.port = int(os.environ.get("YOLOUTILS_PORT", workstation.port))
+    except (TypeError, ValueError):
+        pass
     dataset = os.environ.get("YOLOUTILS_DATASET")
     run = os.environ.get("YOLOUTILS_RUN")
 

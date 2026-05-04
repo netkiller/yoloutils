@@ -1,4 +1,5 @@
 import os
+import socket
 import subprocess
 import sys
 import threading
@@ -130,7 +131,31 @@ class Workstation:
         return f"http://{host}:{self.port}"
 
     def _share_url(self):
-        return f"http://{self.mdns}:{self.port}"
+        mdns = os.environ.get("YOLOUTILS_MDNS", "").strip()
+        host = self._normalize_mdns(mdns) if mdns else self._lan_ip_address()
+        if not host:
+            host = "127.0.0.1" if self.host in ("0.0.0.0", "::") else self.host
+        if ":" in host and not host.startswith("["):
+            host = f"[{host}]"
+        return f"http://{host}:{self.port}"
+
+    def _lan_ip_address(self):
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+                sock.connect(("8.8.8.8", 80))
+                host = sock.getsockname()[0]
+                if host and not host.startswith("127."):
+                    return host
+        except OSError:
+            pass
+        try:
+            for item in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+                host = item[4][0]
+                if host and not host.startswith("127."):
+                    return host
+        except OSError:
+            pass
+        return ""
 
     def _normalize_mdns(self, value: str):
         name = (value or "netkiller.local").strip().lower()
@@ -718,7 +743,7 @@ class Workstation:
 
         @app.get("/api/config")
         def config():
-            return {"team_mode": self.team_mode, "share_url": self._share_url()}
+            return {"team_mode": self.team_mode, "share_url": self._share_url() if self.team_mode else ""}
 
         @app.get("/api/tree")
         def tree():
@@ -1006,7 +1031,7 @@ class Workstation:
     .console-panel { height: var(--console-height, 160px); display: none; background: #111827; color: #d1d5db; overflow: auto; }
     body.console-open .console-panel { display: block; }
     .console-log { margin: 0; padding: 10px 14px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; line-height: 1.45; white-space: pre-wrap; }
-    .shortcut-popover { position: fixed; top: 56px; right: 16px; z-index: 20; width: 300px; padding: 12px; border: 1px solid #d9e2ec; border-radius: 8px; background: #fff; box-shadow: 0 12px 28px rgba(31, 41, 51, .18); color: #243b53; }
+    .shortcut-popover { position: fixed; right: 16px; bottom: 48px; z-index: 20; width: 300px; padding: 12px; border: 1px solid #d9e2ec; border-radius: 8px; background: #fff; box-shadow: 0 12px 28px rgba(31, 41, 51, .18); color: #243b53; }
     .shortcut-popover[hidden] { display: none; }
     .shortcut-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; font-size: 13px; font-weight: 700; }
     .shortcut-title button { width: 24px; height: 24px; padding: 0; display: inline-flex; align-items: center; justify-content: center; color: #52606d; }
@@ -1041,7 +1066,6 @@ class Workstation:
       <button id="shareButton" class="header-button" title="分享当前页面或当前位置"><span class="header-icon">⇪</span><span>分享</span></button>
       <button id="downloadImage" class="header-button" title="下载当前图片"><span class="header-icon">⇩</span><span>下载</span></button>
       <button id="queryButton" class="header-button" title="查询目录或当前文件列表"><span class="header-icon">⌕</span><span>查询</span></button>
-      <button id="shortcutButton" class="header-button" title="查看快捷键"><span class="header-icon">⌘</span><span>快捷键</span></button>
     </div>
   </header>
   <div id="shortcutPopover" class="shortcut-popover" hidden>
@@ -1230,6 +1254,7 @@ class Workstation:
       <span class="stat"><span class="stat-icon">⌑</span>classes.txt <strong>-</strong></span>
       <span class="stat bad"><span class="stat-icon">✕</span>损坏图像 <strong>-</strong></span>
       <span class="stat bad"><span class="stat-icon">!</span>无效 .txt <strong>-</strong></span>
+      <button id="shortcutButton" class="footer-button" type="button"><span class="stat-icon">⌘</span>快捷键</button>
       <button id="consoleToggle" class="footer-button" type="button"><span class="stat-icon">▤</span>控制台</button>
     </div>
   </footer>
@@ -2226,6 +2251,7 @@ class Workstation:
           <span class="stat"><span class="stat-icon">⌑</span>classes.txt <strong>${data.classes_files}</strong></span>
           <span class="stat bad"><span class="stat-icon">✕</span>损坏图像 <strong>${data.images_damaged}</strong></span>
           <span class="stat bad"><span class="stat-icon">!</span>无效 .txt <strong>${data.txt_invalid_total}</strong></span>
+          <button id="shortcutButton" class="footer-button" type="button"><span class="stat-icon">⌘</span>快捷键</button>
           <button id="consoleToggle" class="footer-button" type="button"><span class="stat-icon">▤</span>控制台</button>
         </div>
       `;
@@ -2233,6 +2259,7 @@ class Workstation:
       const button = statsEl.querySelector("#consoleToggle");
       button.classList.toggle("active", document.body.classList.contains("console-open"));
       button.addEventListener("click", toggleConsole);
+      statsEl.querySelector("#shortcutButton")?.addEventListener("click", toggleShortcuts);
     }
 
     async function init() {
@@ -2313,17 +2340,19 @@ class Workstation:
         annotateMode = !annotateMode;
         updateAnnotationButtons();
       });
-      shareButton.addEventListener("click", shareCurrentLocation);
+      shareButton?.addEventListener("click", shareCurrentLocation);
       downloadImage.addEventListener("click", downloadCurrentImage);
       queryButton.addEventListener("click", showEnterpriseNotice);
-      shortcutButton.addEventListener("click", () => {
-        shortcutPopover.hidden = !shortcutPopover.hidden;
-      });
+      shortcutButton?.addEventListener("click", toggleShortcuts);
       closeShortcuts.addEventListener("click", () => {
         shortcutPopover.hidden = true;
       });
       datasetButton.addEventListener("click", showEnterpriseNotice);
       trainButton.addEventListener("click", showEnterpriseNotice);
+    }
+
+    function toggleShortcuts() {
+      shortcutPopover.hidden = !shortcutPopover.hidden;
     }
 
     function visibleTreeButtons() {

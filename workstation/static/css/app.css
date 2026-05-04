@@ -216,8 +216,8 @@ nav a.active {
 
 .public-shortcut-popover {
   position: fixed;
-  top: 52px;
   right: 16px;
+  bottom: 48px;
   z-index: 30;
   width: 300px;
   padding: 12px;

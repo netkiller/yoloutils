@@ -23,7 +23,7 @@ def build_parser():
     parser.add_argument("-c", "--classes", type=str, default=None, help="classes.txt 文件")
     parser.add_argument("--open", action="store_true", default=False, help="启动服务后打开无地址栏应用窗口")
     parser.add_argument("-t", "--team", action="store_true", default=False, help="团队协作模式")
-    parser.add_argument("--mDNS", dest="mdns", type=str, default="netkiller.local", help=".local 分享域名")
+    parser.add_argument("--mDNS", dest="mdns", type=str, default=None, help=".local 分享域名")
     parser.add_argument("--reload", action="store_true", default=False, help="启用 uvicorn reload")
     return parser
 
@@ -49,7 +49,12 @@ def apply_environment(args):
         raise SystemExit(f"workspace 目录不存在: {workspace}")
 
     os.environ["YOLOUTILS_WORKSPACE"] = str(workspace)
-    os.environ["YOLOUTILS_MDNS"] = normalize_mdns(args.mdns)
+    os.environ["YOLOUTILS_HOST"] = str(args.host)
+    os.environ["YOLOUTILS_PORT"] = str(args.port)
+    if args.mdns:
+        os.environ["YOLOUTILS_MDNS"] = normalize_mdns(args.mdns)
+    else:
+        os.environ.pop("YOLOUTILS_MDNS", None)
     os.environ["YOLOUTILS_TEAM"] = "1" if args.team else "0"
 
     optional_paths = {

@@ -2,6 +2,7 @@ import json
 import os
 import re
 import shutil
+import socket
 import time
 import traceback
 from email.parser import BytesParser
@@ -144,6 +145,42 @@ def team_mode_enabled():
     return os.environ.get("YOLOUTILS_TEAM", "").lower() in ("1", "true", "yes", "on")
 
 
+def normalize_mdns(value: str):
+    name = (value or "").strip().lower()
+    if "://" in name:
+        name = name.split("://", 1)[1]
+    name = name.split("/", 1)[0].split(":", 1)[0]
+    return name if name.endswith(".local") else f"{name}.local"
+
+
+def lan_ip_address():
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.connect(("8.8.8.8", 80))
+            host = sock.getsockname()[0]
+            if host and not host.startswith("127."):
+                return host
+    except OSError:
+        pass
+    try:
+        for item in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            host = item[4][0]
+            if host and not host.startswith("127."):
+                return host
+    except OSError:
+        pass
+    return ""
+
+
+def share_url(request: Request):
+    port = request.url.port or (443 if request.url.scheme == "https" else 80)
+    mdns = os.environ.get("YOLOUTILS_MDNS", "").strip()
+    host = normalize_mdns(mdns) if mdns else lan_ip_address()
+    if not host:
+        host = request.url.hostname or "127.0.0.1"
+    return f"{request.url.scheme}://{host}:{port}"
+
+
 def header_context(request: Request, workspace: Path):
     username = current_username(request, workspace)
     is_team_mode = team_mode_enabled()
@@ -152,6 +189,7 @@ def header_context(request: Request, workspace: Path):
         "username_initial": username[:1],
         "username_color": user_color(username) if username else "",
         "is_team_mode": is_team_mode,
+        "share_url": share_url(request) if is_team_mode else "",
         "edition_label": "企业版" if is_team_mode else "社区版",
     }
 

@@ -32,54 +32,31 @@
     {% endif %}
   </nav>
   <div class="header-actions">
-    <button class="public-header-button" type="button" data-public-share title="分享当前页面"><span class="nav-icon">⇪</span><span>分享</span></button>
-    <button class="public-header-button" type="button" data-public-shortcuts title="查看快捷键"><span class="nav-icon">⌘</span><span>快捷键</span></button>
+    {% if is_team_mode %}
+      <button class="public-header-button" type="button" data-public-share data-share-url="{{ share_url }}" title="分享工作站地址"><span class="nav-icon">⇪</span><span>分享</span></button>
+    {% endif %}
     <a class="enterprise-public-link" href="https://saas.netkiller.cn/workstation/index.html" target="_blank" rel="noopener noreferrer">{{ edition_label | default("社区版") }}</a>
   </div>
 </header>
-<div class="public-shortcut-popover" data-public-shortcut-popover hidden>
-  <div class="public-shortcut-title">
-    <span>快捷键</span>
-    <button type="button" data-close-public-shortcuts aria-label="关闭">×</button>
-  </div>
-  <div class="public-shortcut-list">
-    <span>↑ / ↓</span><span>标注页切换目录</span>
-    <span>← / →</span><span>标注页切换图片</span>
-    <span>⌘S</span><span>保存当前标注</span>
-    <span>⌘D</span><span>删除当前标注</span>
-    <span>ESC</span><span>关闭弹窗或还原图片缩放</span>
-  </div>
-</div>
 <script>
   (() => {
     const share = document.querySelector("[data-public-share]");
-    const shortcuts = document.querySelector("[data-public-shortcuts]");
-    const popover = document.querySelector("[data-public-shortcut-popover]");
-    const close = document.querySelector("[data-close-public-shortcuts]");
     share?.addEventListener("click", async () => {
-      const payload = {title: document.title || "Yolo Workstation", text: location.href, url: location.href};
+      const url = share.dataset.shareUrl || location.href;
+      const payload = {title: document.title || "Yolo Workstation", text: url, url};
       try {
         if (navigator.share) {
           await navigator.share(payload);
           return;
         }
-        await navigator.clipboard.writeText(location.href);
-        alert("已复制当前页面地址");
+        await navigator.clipboard.writeText(url);
+        alert("已复制工作站地址");
       } catch (error) {
         if (navigator.clipboard) {
-          await navigator.clipboard.writeText(location.href);
-          alert("已复制当前页面地址");
+          await navigator.clipboard.writeText(url);
+          alert("已复制工作站地址");
         }
       }
-    });
-    shortcuts?.addEventListener("click", () => {
-      if (popover) popover.hidden = !popover.hidden;
-    });
-    close?.addEventListener("click", () => {
-      if (popover) popover.hidden = true;
-    });
-    window.addEventListener("keydown", (event) => {
-      if (event.key === "Escape" && popover && !popover.hidden) popover.hidden = true;
     });
   })();
 </script>
