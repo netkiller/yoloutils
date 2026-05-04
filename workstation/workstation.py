@@ -944,6 +944,7 @@ class Workstation:
     button:hover, button.active { background: #e6f0ff; }
     .tree-node { position: relative; }
     .tree-row { display: flex; align-items: center; min-width: 0; }
+    .tree-node.root-node > .tree-row > .tree-toggle-placeholder { display: none; }
     .tree-children { margin-left: 14px; padding-left: 8px; border-left: 1px solid #d9e2ec; }
     .tree-toggle { flex: 0 0 22px; width: 22px; min-width: 22px; height: 28px; display: inline-flex; align-items: center; justify-content: center; padding: 0; color: #7b8794; font-size: 13px; }
     .tree-toggle-placeholder { flex: 0 0 22px; width: 22px; min-width: 22px; }
@@ -1414,6 +1415,7 @@ class Workstation:
       row.className = "tree-row";
       const hasChildren = node.children.length > 0;
       const isRoot = parent === treeEl;
+      if (isRoot) wrapper.classList.add("root-node");
       const isCollapsed = collapsedDirs.has(node.path);
       if (hasChildren && !isRoot) {
         const toggle = document.createElement("button");
