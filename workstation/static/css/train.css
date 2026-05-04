@@ -1,3 +1,9 @@
+.train-main {
+  grid-template-rows: auto auto minmax(0, 1fr);
+  align-content: stretch;
+  overflow: hidden;
+}
+
 .train-head {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -87,6 +93,13 @@
 .queue-filter {
   justify-content: flex-end;
   border-bottom: 0;
+}
+
+.train-tab-content {
+  min-height: 0;
+  overflow: auto;
+  padding-right: 4px;
+  scroll-padding-bottom: 20px;
 }
 
 .task-list {

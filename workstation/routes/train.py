@@ -185,6 +185,21 @@ def project_runs_dir(project: str):
     return workspace_path() / project / "runs"
 
 
+def display_project_name(workspace: Path, project: str):
+    project = (project or "").strip()
+    if not project:
+        return ""
+    path = workspace / project
+    meta = path / ".project"
+    if not meta.is_file():
+        return project
+    try:
+        data = json.loads(meta.read_text(encoding="utf-8"))
+        return str(data.get("name") or project)
+    except (OSError, ValueError, TypeError):
+        return project
+
+
 def expected_run_dir(task):
     return project_runs_dir(task["project"]) / task["name"]
 
@@ -556,6 +571,7 @@ def train(request: Request, project: str = "", tab: str = "models", queue: str =
             "queue_filter": queue_filter,
             "active_page": "train",
             "current_project": current_project,
+            "current_project_name": display_project_name(workspace, current_project),
             **header_context(request, workspace),
         },
     )

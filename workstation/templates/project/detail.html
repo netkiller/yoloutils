@@ -3,7 +3,7 @@
 {% block title %}项目 {{ project.name }}{% endblock %}
 
 {% block styles %}
-  <link rel="stylesheet" href="/static/css/project.css?v=20260504-detail-compact">
+  <link rel="stylesheet" href="/static/css/project.css?v=20260504-sftp-card">
 {% endblock %}
 
 {% block content %}
@@ -81,6 +81,16 @@
         </div>
         <a class="action-link{% if not project.has_models %} disabled{% endif %}" href="/train" data-model-action>去推理</a>
       </article>
+
+      <article class="upload-panel sftp-panel" data-sftp-path="{{ project.path }}">
+        <div class="panel-head">
+          <h2>使用 SFTP 上传</h2>
+          <button class="copy-icon-button" type="button" data-copy-sftp title="复制 SFTP URL" aria-label="复制 SFTP URL">⎘</button>
+        </div>
+        <div class="sftp-url-card">
+          <span data-sftp-url>sftp://{{ project.path }}</span>
+        </div>
+      </article>
     </section>
   </main>
 
@@ -105,5 +115,5 @@
   {% set footer_left = project.path %}
   {% include "partials/footer.html" %}
 
-  <script src="/static/js/project.js?v=20260504-upload-progress"></script>
+  <script src="/static/js/project.js?v=20260504-sftp-card"></script>
 {% endblock %}

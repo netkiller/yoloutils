@@ -72,7 +72,7 @@
                           <h3>训练命令</h3>
                           <p>命令行参数</p>
                         </div>
-                        <button type="button" class="copy-command-button" data-copy-command title="复制训练命令" aria-label="复制训练命令">[+]</button>
+                        <button type="button" class="copy-command-button" data-copy-command title="复制训练命令" aria-label="复制训练命令">⎘</button>
                       </div>
                       <pre class="command-output" data-command-text>{{ assets.train_command }}</pre>
                     </section>
@@ -163,10 +163,10 @@
           try {
             await navigator.clipboard.writeText(text);
             button.textContent = "✓";
-            setTimeout(() => { button.textContent = "[+]"; }, 1200);
+            setTimeout(() => { button.textContent = "⎘"; }, 1200);
           } catch (error) {
             button.textContent = "!";
-            setTimeout(() => { button.textContent = "[+]"; }, 1200);
+            setTimeout(() => { button.textContent = "⎘"; }, 1200);
           }
         });
       });

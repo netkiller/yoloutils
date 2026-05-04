@@ -5,6 +5,7 @@ const editForm = document.getElementById("editProjectForm");
 const classesDialog = document.getElementById("classesDialog");
 const classesForm = document.getElementById("classesForm");
 const editClassesButton = document.getElementById("editClassesButton");
+const sftpPanel = document.querySelector("[data-sftp-path]");
 
 function escapeHtml(value) {
   return String(value || "").replace(/[&<>"']/g, (char) => ({
@@ -66,6 +67,26 @@ async function heartbeat() {
 
 heartbeat();
 setInterval(heartbeat, 15000);
+
+if (sftpPanel) {
+  const target = sftpPanel.querySelector("[data-sftp-url]");
+  const button = sftpPanel.querySelector("[data-copy-sftp]");
+  const path = sftpPanel.dataset.sftpPath || "";
+  const host = window.location.hostname || "127.0.0.1";
+  const url = `sftp://${host}${path.startsWith("/") ? "" : "/"}${path}`;
+  if (target) target.textContent = url;
+  button?.addEventListener("click", async () => {
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      button.textContent = "✓";
+      setTimeout(() => { button.textContent = "⎘"; }, 1200);
+    } catch (error) {
+      button.textContent = "!";
+      setTimeout(() => { button.textContent = "⎘"; }, 1200);
+    }
+  });
+}
 
 if (createDialog && openCreateDialog) {
   openCreateDialog.addEventListener("click", () => createDialog.showModal());
