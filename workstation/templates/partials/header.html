@@ -1,12 +1,13 @@
 <header>
   <div class="brand-title">
-    <strong>Yolo Workstation</strong>
     {% if username %}
-      <span class="user-avatar" aria-hidden="true">{{ username[:1] }}</span>
+      <span class="user-avatar" style="--user-color: {{ username_color | default('#3b82f6') }}" aria-hidden="true">{{ username_initial | default(username[:1]) }}</span>
       <span class="username-badge">{{ username }}</span>
       <form class="logout-form" method="post" action="/project/logout">
         <button type="submit">注销</button>
       </form>
+    {% else %}
+      <strong>Yolo Workstation</strong>
     {% endif %}
   </div>
   <nav aria-label="主导航">
@@ -18,10 +19,10 @@
         <a{% if active_page == "train" %} class="active"{% endif %} href="/train?project={{ current_project }}"><span class="nav-icon">▶</span><span>训练</span></a>
         <a{% if active_page == "validate" %} class="active"{% endif %} href="/validate?project={{ current_project }}"><span class="nav-icon">✓</span><span>验证</span></a>
       {% else %}
-        <span class="nav-disabled" aria-disabled="true" title="请先上传图片和 classes.txt"><span class="nav-icon">▧</span><span>标注</span></span>
-        <span class="nav-disabled" aria-disabled="true" title="请先上传图片和 classes.txt"><span class="nav-icon">▦</span><span>数据集</span></span>
-        <span class="nav-disabled" aria-disabled="true" title="请先上传图片和 classes.txt"><span class="nav-icon">▶</span><span>训练</span></span>
-        <span class="nav-disabled" aria-disabled="true" title="请先上传图片和 classes.txt"><span class="nav-icon">✓</span><span>验证</span></span>
+        <span class="nav-disabled" aria-disabled="true" title="请先上传图片"><span class="nav-icon">▧</span><span>标注</span></span>
+        <span class="nav-disabled" aria-disabled="true" title="请先上传图片"><span class="nav-icon">▦</span><span>数据集</span></span>
+        <span class="nav-disabled" aria-disabled="true" title="请先上传图片"><span class="nav-icon">▶</span><span>训练</span></span>
+        <span class="nav-disabled" aria-disabled="true" title="请先上传图片"><span class="nav-icon">✓</span><span>验证</span></span>
       {% endif %}
     {% elif active_page != "project" %}
       <a{% if active_page == "annotate" %} class="active"{% endif %} href="/annotate"><span class="nav-icon">▧</span><span>标注</span></a>
@@ -31,6 +32,7 @@
     {% endif %}
   </nav>
   <div class="header-actions">
+    <a class="enterprise-public-link" href="https://saas.netkiller.cn/workstation/index.html" target="_blank" rel="noopener noreferrer">{{ edition_label | default("社区版") }}</a>
     {% if active_page == "project" and show_create_project | default(false) %}
       <button type="button" id="openCreateDialog">创建项目</button>
     {% endif %}

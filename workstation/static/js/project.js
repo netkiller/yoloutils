@@ -2,6 +2,9 @@ const createDialog = document.getElementById("createProjectDialog");
 const openCreateDialog = document.getElementById("openCreateDialog");
 const editDialog = document.getElementById("editProjectDialog");
 const editForm = document.getElementById("editProjectForm");
+const classesDialog = document.getElementById("classesDialog");
+const classesForm = document.getElementById("classesForm");
+const editClassesButton = document.getElementById("editClassesButton");
 
 if (createDialog && openCreateDialog) {
   openCreateDialog.addEventListener("click", () => createDialog.showModal());
@@ -26,6 +29,33 @@ if (editDialog && editForm) {
       });
       editDialog.showModal();
     });
+  });
+}
+
+if (classesDialog && classesForm && editClassesButton) {
+  editClassesButton.addEventListener("click", () => classesDialog.showModal());
+  classesDialog.querySelectorAll("[data-close-classes]").forEach((button) => {
+    button.addEventListener("click", () => classesDialog.close());
+  });
+  classesForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const project = document.querySelector("[data-project]")?.dataset.project;
+    const content = classesForm.elements.content.value;
+    const response = await fetch(`/project/${project}/classes`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({content}),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) {
+      alert(data.error || "保存失败");
+      return;
+    }
+    const status = document.querySelector("[data-classes-status]");
+    if (status) status.textContent = "已上传";
+    const buttonLabel = document.querySelector("[data-classes-edit-label]");
+    if (buttonLabel) buttonLabel.textContent = "编辑";
+    classesDialog.close();
   });
 }
 
@@ -67,6 +97,19 @@ function setActionEnabled(selector, enabled) {
   if (link) {
     link.classList.toggle("disabled", !enabled);
   }
+}
+
+function setAnnotateReady({imagesReady} = {}) {
+  const link = document.querySelector("[data-image-action]");
+  if (!link) {
+    return;
+  }
+  if (typeof imagesReady === "boolean") {
+    link.dataset.imagesReady = imagesReady ? "1" : "0";
+  }
+  const ready = link.dataset.imagesReady === "1";
+  link.classList.toggle("disabled", !ready);
+  link.title = ready ? "进入标注" : "请先上传图片";
 }
 
 function fileEntryFile(entry) {
@@ -156,7 +199,7 @@ async function uploadFiles(zone, files) {
     }
     if (kind === "images") {
       document.querySelector("[data-image-count]").textContent = `${data.count} 个文件`;
-      setActionEnabled("[data-image-action]", data.count > 0);
+      setAnnotateReady({imagesReady: data.count > 0});
     } else if (kind === "model") {
       document.querySelector("[data-model-count]").textContent = `${data.count} 个文件`;
       setActionEnabled("[data-model-action]", data.count > 0);
@@ -165,6 +208,10 @@ async function uploadFiles(zone, files) {
       if (label) {
         label.textContent = "classes.txt 已上传";
       }
+      const status = document.querySelector("[data-classes-status]");
+      if (status) status.textContent = "已上传";
+      const buttonLabel = document.querySelector("[data-classes-edit-label]");
+      if (buttonLabel) buttonLabel.textContent = "编辑";
     }
   } catch (error) {
     alert(error.message);

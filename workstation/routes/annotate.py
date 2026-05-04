@@ -1,8 +1,9 @@
 import os
 import json
+import html
 import traceback
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 
 from fastapi import Request, status
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
@@ -43,9 +44,48 @@ def read_online_users():
     return [str(user).strip() for user in users if str(user).strip()] if isinstance(users, list) else []
 
 
+def write_user_project(username: str, project: str):
+    username = (username or "").strip()
+    if not username:
+        return
+    path = site_workspace() / ".users"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+    except (OSError, json.JSONDecodeError):
+        data = {}
+    users = data.get("users", [])
+    users = [str(user).strip() for user in users if str(user).strip()] if isinstance(users, list) else []
+    if username not in users:
+        return
+    projects = data.get("projects", {})
+    projects = {
+        str(user).strip(): str(directory).strip()
+        for user, directory in projects.items()
+        if str(user).strip()
+    } if isinstance(projects, dict) else {}
+    if project:
+        projects[username] = project
+    else:
+        projects.pop(username, None)
+    path.write_text(
+        json.dumps({"users": sorted(set(users), key=str.lower), "projects": projects}, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
 def current_username(request: Request):
-    username = (request.cookies.get("workstation_username") or "").strip()
+    username = unquote(request.cookies.get("workstation_username") or "").strip()
     return username if username in read_online_users() else ""
+
+
+def user_color(value: str):
+    colors = ["#ef4444", "#f97316", "#eab308", "#22c55e", "#14b8a6", "#3b82f6", "#8b5cf6", "#ec4899"]
+    total = sum(ord(char) for char in value or "")
+    return colors[total % len(colors)]
+
+
+def team_mode_enabled():
+    return os.environ.get("YOLOUTILS_TEAM", "").lower() in ("1", "true", "yes", "on")
 
 
 def is_inside(path: Path, parent: Path):
@@ -80,6 +120,9 @@ def write_error_log(workstation: Workstation, error: Exception):
 
 def workstation_html(workstation: Workstation, active_mode: str = "annotate", project: str = "", username: str = ""):
     html = workstation._html()
+    escaped_username = html_escape(username)
+    edition_label = "企业版" if team_mode_enabled() else "社区版"
+    online_users = read_online_users()
     project_url = f"/project/{quote(project, safe='')}" if project else "/project"
     project_query = f"?project={quote(project, safe='')}" if project else ""
     project_button = (
@@ -96,7 +139,7 @@ def workstation_html(workstation: Workstation, active_mode: str = "annotate", pr
         .replace("`/media", "`/annotate/media")
         .replace(
             "header { height: 48px;",
-            "header { height: 56px;",
+            "header { height: 44px;",
             1,
         )
         .replace(
@@ -106,19 +149,26 @@ def workstation_html(workstation: Workstation, active_mode: str = "annotate", pr
         )
         .replace(
             '<a class="brand-link" href="https://www.netkiller.cn" target="_blank" rel="noopener noreferrer">Yolo Workstation</a>',
-            '<a class="brand-link" href="https://www.netkiller.cn" target="_blank" rel="noopener noreferrer">Yolo Workstation</a>'
-            f'<span class="enterprise-link">{username}</span>'
+            ""
+            f'<span class="enterprise-link" style="width:30px;height:30px;padding:0;border-radius:50%;font-size:15px;font-weight:750;background:{user_color(username)};color:#fff">'
+            f'{html_escape(username[:1])}</span>'
+            f'<span class="enterprise-link">{escaped_username}</span>'
             '<form method="post" action="/project/logout" style="margin:0"><button class="enterprise-link" type="submit">注销</button></form>',
             1,
         )
         .replace(
+            '<a class="enterprise-link" href="https://saas.netkiller.cn/workstation/index.html" target="_blank" rel="noopener noreferrer">企业版</a>',
+            f'<a class="enterprise-link" href="https://saas.netkiller.cn/workstation/index.html" target="_blank" rel="noopener noreferrer">{edition_label}</a>',
+            1,
+        )
+        .replace(
             "main { height: calc(100vh - 88px);",
-            "main { height: calc(100vh - 96px);",
+            "main { height: calc(100vh - 84px);",
             1,
         )
         .replace(
             "body.console-open main { height: calc(100vh - 88px - var(--console-height, 160px) - 4px);",
-            "body.console-open main { height: calc(100vh - 96px - var(--console-height, 160px) - 4px);",
+            "body.console-open main { height: calc(100vh - 84px - var(--console-height, 160px) - 4px);",
             1,
         )
         .replace(
@@ -167,11 +217,23 @@ def workstation_html(workstation: Workstation, active_mode: str = "annotate", pr
     user_script = (
         "<script>"
         f"window.yoloutilsUsername = {json.dumps(username, ensure_ascii=False)};"
+        f"window.yoloutilsOnlineUsers = {json.dumps(online_users, ensure_ascii=False)};"
+        "window.yoloutilsUsernameReady = Promise.resolve(window.yoloutilsUsername);"
         "try { localStorage.setItem('yoloutils-workstation-username', window.yoloutilsUsername); } catch (_) {}"
         "document.addEventListener('DOMContentLoaded', () => document.body.classList.remove('username-required'));"
         "</script>"
     )
-    return html.replace("</head>", f"{user_script}</head>", 1)
+    username_gate_style = (
+        "<style>"
+        "#usernameGate{display:none!important}"
+        "body.username-required .username-gate{display:none!important}"
+        "</style>"
+    )
+    return html.replace("</head>", f"{username_gate_style}{user_script}</head>", 1)
+
+
+def html_escape(value: str):
+    return html.escape(value or "", quote=True)
 
 
 def create_workstation():
@@ -234,6 +296,7 @@ def create_annotate_app():
             if not username:
                 return RedirectResponse(url="/project", status_code=status.HTTP_303_SEE_OTHER)
             project = request.query_params.get("project", "")
+            write_user_project(username, project)
             apply_project_workspace(workstation, project)
             return HTMLResponse(workstation_html(workstation, "annotate", project, username))
         except Exception as error:

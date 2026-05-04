@@ -303,6 +303,26 @@ class Workstation:
             )
         return groups
 
+    def _classes_text(self):
+        if not self.class_groups:
+            return ""
+        try:
+            return self.class_groups[0]["path"].read_text(encoding="utf-8")
+        except OSError:
+            return ""
+
+    def _save_classes_text(self, content: str):
+        lines = [line.strip() for line in (content or "").splitlines() if line.strip()]
+        if not lines:
+            raise HTTPException(status_code=400, detail="classes.txt 不能为空")
+        target = self.class_groups[0]["path"] if self.class_groups else self.workspace / "classes.txt"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        self.class_groups = self._load_class_groups()
+        self.classes_file = self.class_groups[0]["path"] if self.class_groups else None
+        self.classes = self.class_groups[0]["classes"] if self.class_groups else []
+        return target
+
     def _max_class_count(self):
         return max([len(group["classes"]) for group in self.class_groups] + [len(self.classes), 0])
 
@@ -713,6 +733,7 @@ class Workstation:
             return {
                 "classes_file": self.class_groups[0]["classes_file"] if self.class_groups else None,
                 "classes": self.classes,
+                "content": self._classes_text(),
                 "class_groups": [
                     {
                         "classes_file": group["classes_file"],
@@ -720,6 +741,17 @@ class Workstation:
                     }
                     for group in self.class_groups
                 ],
+            }
+
+        @app.post("/api/classes")
+        async def save_classes(request: Request):
+            payload = await request.json()
+            target = self._save_classes_text(str(payload.get("content", "")))
+            return {
+                "ok": True,
+                "classes_file": self._relative(target) if self._is_inside_workspace(target) else str(target),
+                "classes": self.classes,
+                "content": self._classes_text(),
             }
 
         @app.get("/api/statistics")
@@ -881,6 +913,7 @@ class Workstation:
     .collaboration-user { display: flex; align-items: center; gap: 7px; min-height: 22px; min-width: 0; overflow: hidden; white-space: nowrap; }
     .collaboration-dot { flex: 0 0 7px; width: 7px; height: 7px; border-radius: 50%; background: var(--user-color, #22c55e); box-shadow: 0 0 0 1px rgba(31, 41, 51, .08); }
     .collaboration-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+    .collaboration-empty { padding: 4px 0; color: #7b8794; }
     .lock-note { color: #b45309; font-size: 12px; }
     button { width: 100%; border: 0; background: transparent; text-align: left; padding: 7px 8px; border-radius: 6px; cursor: pointer; color: #243b53; font: inherit; }
     button:hover, button.active { background: #e6f0ff; }
@@ -916,6 +949,14 @@ class Workstation:
     .label-row { width: 100%; display: flex; align-items: center; gap: 8px; padding: 6px 4px; font-size: 13px; }
     .label-row.active { background: #dbeafe; color: #1d4ed8; }
     .swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+    .classes-dialog { width: min(560px, calc(100vw - 32px)); padding: 0; border: 0; border-radius: 10px; box-shadow: 0 18px 45px rgba(15, 23, 42, .24); }
+    .classes-dialog::backdrop { background: rgba(15, 23, 42, .34); }
+    .classes-form { display: grid; gap: 14px; padding: 18px; background: #fff; }
+    .classes-form label { display: grid; gap: 8px; color: #52606d; font-size: 13px; font-weight: 650; }
+    .classes-form textarea { min-height: 240px; width: 100%; resize: vertical; padding: 10px; border: 1px solid #bcccdc; border-radius: 6px; font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #1f2933; }
+    .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
+    .dialog-actions button { width: auto; height: 30px; padding: 0 12px; border: 1px solid #2563eb; background: #2563eb; color: #fff; text-align: center; }
+    .dialog-actions .secondary-button { border-color: #d9e2ec; background: #fff; color: #52606d; }
     .right-panel { display: flex; flex-direction: column; overflow: hidden; }
     main.right-hidden .right-panel { display: none; }
     .right-pane { min-height: 80px; overflow: auto; }
@@ -987,7 +1028,7 @@ class Workstation:
   <header>
     <div class="header-title">
       <a class="brand-link" href="https://www.netkiller.cn" target="_blank" rel="noopener noreferrer">Yolo Workstation</a>
-      <a class="enterprise-link" href="https://saas.netkiller.cn" target="_blank" rel="noopener noreferrer">企业版</a>
+      <a class="enterprise-link" href="https://saas.netkiller.cn/workstation/index.html" target="_blank" rel="noopener noreferrer">企业版</a>
     </div>
     <div class="header-modes">
       <button id="annotateModeButton" class="header-button active" title="当前窗口：标注"><span class="header-icon">▧</span><span>标注</span></button>
@@ -1158,7 +1199,13 @@ class Workstation:
     <aside id="rightPanel" class="right-panel">
       <div id="topInfoPane" class="right-pane top-info-pane">
         <div id="labelsPane" class="labels-pane">
-          <div class="pane-header"><h2><span class="pane-title-icon">⌑</span>标签</h2><button id="hideRight" class="icon-button" title="隐藏标签/信息栏">›</button></div>
+          <div class="pane-header">
+            <h2><span class="pane-title-icon">⌑</span>标签</h2>
+            <div class="pane-tools">
+              <button id="editClasses" class="icon-button" title="创建 classes.txt">＋</button>
+              <button id="hideRight" class="icon-button" title="隐藏标签/信息栏">›</button>
+            </div>
+          </div>
           <div id="labels" class="labels"></div>
         </div>
         <div id="histogramSplitter" class="histogram-splitter" title="拖动调整标签和直方图比例"></div>
@@ -1188,6 +1235,19 @@ class Workstation:
   </footer>
   <div id="consoleSplitter" class="console-splitter" title="拖动调整控制台高度"></div>
   <section id="consolePanel" class="console-panel"><pre id="consoleLog" class="console-log">控制台未打开</pre></section>
+  <dialog id="classesDialog" class="classes-dialog">
+    <form id="classesForm" class="classes-form">
+      <div class="shortcut-title"><span>编辑 classes.txt</span><button id="closeClassesDialog" type="button" title="关闭">×</button></div>
+      <label>
+        <span>每行一个类别</span>
+        <textarea id="classesContent" rows="12"></textarea>
+      </label>
+      <div class="dialog-actions">
+        <button class="secondary-button" id="cancelClassesDialog" type="button">取消</button>
+        <button type="submit">保存</button>
+      </div>
+    </form>
+  </dialog>
   <div id="imageContextMenu" class="context-menu" hidden>
     <button id="deleteFileMenuItem" type="button">删除文件</button>
   </div>
@@ -1216,6 +1276,12 @@ class Workstation:
     const rightPanel = document.getElementById("rightPanel");
     const hideRight = document.getElementById("hideRight");
     const showRight = document.getElementById("showRight");
+    const editClasses = document.getElementById("editClasses");
+    const classesDialog = document.getElementById("classesDialog");
+    const classesForm = document.getElementById("classesForm");
+    const classesContent = document.getElementById("classesContent");
+    const closeClassesDialog = document.getElementById("closeClassesDialog");
+    const cancelClassesDialog = document.getElementById("cancelClassesDialog");
     const autoAnnotate = document.getElementById("autoAnnotate");
     const editModeToggle = document.getElementById("editModeToggle");
     const maskAnnotation = document.getElementById("maskAnnotation");
@@ -1269,6 +1335,7 @@ class Workstation:
     let maskEnabled = false;
     let boxesDirty = false;
     let classLabels = [];
+    let classesText = "";
     let selectedClassId = 0;
     let selectedClassLabel = "0";
     let teamMode = false;
@@ -1858,6 +1925,12 @@ class Workstation:
     async function loadLabels() {
       const data = await getJson("/api/classes");
       classLabels = data.classes;
+      classesText = data.content || "";
+      if (editClasses) {
+        const hasClasses = Boolean(data.classes_file);
+        editClasses.textContent = hasClasses ? "✎" : "＋";
+        editClasses.title = hasClasses ? "编辑 classes.txt" : "创建 classes.txt";
+      }
       labelsEl.innerHTML = "";
       const groups = data.class_groups?.length
         ? data.class_groups
@@ -1890,6 +1963,31 @@ class Workstation:
       }
     }
 
+    function openClassesDialog() {
+      if (!classesDialog || !classesContent) return;
+      classesContent.value = classesText || "";
+      classesDialog.showModal();
+      classesContent.focus();
+    }
+
+    async function saveClasses(event) {
+      event.preventDefault();
+      const content = classesContent?.value || "";
+      const response = await fetch("/api/classes", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({content})
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok === false) {
+        alert(data.detail || data.error || "保存失败");
+        return;
+      }
+      classesDialog?.close();
+      await loadLabels();
+      await loadStatistics();
+    }
+
     async function loadStatistics() {
       statisticsData = await getJson("/api/statistics");
       renderStatistics();
@@ -1904,19 +2002,31 @@ class Workstation:
       } catch (error) {
         teamMode = embeddedTeamMode;
       }
-      document.body.classList.toggle("team-mode", teamMode);
+      const projectUsers = Array.isArray(window.yoloutilsOnlineUsers) ? window.yoloutilsOnlineUsers : [];
+      document.body.classList.toggle("team-mode", teamMode || projectUsers.length > 0);
+      renderProjectUsers(projectUsers);
       if (!teamMode) {
         document.body.classList.remove("username-required");
         username = "";
         usernameReady = Promise.resolve();
-        onlineCount.textContent = "-";
-        collaborationUsers.innerHTML = "";
         return;
       }
       usernameReady = requireUsername();
       await usernameReady;
       username = window.yoloutilsUsername || usernameInput.value.trim();
       await updatePresence();
+    }
+
+    function renderProjectUsers(users) {
+      const names = Array.from(new Set((users || []).map(user => String(user || "").trim()).filter(Boolean)));
+      onlineCount.textContent = names.length;
+      collaborationUsers.innerHTML = names.length
+        ? names.map(name => {
+            const safeName = escapeHtml(name);
+            const color = userColor(name);
+            return `<div class="collaboration-user" title="${safeName}"><span class="collaboration-dot" style="--user-color:${color}"></span><span class="collaboration-name">${safeName}</span></div>`;
+          }).join("")
+        : '<div class="collaboration-empty">暂无在线用户</div>';
     }
 
     function requireUsername() {
@@ -1976,16 +2086,12 @@ class Workstation:
       await usernameReady;
       try {
         const data = await postJson("/api/presence", {client_id: clientId(), username: username || "独立用户"});
-        onlineCount.textContent = data.online;
-        collaborationUsers.innerHTML = data.users
-          .map(user => {
-            const name = escapeHtml(user.username);
-            const color = userColor(user.username);
-            return `<div class="collaboration-user" title="${name}"><span class="collaboration-dot" style="--user-color:${color}"></span><span class="collaboration-name">${name}</span></div>`;
-          })
-          .join("");
+        const projectUsers = Array.isArray(window.yoloutilsOnlineUsers) ? window.yoloutilsOnlineUsers : [];
+        const presenceUsers = (data.users || []).map(user => user.username);
+        renderProjectUsers([...projectUsers, ...presenceUsers]);
       } catch (error) {
-        onlineCount.textContent = "-";
+        const projectUsers = Array.isArray(window.yoloutilsOnlineUsers) ? window.yoloutilsOnlineUsers : [];
+        renderProjectUsers(projectUsers);
       }
     }
 
@@ -2104,6 +2210,10 @@ class Workstation:
     async function init() {
       bindUsernameGate();
       canvas.style.display = "none";
+      editClasses?.addEventListener("click", openClassesDialog);
+      classesForm?.addEventListener("submit", saveClasses);
+      closeClassesDialog?.addEventListener("click", () => classesDialog?.close());
+      cancelClassesDialog?.addEventListener("click", () => classesDialog?.close());
       await loadConfig();
       await loadTree();
       await loadLabels();

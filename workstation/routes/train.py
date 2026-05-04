@@ -12,6 +12,8 @@ from fastapi import APIRouter, Request, status
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+from routes.project import header_context
+
 
 router = APIRouter()
 templates = Jinja2Templates(directory=Path(__file__).resolve().parent.parent / "templates")
@@ -220,6 +222,7 @@ def train(request: Request, project: str = ""):
             "tasks": tasks,
             "active_page": "train",
             "current_project": current_project,
+            **header_context(request, workspace),
         },
     )
     if current_project:
@@ -244,6 +247,7 @@ def new_train(request: Request, project: str = "", dataset: str = ""):
             "datasets": dataset_dirs(project),
             "active_page": "train",
             "current_project": current_project,
+            **header_context(request, workspace),
         },
     )
     if project:
@@ -302,6 +306,7 @@ def train_task(request: Request, task_id: str):
             "log": log,
             "active_page": "train",
             "current_project": current_project,
+            **header_context(request, workspace),
         },
     )
 

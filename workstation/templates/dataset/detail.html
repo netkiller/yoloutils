@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block title %}{{ dataset.name }}{% endblock %}
+
+{% block styles %}
+  <link rel="stylesheet" href="/static/css/dataset.css?v=20260504-detail">
+{% endblock %}
+
+{% block content %}
+  <main>
+    <section class="dataset-detail-head" aria-labelledby="dataset-title">
+      <div>
+        <h1 id="dataset-title">{{ dataset.name }}</h1>
+        <p>{{ dataset.project }} / {{ dataset.path }}</p>
+      </div>
+      <a class="project-link-button" href="/dataset?project={{ dataset.project_dir }}">返回数据集</a>
+    </section>
+
+    <section class="dataset-summary" aria-label="数据集统计">
+      <div class="summary-card"><strong>{{ dataset.total_images }}</strong><span>images</span></div>
+      <div class="summary-card"><strong>{{ dataset.total_labels }}</strong><span>labels</span></div>
+      <div class="summary-card"><strong>{{ dataset.splits.train.images }}</strong><span>train</span></div>
+      <div class="summary-card"><strong>{{ dataset.splits.val.images + dataset.splits.test.images }}</strong><span>val / test</span></div>
+    </section>
+
+    {% for split_name, files in dataset.files.items() %}
+      <section class="dataset-split-section" aria-labelledby="split-{{ split_name }}">
+        <div class="list-head">
+          <h2 id="split-{{ split_name }}">{{ split_name }}</h2>
+          <span class="count">{{ files | length }} images</span>
+        </div>
+        {% if files %}
+          <div class="dataset-file-grid">
+            {% for file in files %}
+              <article class="dataset-file-card">
+                <img src="{{ file.media }}" alt="{{ file.name }}" loading="lazy">
+                <span title="{{ file.name }}">{{ file.name }}{% if file.label %} · label{% endif %}</span>
+              </article>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="empty">暂无 {{ split_name }} 图片</div>
+        {% endif %}
+      </section>
+    {% endfor %}
+  </main>
+
+  {% set footer_id = "stats" %}
+  {% set footer_left = dataset.path %}
+  {% include "partials/footer.html" %}
+{% endblock %}

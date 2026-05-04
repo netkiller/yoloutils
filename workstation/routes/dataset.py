@@ -10,6 +10,8 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from starlette.background import BackgroundTask
 
+from routes.project import header_context
+
 
 router = APIRouter()
 templates = Jinja2Templates(directory=Path(__file__).resolve().parent.parent / "templates")
@@ -142,6 +144,22 @@ def zip_dataset(path: Path):
     return temp_path
 
 
+def split_image_items(path: Path):
+    items = {}
+    for split in ("train", "val", "test"):
+        split_dir = path / split
+        files = image_files(split_dir)
+        items[split] = [
+            {
+                "name": file.relative_to(split_dir).as_posix(),
+                "media": f"/dataset/{path.parent.parent.name}/{path.name}/media/{split}/{file.relative_to(split_dir).as_posix()}",
+                "label": file.with_suffix(".txt").is_file(),
+            }
+            for file in files
+        ]
+    return items
+
+
 def dataset_items(workspace: Path, project: str = ""):
     datasets = []
     if not workspace.is_dir():
@@ -198,6 +216,24 @@ def dataset_items(workspace: Path, project: str = ""):
     return datasets
 
 
+def dataset_summary(path: Path, project: str, name: str):
+    splits = {
+        "train": count_split(path / "train"),
+        "val": count_split(path / "val"),
+        "test": count_split(path / "test"),
+    }
+    return {
+        "name": name,
+        "project_dir": project,
+        "project": project_name(path.parent.parent),
+        "path": path,
+        "splits": splits,
+        "total_images": sum(split["images"] for split in splits.values()),
+        "total_labels": sum(split["labels"] for split in splits.values()),
+        "files": split_image_items(path),
+    }
+
+
 @router.get("/dataset")
 def dataset(request: Request, project: str = ""):
     workspace = workspace_path()
@@ -211,11 +247,46 @@ def dataset(request: Request, project: str = ""):
             "datasets": dataset_items(workspace, current_project),
             "active_page": "dataset",
             "current_project": current_project,
+            **header_context(request, workspace),
         },
     )
     if current_project:
         response.set_cookie("current_project", current_project, httponly=True, samesite="lax")
     return response
+
+
+@router.get("/dataset/{project}/{name}")
+def dataset_detail(request: Request, project: str, name: str):
+    workspace = workspace_path()
+    path = dataset_dir(workspace, project, name)
+    if path is None:
+        return JSONResponse({"ok": False, "error": "数据集不存在"}, status_code=404)
+    response = templates.TemplateResponse(
+        request=request,
+        name="dataset/detail.html",
+        context={
+            "request": request,
+            "workspace": workspace,
+            "dataset": dataset_summary(path, project, name),
+            "active_page": "dataset",
+            "current_project": project,
+            **header_context(request, workspace),
+        },
+    )
+    response.set_cookie("current_project", project, httponly=True, samesite="lax")
+    return response
+
+
+@router.get("/dataset/{project}/{name}/media/{split}/{file_path:path}")
+def dataset_media(project: str, name: str, split: str, file_path: str):
+    path = dataset_dir(workspace_path(), project, name)
+    if path is None or split not in {"train", "val", "test"}:
+        return JSONResponse({"ok": False, "error": "数据集不存在"}, status_code=404)
+    root = (path / split).resolve()
+    image = (root / file_path).resolve()
+    if not is_inside(image, root) or not image.is_file() or image.suffix.lower() not in IMAGE_EXTS:
+        return JSONResponse({"ok": False, "error": "图片不存在"}, status_code=404)
+    return FileResponse(image)
 
 
 @router.post("/dataset")

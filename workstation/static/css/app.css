@@ -27,7 +27,7 @@ body {
   color: var(--text);
   min-height: 100dvh;
   height: 100dvh;
-  padding-top: 56px;
+  padding-top: 44px;
   padding-bottom: 40px;
   overflow: hidden;
 }
@@ -38,7 +38,7 @@ header {
   left: 0;
   right: 0;
   z-index: 20;
-  height: 56px;
+  height: 44px;
   display: grid;
   grid-template-columns: minmax(160px, 1fr) auto minmax(160px, 1fr);
   align-items: center;
@@ -53,6 +53,7 @@ header {
   display: flex;
   align-items: center;
   gap: 10px;
+  height: 100%;
 }
 
 .username-badge {
@@ -65,32 +66,37 @@ header {
 }
 
 .user-avatar {
-  width: 26px;
-  height: 26px;
+  width: 30px;
+  height: 30px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex: 0 0 auto;
   border-radius: 50%;
-  background: #dbeafe;
-  color: #1d4ed8;
-  font-size: 13px;
+  background: var(--user-color, #3b82f6);
+  color: #ffffff;
+  font-size: 15px;
   font-weight: 750;
   line-height: 1;
   box-shadow: 0 0 0 1px rgba(31, 41, 51, .08);
 }
 
 .logout-form {
+  height: 30px;
   margin: 0;
+  display: flex;
+  align-items: center;
 }
 
 .logout-form button {
-  height: 28px;
-  padding: 0 10px;
+  height: 30px;
+  min-width: 62px;
+  padding: 0 9px;
   border: 1px solid var(--line);
   background: #ffffff;
   color: var(--muted);
   font-size: 12px;
+  line-height: 1;
 }
 
 .logout-form button:hover {
@@ -99,6 +105,7 @@ header {
 }
 
 nav {
+  height: 100%;
   display: flex;
   gap: 8px;
   align-items: center;
@@ -110,11 +117,14 @@ nav a {
   align-items: center;
   justify-content: center;
   gap: 5px;
+  min-width: 62px;
+  height: 30px;
   color: var(--muted);
   text-decoration: none;
-  padding: 8px 12px;
+  padding: 0 9px;
   border-radius: 6px;
   font-size: 14px;
+  line-height: 1;
 }
 
 nav .nav-disabled {
@@ -122,11 +132,14 @@ nav .nav-disabled {
   align-items: center;
   justify-content: center;
   gap: 5px;
-  padding: 8px 12px;
+  min-width: 62px;
+  height: 30px;
+  padding: 0 9px;
   border-radius: 6px;
   color: #a0aec0;
   background: #f1f5f9;
   font-size: 14px;
+  line-height: 1;
   cursor: not-allowed;
   user-select: none;
 }
@@ -143,14 +156,45 @@ nav a.active {
 
 .header-actions {
   min-width: 0;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  gap: 8px;
+}
+
+.enterprise-public-link {
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #ffffff;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1;
+  text-decoration: none;
+}
+
+.enterprise-public-link:hover {
+  background: #f8fafc;
+  color: var(--text);
+}
+
+.header-actions button {
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
 }
 
 main {
   width: min(1080px, calc(100vw - 32px));
-  height: calc(100dvh - 96px);
+  height: calc(100dvh - 84px);
   margin: 0 auto;
   padding: 24px 0;
   display: grid;
@@ -203,6 +247,64 @@ main {
   white-space: nowrap;
 }
 
+.footer-button {
+  width: auto;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #ffffff;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.footer-button:hover {
+  background: #f8fafc;
+  color: var(--text);
+}
+
+.footer-button.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.footer-button-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.footer-console {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 40px;
+  z-index: 9;
+  height: 160px;
+  overflow: auto;
+  border-top: 1px solid #1f2937;
+  background: #111827;
+  color: #d1d5db;
+}
+
+.footer-console[hidden] {
+  display: none;
+}
+
+.footer-console pre {
+  margin: 0;
+  padding: 10px 14px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
 h1 {
   margin: 0 0 6px;
   font-size: 24px;
@@ -238,19 +340,19 @@ button:hover {
 
 @media (max-width: 720px) {
   body {
-    padding-top: 112px;
+    padding-top: 88px;
   }
 
   header {
-    min-height: 112px;
-    padding: 14px 16px;
+    min-height: 88px;
+    padding: 10px 16px;
     display: grid;
     gap: 10px;
     align-items: stretch;
   }
 
   main {
-    height: calc(100dvh - 152px);
+    height: calc(100dvh - 128px);
   }
 
   input {

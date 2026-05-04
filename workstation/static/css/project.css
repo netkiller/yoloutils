@@ -43,6 +43,63 @@ textarea {
   gap: 12px;
 }
 
+.project-team-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  align-items: start;
+  gap: 16px;
+}
+
+.team-users-panel {
+  display: grid;
+  gap: 12px;
+  min-height: 240px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.team-user-list {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+
+.team-user {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 8px;
+  border: 1px solid #e6edf5;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.team-user strong,
+.team-user span {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.team-user strong {
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.team-user span {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.3;
+}
+
 .list-head {
   display: flex;
   align-items: baseline;
@@ -211,6 +268,11 @@ textarea {
   color: var(--muted);
 }
 
+.empty.compact {
+  padding: 12px;
+  font-size: 13px;
+}
+
 .project-dialog {
   width: min(460px, calc(100vw - 32px));
   padding: 0;
@@ -221,6 +283,28 @@ textarea {
 
 .project-dialog::backdrop {
   background: rgb(15 23 42 / 38%);
+}
+
+.login-dialog[open] {
+  position: fixed;
+  top: 25dvh;
+  left: 50%;
+  right: auto;
+  bottom: auto;
+  width: min(720px, calc(100vw - 32px));
+  margin: 0;
+  transform: translateX(-50%);
+  max-width: calc(100vw - 32px);
+  max-height: calc(80dvh - 24px);
+  z-index: 1001;
+}
+
+.login-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgb(15 23 42 / 42%);
+  pointer-events: auto;
 }
 
 .project-dialog form {
@@ -242,12 +326,20 @@ textarea {
 }
 
 .login-form {
-  width: min(680px, calc(100vw - 32px));
+  width: 100%;
 }
 
 .dialog-head h2 {
   margin: 0;
   font-size: 18px;
+}
+
+.login-dialog .dialog-head {
+  justify-content: center;
+}
+
+.login-dialog .dialog-head h2 {
+  text-align: center;
 }
 
 .project-dialog label {
@@ -275,11 +367,6 @@ textarea {
 }
 
 .online-users {
-  min-height: 180px;
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #f8fafc;
   color: var(--muted);
   font-size: 13px;
 }
@@ -288,6 +375,14 @@ textarea {
   margin: 0;
   color: var(--text);
   font-size: 13px;
+}
+
+.online-user-card {
+  min-height: 180px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
 }
 
 .online-users p {
@@ -318,8 +413,8 @@ textarea {
   justify-content: center;
   flex: 0 0 auto;
   border-radius: 50%;
-  background: #dcfce7;
-  color: #166534;
+  background: var(--user-color, #22c55e);
+  color: #ffffff;
   font-size: 12px;
   font-weight: 750;
   line-height: 1;
@@ -359,21 +454,42 @@ textarea {
   cursor: pointer;
 }
 
-.classes-upload {
-  min-height: 36px;
-  display: inline-flex;
+.classes-upload-card {
+  min-height: 180px;
+  display: grid;
+  gap: 12px;
   align-items: center;
+  align-content: center;
   justify-content: center;
-  justify-self: start;
-  padding: 0 14px;
-  border-radius: 6px;
+  padding: 24px;
+  border: 1px dashed #9fb4ce;
+  border-radius: 8px;
+  background: #f8fbff;
+  color: var(--muted);
   font-weight: 650;
+  text-align: center;
   cursor: pointer;
 }
 
-.classes-upload.uploading {
+.classes-upload-card:hover,
+.classes-upload-card.dragging {
+  border-color: var(--accent);
+  background: #eef6ff;
+  color: var(--text);
+}
+
+.classes-upload-card.uploading {
   opacity: .7;
   pointer-events: none;
+}
+
+.classes-dialog {
+  width: min(560px, calc(100vw - 32px));
+}
+
+.classes-dialog textarea {
+  min-height: 240px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
 .detail-head {
@@ -416,7 +532,7 @@ textarea {
 
 .upload-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px;
 }
 
@@ -444,7 +560,7 @@ textarea {
 }
 
 .drop-zone {
-  min-height: 220px;
+  min-height: 180px;
   display: grid;
   gap: 12px;
   place-items: center;
@@ -518,6 +634,14 @@ textarea {
   }
 
   .upload-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .project-team-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .login-layout {
     grid-template-columns: 1fr;
   }
 

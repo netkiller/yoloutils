@@ -35,11 +35,28 @@
           <span class="upload-icon" aria-hidden="true">⇧</span>
           <span>点击上传图片，或拖拽到这里</span>
         </label>
-        <label class="secondary-button classes-upload" data-upload-zone data-upload-kind="classes">
+        <a
+          class="action-link{% if not project.has_images %} disabled{% endif %}"
+          href="/annotate/?project={{ project.directory }}"
+          title="{% if project.has_images %}进入标注{% else %}请先上传图片{% endif %}"
+          data-image-action
+          data-images-ready="{{ '1' if project.has_images else '0' }}"
+        >去标注</a>
+      </article>
+
+      <article class="upload-panel classes-panel">
+        <div class="panel-head">
+          <h2>classes.txt</h2>
+          <span class="count" data-classes-status>{% if project.has_classes %}已上传{% else %}未上传{% endif %}</span>
+        </div>
+        <label class="classes-upload-card" data-upload-zone data-upload-kind="classes">
           <input type="file" name="files" accept=".txt,text/plain" hidden>
+          <span class="upload-icon" aria-hidden="true">⇧</span>
           <span data-upload-label>上传 classes.txt</span>
         </label>
-        <a class="action-link{% if not project.has_images %} disabled{% endif %}" href="/annotate/?project={{ project.directory }}" data-image-action>去标注</a>
+        <button class="secondary-button" type="button" id="editClassesButton" data-classes-edit-label>
+          {% if project.has_classes %}编辑{% else %}创建 classes.txt{% endif %}
+        </button>
       </article>
 
       <article class="upload-panel">
@@ -56,6 +73,23 @@
       </article>
     </section>
   </main>
+
+  <dialog id="classesDialog" class="project-dialog classes-dialog">
+    <form id="classesForm">
+      <div class="dialog-head">
+        <h2>编辑 classes.txt</h2>
+        <button type="button" class="icon-button" data-close-classes aria-label="关闭">×</button>
+      </div>
+      <label>
+        <span>每行一个类别</span>
+        <textarea name="content" rows="12">{{ project.classes_text }}</textarea>
+      </label>
+      <div class="dialog-actions">
+        <button type="button" class="secondary-button" data-close-classes>取消</button>
+        <button type="submit">保存</button>
+      </div>
+    </form>
+  </dialog>
 
   {% set footer_id = "stats" %}
   {% set footer_left = project.path %}

@@ -18,54 +18,84 @@
       <p class="error">{{ error }}</p>
     {% endif %}
 
-    <section aria-labelledby="project-list-title">
-      <div class="list-head">
-        <h2 id="project-list-title">Project 列表</h2>
-        <span class="count">{{ projects | length }} 个项目</span>
-      </div>
-
-      {% if projects %}
-        <div class="projects">
-        {% for project in projects %}
-          <article class="project-card">
-            <a class="project-link" href="/project/{{ project.directory }}" aria-label="进入 {{ project.name }} 项目页面">
-              <div>
-                <h3>{{ project.name }}</h3>
-                {% if project.description %}
-                  <p class="project-description">{{ project.description }}</p>
-                {% else %}
-                  <p class="project-description muted">暂无描述</p>
-                {% endif %}
-                <div class="project-path">{{ project.path }}</div>
-              </div>
-              <div class="folders" aria-label="项目目录">
-                <span class="folder{% if not project.images %} missing{% endif %}">images</span>
-                <span class="folder{% if not project.dataset %} missing{% endif %}">dataset</span>
-                <span class="folder{% if not project.models %} missing{% endif %}">models</span>
-              </div>
-            </a>
-            <div class="card-menu">
-              <button class="menu-button" type="button" aria-label="项目操作" aria-expanded="false">⋮</button>
-              <div class="menu-panel" hidden>
-                <button
-                  class="menu-action"
-                  type="button"
-                  data-edit-project
-                  data-directory="{{ project.directory }}"
-                  data-name="{{ project.name }}"
-                  data-description="{{ project.description }}"
-                >编辑</button>
-                <form method="post" action="/project/{{ project.directory }}/delete" data-confirm="确认删除项目 {{ project.name }}？">
-                  <button type="submit" class="danger-button">删除</button>
-                </form>
-              </div>
-            </div>
-          </article>
-        {% endfor %}
-        </div>
-      {% else %}
-        <div class="empty">暂无项目</div>
+    <section class="{% if is_team_mode %}project-team-layout{% endif %}" aria-label="工作站项目">
+      {% if is_team_mode %}
+        <aside class="team-users-panel" aria-labelledby="team-users-title">
+          <div class="list-head">
+            <h2 id="team-users-title">在线用户</h2>
+            <span class="count">{{ online_users | length }} 人</span>
+          </div>
+          <div class="team-user-list">
+            {% if online_users %}
+              {% for user in online_users %}
+                <article class="team-user" title="{{ user.name }}">
+                  <span class="online-user-dot" style="--user-color: {{ user.color }}" aria-hidden="true">{{ user.initial }}</span>
+                  <div>
+                    <strong>{{ user.name }}</strong>
+                    {% if user.project %}
+                      <span>参与项目：{{ user.project_name }}</span>
+                    {% else %}
+                      <span>未打开项目</span>
+                    {% endif %}
+                  </div>
+                </article>
+              {% endfor %}
+            {% else %}
+              <div class="empty compact">暂无在线用户</div>
+            {% endif %}
+          </div>
+        </aside>
       {% endif %}
+
+      <section aria-labelledby="project-list-title">
+        <div class="list-head">
+          <h2 id="project-list-title">Project 列表</h2>
+          <span class="count">{{ projects | length }} 个项目</span>
+        </div>
+
+        {% if projects %}
+          <div class="projects">
+          {% for project in projects %}
+            <article class="project-card">
+              <a class="project-link" href="/project/{{ project.directory }}" aria-label="进入 {{ project.name }} 项目页面">
+                <div>
+                  <h3>{{ project.name }}</h3>
+                  {% if project.description %}
+                    <p class="project-description">{{ project.description }}</p>
+                  {% else %}
+                    <p class="project-description muted">暂无描述</p>
+                  {% endif %}
+                  <div class="project-path">{{ project.path }}</div>
+                </div>
+                <div class="folders" aria-label="项目目录">
+                  <span class="folder{% if not project.images %} missing{% endif %}">images</span>
+                  <span class="folder{% if not project.dataset %} missing{% endif %}">dataset</span>
+                  <span class="folder{% if not project.models %} missing{% endif %}">models</span>
+                </div>
+              </a>
+              <div class="card-menu">
+                <button class="menu-button" type="button" aria-label="项目操作" aria-expanded="false">⋮</button>
+                <div class="menu-panel" hidden>
+                  <button
+                    class="menu-action"
+                    type="button"
+                    data-edit-project
+                    data-directory="{{ project.directory }}"
+                    data-name="{{ project.name }}"
+                    data-description="{{ project.description }}"
+                  >编辑</button>
+                  <form method="post" action="/project/{{ project.directory }}/delete" data-confirm="确认删除项目 {{ project.name }}？">
+                    <button type="submit" class="danger-button">删除</button>
+                  </form>
+                </div>
+              </div>
+            </article>
+          {% endfor %}
+          </div>
+        {% else %}
+          <div class="empty">暂无项目</div>
+        {% endif %}
+      </section>
     </section>
   </main>
 
@@ -98,10 +128,13 @@
     </form>
   </dialog>
 
-  <dialog id="loginDialog" class="project-dialog" {% if login_required %}open{% endif %}>
+  {% if login_required %}
+    <div class="login-backdrop" aria-hidden="true"></div>
+  {% endif %}
+  <dialog id="loginDialog" class="project-dialog login-dialog" {% if login_required %}open{% endif %}>
     <form class="login-form" method="post" action="/project/login">
       <div class="dialog-head">
-        <h2>请输入用户名</h2>
+        <h2>登陆工作站</h2>
       </div>
       {% if error and login_required %}
         <p class="error">{{ error }}</p>
@@ -109,18 +142,20 @@
       <div class="login-layout">
         <section class="online-users" aria-labelledby="online-users-title">
           <h3 id="online-users-title">在线用户</h3>
-          {% if online_users %}
-            <div class="online-user-list">
-              {% for user in online_users %}
-                <div class="online-user" title="{{ user }}">
-                  <span class="online-user-dot" aria-hidden="true">{{ user[:1] }}</span>
-                  <span class="online-user-name">{{ user }}</span>
-                </div>
-              {% endfor %}
-            </div>
-          {% else %}
-            <p>暂无在线用户</p>
-          {% endif %}
+          <div class="online-user-card">
+            {% if online_users %}
+              <div class="online-user-list">
+                {% for user in online_users %}
+                  <div class="online-user" title="{{ user.name }}">
+                    <span class="online-user-dot" style="--user-color: {{ user.color }}" aria-hidden="true">{{ user.initial }}</span>
+                    <span class="online-user-name">{{ user.name }}</span>
+                  </div>
+                {% endfor %}
+              </div>
+            {% else %}
+              <p>暂无在线用户</p>
+            {% endif %}
+          </div>
         </section>
         <section class="login-fields">
           <label>

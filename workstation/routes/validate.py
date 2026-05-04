@@ -13,6 +13,8 @@ from fastapi import APIRouter, Request, status
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+from routes.project import header_context
+
 
 router = APIRouter()
 templates = Jinja2Templates(directory=Path(__file__).resolve().parent.parent / "templates")
@@ -309,6 +311,7 @@ def validate(request: Request, project: str = ""):
             "models": models,
             "datasets": datasets,
             "tasks": tasks,
+            **header_context(request, workspace),
         },
     )
     if current_project:
@@ -387,6 +390,7 @@ def validate_task(request: Request, task_id: str):
             "log": log,
             "active_page": "validate",
             "current_project": current_project or task.get("project", ""),
+            **header_context(request, workspace_path()),
         },
     )
 

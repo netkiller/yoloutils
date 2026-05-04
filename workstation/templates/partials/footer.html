@@ -6,5 +6,18 @@
   </div>
   <div class="stats-right">
     {% if footer_right %}{{ footer_right }}{% endif %}
+    <button class="footer-button" type="button" data-footer-console-toggle><span class="footer-button-icon">▤</span>控制台</button>
   </div>
 </footer>
+<section class="footer-console" data-footer-console hidden>
+  <pre>控制台暂无输出</pre>
+</section>
+<script>
+  document.querySelector("[data-footer-console-toggle]")?.addEventListener("click", (event) => {
+    const panel = document.querySelector("[data-footer-console]");
+    if (!panel) return;
+    const open = panel.hasAttribute("hidden");
+    panel.toggleAttribute("hidden", !open);
+    event.currentTarget.classList.toggle("active", open);
+  });
+</script>
