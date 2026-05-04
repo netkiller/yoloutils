@@ -269,6 +269,16 @@ def workstation_html(workstation: Workstation, active_mode: str = "annotate", pr
             '<body class="team-mode" data-team-mode="true">',
             1,
         )
+        html = html.replace(
+            'window.yoloutilsUsername = "";',
+            f'window.yoloutilsUsername = {json.dumps(username, ensure_ascii=False)};',
+            1,
+        )
+        html = html.replace(
+            "window.yoloutilsUsernameReady = new Promise(resolve => {\n      window.yoloutilsResolveUsername = resolve;\n    });",
+            "window.yoloutilsUsernameReady = Promise.resolve(window.yoloutilsUsername);\n    window.yoloutilsResolveUsername = () => {};",
+            1,
+        )
     if not team_mode_enabled():
         html = html.replace(
             '<button id="shareButton" class="header-button" title="分享当前页面或当前位置"><span class="header-icon">⇪</span><span>分享</span></button>',
