@@ -275,7 +275,39 @@ main {
   display: grid;
   align-content: start;
   gap: 20px;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+  scroll-behavior: smooth;
+}
+
+.scroll-top-button {
+  position: fixed;
+  right: 18px;
+  bottom: 52px;
+  z-index: 18;
+  width: 38px;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: #ffffff;
+  color: #334e68;
+  box-shadow: 0 8px 24px rgba(31, 41, 51, .16);
+  font-size: 18px;
+  line-height: 1;
+}
+
+.scroll-top-button:hover {
+  background: #e6f0ff;
+  color: #243b53;
+}
+
+.scroll-top-button[hidden] {
+  display: none;
 }
 
 .site-footer {
