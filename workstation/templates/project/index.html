@@ -3,7 +3,7 @@
 {% block title %}项目{% endblock %}
 
 {% block styles %}
-  <link rel="stylesheet" href="/static/css/project.css?v=20260503-footer">
+  <link rel="stylesheet" href="/static/css/project.css?v=20260504-avatar-bg">
 {% endblock %}
 
 {% block content %}
@@ -12,6 +12,9 @@
       <div>
         <h1 id="project-title">项目</h1>
       </div>
+      {% if show_create_project | default(false) %}
+        <button type="button" id="openCreateDialog">创建项目</button>
+      {% endif %}
     </section>
 
     {% if error %}
@@ -23,9 +26,9 @@
         <aside class="team-users-panel" aria-labelledby="team-users-title">
           <div class="list-head">
             <h2 id="team-users-title">在线用户</h2>
-            <span class="count">{{ online_users | length }} 人</span>
+            <span class="count"><span data-online-count>{{ online_users | length }}</span> 人</span>
           </div>
-          <div class="team-user-list">
+          <div class="team-user-list" data-team-user-list>
             {% if online_users %}
               {% for user in online_users %}
                 <article class="team-user" title="{{ user.name }}">
@@ -41,13 +44,13 @@
                 </article>
               {% endfor %}
             {% else %}
-              <div class="empty compact">暂无在线用户</div>
+              <div class="empty compact" data-team-empty>暂无在线用户</div>
             {% endif %}
           </div>
         </aside>
       {% endif %}
 
-      <section aria-labelledby="project-list-title">
+      <section class="project-list-card" aria-labelledby="project-list-title">
         <div class="list-head">
           <h2 id="project-list-title">Project 列表</h2>
           <span class="count">{{ projects | length }} 个项目</span>
@@ -144,7 +147,7 @@
           <h3 id="online-users-title">在线用户</h3>
           <div class="online-user-card">
             {% if online_users %}
-              <div class="online-user-list">
+              <div class="online-user-list" data-login-user-list>
                 {% for user in online_users %}
                   <div class="online-user" title="{{ user.name }}">
                     <span class="online-user-dot" style="--user-color: {{ user.color }}" aria-hidden="true">{{ user.initial }}</span>
@@ -153,7 +156,7 @@
                 {% endfor %}
               </div>
             {% else %}
-              <p>暂无在线用户</p>
+              <p data-login-empty>暂无在线用户</p>
             {% endif %}
           </div>
         </section>

@@ -6,6 +6,67 @@ const classesDialog = document.getElementById("classesDialog");
 const classesForm = document.getElementById("classesForm");
 const editClassesButton = document.getElementById("editClassesButton");
 
+function escapeHtml(value) {
+  return String(value || "").replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#039;",
+  })[char]);
+}
+
+function renderOnlineUsers(users) {
+  const teamList = document.querySelector("[data-team-user-list]");
+  const loginList = document.querySelector("[data-login-user-list]");
+  const renderDot = (user) => `<span class="online-user-dot" style="--user-color: ${escapeHtml(user.color)}" aria-hidden="true">${escapeHtml(user.initial)}</span>`;
+  if (teamList) {
+    teamList.innerHTML = users.length
+      ? users.map((user) => `
+        <article class="team-user" title="${escapeHtml(user.name)}">
+          ${renderDot(user)}
+          <div>
+            <strong>${escapeHtml(user.name)}</strong>
+            <span>${user.project ? `参与项目：${escapeHtml(user.project_name || user.project)}` : "未打开项目"}</span>
+          </div>
+        </article>
+      `).join("")
+      : '<div class="empty compact" data-team-empty>暂无在线用户</div>';
+  }
+  if (loginList) {
+    loginList.innerHTML = users.length
+      ? users.map((user) => `
+        <div class="online-user" title="${escapeHtml(user.name)}">
+          ${renderDot(user)}
+          <span class="online-user-name">${escapeHtml(user.name)}</span>
+        </div>
+      `).join("")
+      : '<p data-login-empty>暂无在线用户</p>';
+  }
+  document.querySelectorAll("[data-online-count]").forEach((item) => {
+    item.textContent = `${users.length}`;
+  });
+}
+
+async function heartbeat() {
+  if (!document.querySelector(".username-badge")) {
+    return;
+  }
+  try {
+    const response = await fetch("/project/heartbeat", {method: "POST"});
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) {
+      return;
+    }
+    renderOnlineUsers(data.users || []);
+  } catch (error) {
+    // The next heartbeat will retry.
+  }
+}
+
+heartbeat();
+setInterval(heartbeat, 15000);
+
 if (createDialog && openCreateDialog) {
   openCreateDialog.addEventListener("click", () => createDialog.showModal());
   createDialog.querySelectorAll("[data-close-dialog]").forEach((button) => {

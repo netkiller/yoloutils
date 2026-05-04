@@ -1435,11 +1435,16 @@ class Workstation:
     }
 
     async function loadTree() {
-      const tree = await getJson("/api/tree");
-      treeEl.innerHTML = "";
-      renderTree(tree);
-      setActiveTreeButton(currentDir);
-      return tree;
+      try {
+        const tree = await getJson("/api/tree");
+        treeEl.innerHTML = "";
+        renderTree(tree);
+        setActiveTreeButton(currentDir);
+        return tree;
+      } catch (error) {
+        treeEl.innerHTML = `<div class="empty">目录加载失败：${escapeHtml(error.message)}</div>`;
+        throw error;
+      }
     }
 
     function findTreeButton(path) {
@@ -2018,13 +2023,23 @@ class Workstation:
     }
 
     function renderProjectUsers(users) {
-      const names = Array.from(new Set((users || []).map(user => String(user || "").trim()).filter(Boolean)));
+      const byName = new Map();
+      for (const item of users || []) {
+        const user = typeof item === "string" ? {name: item} : item || {};
+        const name = String(user.name || user.username || "").trim();
+        if (!name || byName.has(name)) continue;
+        byName.set(name, {
+          name,
+          color: user.color || userColor(name),
+          initial: user.initial || name.slice(0, 1),
+        });
+      }
+      const names = Array.from(byName.values());
       onlineCount.textContent = names.length;
       collaborationUsers.innerHTML = names.length
-        ? names.map(name => {
-            const safeName = escapeHtml(name);
-            const color = userColor(name);
-            return `<div class="collaboration-user" title="${safeName}"><span class="collaboration-dot" style="--user-color:${color}"></span><span class="collaboration-name">${safeName}</span></div>`;
+        ? names.map(user => {
+            const safeName = escapeHtml(user.name);
+            return `<div class="collaboration-user" title="${safeName}"><span class="collaboration-dot" style="--user-color:${escapeHtml(user.color)}"></span><span class="collaboration-name">${safeName}</span></div>`;
           }).join("")
         : '<div class="collaboration-empty">暂无在线用户</div>';
     }
@@ -2073,12 +2088,12 @@ class Workstation:
     }
 
     function userColor(value) {
-      const colors = ["#16a34a", "#2563eb", "#dc2626", "#9333ea", "#0891b2", "#ca8a04", "#db2777", "#0f766e", "#ea580c", "#4f46e5"];
-      let hash = 0;
+      const colors = ["#ef4444", "#f97316", "#eab308", "#22c55e", "#14b8a6", "#3b82f6", "#8b5cf6", "#ec4899"];
+      let total = 0;
       for (const char of value || "") {
-        hash = ((hash << 5) - hash + char.charCodeAt(0)) | 0;
+        total += char.charCodeAt(0);
       }
-      return colors[Math.abs(hash) % colors.length];
+      return colors[total % colors.length];
     }
 
     async function updatePresence() {
@@ -2092,6 +2107,19 @@ class Workstation:
       } catch (error) {
         const projectUsers = Array.isArray(window.yoloutilsOnlineUsers) ? window.yoloutilsOnlineUsers : [];
         renderProjectUsers(projectUsers);
+      }
+    }
+
+    async function updateProjectHeartbeat() {
+      if (!window.yoloutilsUsername) return;
+      try {
+        const response = await fetch("/project/heartbeat", {method: "POST"});
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.ok) return;
+        window.yoloutilsOnlineUsers = data.users || [];
+        if (!teamMode) renderProjectUsers(window.yoloutilsOnlineUsers);
+      } catch (error) {
+        // The next heartbeat will retry.
       }
     }
 
@@ -2209,6 +2237,8 @@ class Workstation:
 
     async function init() {
       bindUsernameGate();
+      appMain.classList.remove("viewer-focus", "tree-hidden");
+      leftPanel.classList.remove("tree-hidden");
       canvas.style.display = "none";
       editClasses?.addEventListener("click", openClassesDialog);
       classesForm?.addEventListener("submit", saveClasses);
@@ -2219,7 +2249,12 @@ class Workstation:
       await loadLabels();
       await loadStatistics();
       const rootButton = document.querySelector("#tree .tree-select");
-      if (rootButton) await selectDir("", rootButton);
+      if (rootButton) {
+        await selectDir("", rootButton);
+      } else {
+        currentDir = "";
+        await selectDir("");
+      }
       initSplitter();
       initHistogramSplitter();
       initLeftPanel();
@@ -2239,7 +2274,9 @@ class Workstation:
 
     function initPresence() {
       updatePresence();
-      setInterval(updatePresence, 5000);
+      updateProjectHeartbeat();
+      setInterval(updatePresence, 15000);
+      setInterval(updateProjectHeartbeat, 15000);
       setInterval(() => {
         if (document.body.classList.contains("console-open")) loadConsoleLogs();
       }, 5000);
@@ -2418,9 +2455,7 @@ class Workstation:
     function initViewerFocus() {
       viewerHeader.addEventListener("dblclick", event => {
         if (event.target.closest("button")) return;
-        appMain.classList.toggle("viewer-focus");
-        applyImageZoom();
-        redrawHistogram();
+        appMain.classList.remove("viewer-focus");
       });
     }
 

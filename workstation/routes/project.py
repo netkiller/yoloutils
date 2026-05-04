@@ -2,6 +2,7 @@ import json
 import os
 import re
 import shutil
+import time
 import traceback
 from email.parser import BytesParser
 from email.policy import default
@@ -19,6 +20,7 @@ templates = Jinja2Templates(directory=Path(__file__).resolve().parent.parent / "
 PROJECT_DIR_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff", ".heic", ".heif"}
 MODEL_EXTS = {".pt", ".onnx", ".engine", ".torchscript", ".tflite", ".mlmodel"}
+USER_HEARTBEAT_TIMEOUT = 45
 
 
 def workspace_path():
@@ -30,23 +32,34 @@ def users_file(workspace: Path):
     return workspace / ".users"
 
 
-def read_user_session_data(workspace: Path):
+def read_user_session_data(workspace: Path, prune: bool = True):
+    now = time.time()
     path = users_file(workspace)
     if not path.is_file():
-        return {"users": [], "projects": {}}
+        return {"users": [], "projects": {}, "seen_at": {}}
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        return {"users": [], "projects": {}}
+        return {"users": [], "projects": {}, "seen_at": {}}
     users = data.get("users", [])
     projects = data.get("projects", {})
+    seen_at = data.get("seen_at", {})
+    users = [str(user).strip() for user in users if str(user).strip()] if isinstance(users, list) else []
+    seen_at = {
+        str(user).strip(): float(timestamp or 0)
+        for user, timestamp in seen_at.items()
+        if str(user).strip()
+    } if isinstance(seen_at, dict) else {}
+    if prune:
+        users = [user for user in users if now - seen_at.get(user, 0) <= USER_HEARTBEAT_TIMEOUT]
     return {
-        "users": [str(user).strip() for user in users if str(user).strip()] if isinstance(users, list) else [],
+        "users": users,
         "projects": {
             str(user).strip(): str(project).strip()
             for user, project in projects.items()
-            if str(user).strip()
+            if str(user).strip() in users
         } if isinstance(projects, dict) else {},
+        "seen_at": {user: seen_at.get(user, now) for user in users},
     }
 
 
@@ -59,14 +72,19 @@ def read_user_projects(workspace: Path):
 
 
 def write_online_users(workspace: Path, users: list[str]):
+    session = read_user_session_data(workspace)
     projects = {
         user: project
-        for user, project in read_user_projects(workspace).items()
+        for user, project in session["projects"].items()
         if user in users
+    }
+    seen_at = {
+        user: session["seen_at"].get(user, time.time())
+        for user in users
     }
     users_file(workspace).write_text(
         json.dumps(
-            {"users": sorted(set(users), key=str.lower), "projects": projects},
+            {"users": sorted(set(users), key=str.lower), "projects": projects, "seen_at": seen_at},
             ensure_ascii=False,
             indent=2,
         ),
@@ -87,15 +105,39 @@ def write_user_project(workspace: Path, username: str, project: str = ""):
         projects[username] = project
     else:
         projects.pop(username, None)
+    session["seen_at"][username] = time.time()
     users_file(workspace).write_text(
-        json.dumps({"users": users, "projects": projects}, ensure_ascii=False, indent=2),
+        json.dumps({"users": users, "projects": projects, "seen_at": session["seen_at"]}, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
 
 
+def touch_user(workspace: Path, username: str):
+    username = (username or "").strip()
+    if not username:
+        return None
+    session = read_user_session_data(workspace, prune=False)
+    users = sorted(set(session["users"]), key=str.lower)
+    if username not in users:
+        return None
+    session["seen_at"][username] = time.time()
+    users_file(workspace).write_text(
+        json.dumps(
+            {"users": users, "projects": session["projects"], "seen_at": session["seen_at"]},
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    return session
+
+
 def current_username(request: Request, workspace: Path):
     username = unquote(request.cookies.get("workstation_username") or "").strip()
-    return username if username in read_online_users(workspace) else ""
+    if username not in read_user_session_data(workspace, prune=False)["users"]:
+        return ""
+    touch_user(workspace, username)
+    return username
 
 
 def team_mode_enabled():
@@ -395,6 +437,21 @@ def logout(request: Request):
     response.delete_cookie("workstation_username")
     response.delete_cookie("current_project")
     return response
+
+
+@router.post("/project/heartbeat")
+def heartbeat(request: Request):
+    workspace = workspace_path()
+    username = unquote(request.cookies.get("workstation_username") or "").strip()
+    session = touch_user(workspace, username)
+    if session is None:
+        return JSONResponse({"ok": False, "error": "登录已过期", "users": []}, status_code=401)
+    projects = project_items(workspace)
+    project_names = {project["directory"]: project["name"] for project in projects}
+    return {
+        "ok": True,
+        "users": user_items(read_online_users(workspace), read_user_projects(workspace), project_names),
+    }
 
 
 @router.post("/project")
