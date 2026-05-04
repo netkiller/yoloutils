@@ -1,16 +1,16 @@
 {% extends "base.html" %}
 
-{% block title %}训练队列{% endblock %}
+{% block title %}模型{% endblock %}
 
 {% block styles %}
-  <link rel="stylesheet" href="/static/css/train.css?v=20260504-model-date">
+  <link rel="stylesheet" href="/static/css/train.css?v=20260504-wide-model-card">
 {% endblock %}
 
 {% block content %}
   <main>
     <section class="train-head">
       <div>
-        <h1>模型训练</h1>
+        <h1>模型</h1>
       </div>
       <a class="primary-link" href="/train/new{% if current_project %}?project={{ current_project }}{% endif %}">新建训练</a>
     </section>
@@ -28,7 +28,7 @@
             <article class="model-card">
               <a class="model-card-link" href="/train/models/{{ task.id }}">
                 <div>
-                  <h2>{{ task.name }}</h2>
+                  <h2>模型 {{ task.name }}</h2>
                   {% if item.metrics %}
                     <div class="model-metrics">
                       {% for metric in item.metrics %}

@@ -2,6 +2,7 @@ import json
 import os
 import csv
 import base64
+import shlex
 import shutil
 import subprocess
 import threading
@@ -322,6 +323,40 @@ def read_results_csv(path: Path, max_rows: int = 80):
     return {"headers": rows[0], "rows": rows[1:max_rows + 1]}
 
 
+def parse_args_text(text: str):
+    values = {}
+    for line in text.splitlines():
+        if ":" not in line or line.startswith((" ", "\t", "#")):
+            continue
+        key, value = line.split(":", 1)
+        key = key.strip()
+        value = value.strip().strip("'\"")
+        if not key:
+            continue
+        values[key] = value
+    return values
+
+
+def command_value(value: str):
+    value = (value or "").strip()
+    if value.lower() in {"", "null", "none"}:
+        return ""
+    return shlex.quote(value)
+
+
+def training_command_from_args(text: str):
+    values = parse_args_text(text)
+    task = values.get("task") or "detect"
+    mode = values.get("mode") or "train"
+    parts = ["yolo", task, mode]
+    keys = ["model", "data", "epochs", "batch", "imgsz", "device", "workers", "project", "name", "amp"]
+    for key in keys:
+        value = command_value(values.get(key, ""))
+        if value:
+            parts.append(f"{key}={value}")
+    return " ".join(parts)
+
+
 def format_metric(value: str):
     value = (value or "").strip()
     if not value:
@@ -342,12 +377,16 @@ def run_metrics_summary(run_dir: Path):
         return ""
     last = rows[-1]
     epoch = (last.get("epoch") or "-").strip()
+    precision = format_metric(last.get("metrics/precision(B)") or last.get("metrics/precision"))
+    recall = format_metric(last.get("metrics/recall(B)") or last.get("metrics/recall"))
     map50 = format_metric(last.get("metrics/mAP50(B)") or last.get("metrics/mAP50"))
     map5095 = format_metric(last.get("metrics/mAP50-95(B)") or last.get("metrics/mAP50-95"))
     return [
         {"label": "Epochs", "value": epoch},
         {"label": "mAP50", "value": map50},
         {"label": "mAP50-95", "value": map5095},
+        {"label": "Precision", "value": precision},
+        {"label": "Recall", "value": recall},
     ]
 
 
@@ -359,20 +398,45 @@ def run_result_assets(task):
             "has_best": False,
             "has_last": False,
             "args": "",
+            "train_command": "",
             "csv": {"headers": [], "rows": []},
+            "metrics": [],
             "images": [],
+            "image_tabs": [],
             "files": [],
         }
 
     args = read_text_file(run_dir / "args.yaml") or read_text_file(run_dir / "args.json") or read_text_file(run_dir / "args.txt")
     images = []
+    image_tabs = {
+        "results": {"label": "results.png", "images": []},
+        "labels": {"label": "labels.jpg", "images": []},
+        "curve": {"label": "曲线", "images": []},
+        "train": {"label": "train", "images": []},
+        "val": {"label": "val", "images": []},
+        "confusion": {"label": "confusion", "images": []},
+    }
     files = []
     for path in sorted(run_dir.rglob("*"), key=lambda item: item.relative_to(run_dir).as_posix().lower()):
         if not path.is_file():
             continue
         relative = path.relative_to(run_dir).as_posix()
         if path.suffix.lower() in RESULT_IMAGE_EXTS:
-            images.append({"name": relative, "src": f"/train/models/{task['id']}/files/{relative}"})
+            image = {"name": relative, "src": f"/train/models/{task['id']}/files/{relative}"}
+            images.append(image)
+            filename = path.name.lower()
+            if filename.startswith("train_") and path.suffix.lower() in {".jpg", ".jpeg"}:
+                image_tabs["train"]["images"].append(image)
+            elif filename.startswith("val_") and path.suffix.lower() in {".jpg", ".jpeg"}:
+                image_tabs["val"]["images"].append(image)
+            elif filename == "results.png":
+                image_tabs["results"]["images"].append(image)
+            elif filename == "labels.jpg":
+                image_tabs["labels"]["images"].append(image)
+            elif filename.endswith("_curve.png"):
+                image_tabs["curve"]["images"].append(image)
+            elif filename.startswith("confusion") and filename.endswith(".png"):
+                image_tabs["confusion"]["images"].append(image)
         elif path.name not in WEIGHT_FILES:
             files.append({"name": relative, "size": path.stat().st_size, "href": f"/train/models/{task['id']}/files/{relative}"})
     return {
@@ -380,8 +444,11 @@ def run_result_assets(task):
         "has_best": (run_dir / "weights" / "best.pt").is_file(),
         "has_last": (run_dir / "weights" / "last.pt").is_file(),
         "args": args,
+        "train_command": training_command_from_args(args) if args else "",
         "csv": read_results_csv(run_dir / "results.csv"),
+        "metrics": run_metrics_summary(run_dir),
         "images": images,
+        "image_tabs": [item for item in image_tabs.values() if item["images"]],
         "files": files,
     }
 

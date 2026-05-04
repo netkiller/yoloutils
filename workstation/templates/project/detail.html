@@ -1,16 +1,16 @@
 {% extends "base.html" %}
 
-{% block title %}{{ project.name }}{% endblock %}
+{% block title %}项目 {{ project.name }}{% endblock %}
 
 {% block styles %}
-  <link rel="stylesheet" href="/static/css/project.css?v=20260504-upload-progress">
+  <link rel="stylesheet" href="/static/css/project.css?v=20260504-detail-compact">
 {% endblock %}
 
 {% block content %}
   <main>
     <section class="detail-head" aria-labelledby="project-title">
       <div>
-        <h1 id="project-title">{{ project.name }}</h1>
+        <h1 id="project-title">项目 {{ project.name }}</h1>
         {% if project.description %}
           <p class="project-description">{{ project.description }}</p>
         {% else %}

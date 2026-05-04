@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}数据集{% endblock %}
+{% block title %}{% if current_project_name %}{{ current_project_name }} 数据集{% else %}数据集{% endif %}{% endblock %}
 
 {% block styles %}
   <link rel="stylesheet" href="/static/css/dataset.css?v=20260504-two-column">
@@ -10,7 +10,7 @@
   <main>
     <section class="dataset-head" aria-labelledby="dataset-title">
       <div>
-        <h1 id="dataset-title">数据集</h1>
+        <h1 id="dataset-title">{% if current_project_name %}{{ current_project_name }} 数据集{% else %}数据集{% endif %}</h1>
       </div>
       <button class="project-link-button" id="openCreateDataset" type="button">新建数据集</button>
     </section>

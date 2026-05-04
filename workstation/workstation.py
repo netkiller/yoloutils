@@ -876,7 +876,8 @@ class Workstation:
   <title>Yolo Workstation</title>
   <style>
     * { box-sizing: border-box; }
-    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #1f2933; background: #f5f7fa; }
+    html { min-height: 100%; background: #f5f7fa; }
+    body { margin: 0; min-height: 100vh; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #1f2933; background: #f5f7fa; }
     header { height: 48px; display: grid; grid-template-columns: minmax(160px, 1fr) auto minmax(160px, 1fr); align-items: center; gap: 16px; padding: 0 16px; border-bottom: 1px solid #d9e2ec; background: #fff; font-weight: 650; }
     .header-title { min-width: 0; display: flex; align-items: center; gap: 8px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
     .brand-link { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: #1f2933; text-decoration: none; }

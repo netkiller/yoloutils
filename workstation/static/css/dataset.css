@@ -335,6 +335,7 @@
   display: block;
   border-radius: 6px;
   background: #f1f5f9;
+  cursor: zoom-in;
 }
 
 .dataset-file-card span {
@@ -487,6 +488,64 @@
 
 .classes-table td {
   color: var(--text);
+}
+
+.classes-table tfoot td {
+  background: #f8fafc;
+  color: #334e68;
+  font-weight: 650;
+}
+
+.image-preview-dialog {
+  width: min(1180px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
+  max-height: calc(100dvh - 32px);
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 24px 72px rgba(15, 23, 42, .26);
+}
+
+.image-preview-dialog::backdrop {
+  background: rgba(15, 23, 42, .5);
+}
+
+.image-preview-dialog figure {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 14px;
+}
+
+.image-preview-dialog img {
+  max-width: 100%;
+  max-height: calc(100dvh - 96px);
+  display: block;
+  margin: 0 auto;
+  object-fit: contain;
+}
+
+.image-preview-dialog figcaption {
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.image-preview-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #ffffff;
+  color: #334e68;
+  font-size: 14px;
+  line-height: 1;
+  text-align: center;
 }
 
 .dataset-pager {

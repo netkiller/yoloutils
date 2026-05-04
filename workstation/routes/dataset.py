@@ -313,6 +313,7 @@ def dataset_summary(path: Path, project: str, name: str):
 def dataset(request: Request, project: str = ""):
     workspace = workspace_path()
     current_project = current_project_from_request(request, project)
+    current_project_path = project_dir(workspace, current_project) if current_project else None
     response = templates.TemplateResponse(
         request=request,
         name="dataset/index.html",
@@ -322,6 +323,7 @@ def dataset(request: Request, project: str = ""):
             "datasets": dataset_items(workspace, current_project),
             "active_page": "dataset",
             "current_project": current_project,
+            "current_project_name": project_name(current_project_path) if current_project_path and current_project_path.is_dir() else current_project,
             **header_context(request, workspace),
         },
     )

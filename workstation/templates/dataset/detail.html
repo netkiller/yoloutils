@@ -1,16 +1,16 @@
 {% extends "base.html" %}
 
-{% block title %}{{ dataset.name }}{% endblock %}
+{% block title %}数据集 {{ dataset.name }}{% endblock %}
 
 {% block styles %}
-  <link rel="stylesheet" href="/static/css/dataset.css?v=20260504-class-compact">
+  <link rel="stylesheet" href="/static/css/dataset.css?v=20260504-image-preview">
 {% endblock %}
 
 {% block content %}
   <main class="dataset-detail-main">
     <section class="dataset-detail-head" aria-labelledby="dataset-title">
       <div>
-        <h1 id="dataset-title">{{ dataset.name }}</h1>
+        <h1 id="dataset-title">数据集 {{ dataset.name }}</h1>
       </div>
       <a class="project-link-button" href="/dataset?project={{ dataset.project_dir }}">返回数据集</a>
     </section>
@@ -62,17 +62,23 @@
                   <th>标注量</th>
                 </tr>
               </thead>
-              <tbody>
-                {% for item in dataset.annotations.rows %}
+                <tbody>
+                  {% for item in dataset.annotations.rows %}
+                    <tr>
+                      <td>{{ item.index }}</td>
+                      <td>{{ item.name }}</td>
+                      <td>{{ item.count }}</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+                <tfoot>
                   <tr>
-                    <td>{{ item.index }}</td>
-                    <td>{{ item.name }}</td>
-                    <td>{{ item.count }}</td>
+                    <td colspan="2">统计</td>
+                    <td>{{ dataset.annotations.total_annotations_label }}</td>
                   </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
+                </tfoot>
+              </table>
+            </div>
         </section>
       {% else %}
         <section class="classes-card">
@@ -132,7 +138,7 @@
             <div class="dataset-file-grid" data-file-grid>
               {% for file in files %}
                 <article class="dataset-file-card" data-file-card data-index="{{ loop.index0 }}" {% if loop.index0 >= 100 %}hidden{% endif %}>
-                  <img src="{{ file.media }}" alt="{{ file.name }}" loading="lazy">
+                  <img src="{{ file.media }}" alt="{{ file.name }}" loading="lazy" data-preview-image data-preview-title="{{ file.name }}">
                   <span title="{{ file.name }}">{{ file.name }}{% if file.label %} · label{% endif %}</span>
                 </article>
               {% endfor %}
@@ -150,14 +156,33 @@
   {% set footer_left = "" %}
   {% include "partials/footer.html" %}
 
+  <dialog class="image-preview-dialog" data-image-preview>
+    <button type="button" class="image-preview-close" data-image-preview-close aria-label="关闭">x</button>
+    <figure>
+      <img src="" alt="" data-image-preview-target>
+      <figcaption data-image-preview-caption></figcaption>
+    </figure>
+  </dialog>
+
   <script>
     (() => {
+      const splitFiles = {{ dataset.files | tojson }};
       const panels = new Map(Array.from(document.querySelectorAll("[data-split-panel]")).map((panel) => [panel.dataset.splitPanel, panel]));
       const pageSizeSelect = document.querySelector("[data-page-size-select]");
       const pageLabel = document.querySelector("[data-page-label]");
       const prevButton = document.querySelector("[data-page-prev]");
       const nextButton = document.querySelector("[data-page-next]");
       let activeSplit = document.querySelector("[data-split-tab].active")?.dataset.splitTab || "train";
+
+      function escapeHtml(value) {
+        return String(value).replace(/[&<>"']/g, char => ({
+          "&": "&amp;",
+          "<": "&lt;",
+          ">": "&gt;",
+          '"': "&quot;",
+          "'": "&#39;",
+        }[char]));
+      }
 
       function activePanel() {
         return panels.get(activeSplit);
@@ -169,21 +194,34 @@
 
       function updatePanel(panel) {
         if (!panel) return;
-        const cards = Array.from(panel.querySelectorAll("[data-file-card]"));
+        const split = panel.dataset.splitPanel;
+        const files = splitFiles[split] || [];
+        const grid = panel.querySelector("[data-file-grid]");
         const size = pageSize(panel);
-        const total = cards.length;
+        const total = files.length;
         const totalPages = Math.max(1, Math.ceil(total / size));
         const page = Math.min(Math.max(Number(panel.dataset.page || "1"), 1), totalPages);
         panel.dataset.page = String(page);
         const start = (page - 1) * size;
         const end = Math.min(start + size, total);
-        cards.forEach((card, index) => {
-          card.toggleAttribute("hidden", index < start || index >= end);
-        });
-        const tab = document.querySelector(`[data-split-tab="${panel.dataset.splitPanel}"]`);
+        if (grid) {
+          grid.replaceChildren();
+          files.slice(start, end).forEach((file, offset) => {
+            const card = document.createElement("article");
+            card.className = "dataset-file-card";
+            card.dataset.fileCard = "";
+            card.dataset.index = String(start + offset);
+            card.innerHTML = `
+              <img src="${escapeHtml(file.media)}" alt="${escapeHtml(file.name)}" loading="lazy" data-preview-image data-preview-title="${escapeHtml(file.name)}">
+              <span title="${escapeHtml(file.name)}">${escapeHtml(file.name)}${file.label ? " · label" : ""}</span>
+            `;
+            grid.appendChild(card);
+          });
+        }
+        const tab = document.querySelector(`[data-split-tab="${split}"]`);
         const range = tab?.querySelector("[data-tab-range]");
         if (range) range.textContent = total ? `${start + 1}-${end}` : "0-0";
-        if (panel.dataset.splitPanel === activeSplit) {
+        if (split === activeSplit) {
           if (pageLabel) pageLabel.textContent = `第 ${page} / ${totalPages} 页`;
           if (prevButton) prevButton.disabled = page <= 1;
           if (nextButton) nextButton.disabled = page >= totalPages;
@@ -241,6 +279,29 @@
         updatePanel(panel);
       });
       activate(activeSplit);
+
+      const preview = document.querySelector("[data-image-preview]");
+      const previewImage = document.querySelector("[data-image-preview-target]");
+      const previewCaption = document.querySelector("[data-image-preview-caption]");
+      const closePreview = () => {
+        preview?.close();
+        if (previewImage) previewImage.src = "";
+      };
+      document.addEventListener("click", (event) => {
+        const image = event.target.closest("[data-preview-image]");
+        if (!image || !preview || !previewImage || !previewCaption) return;
+        previewImage.src = image.currentSrc || image.src;
+        previewImage.alt = image.alt || "";
+        previewCaption.textContent = image.dataset.previewTitle || image.alt || "";
+        preview.showModal();
+      });
+      document.querySelector("[data-image-preview-close]")?.addEventListener("click", closePreview);
+      preview?.addEventListener("click", (event) => {
+        if (event.target === preview) closePreview();
+      });
+      window.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && preview?.open) closePreview();
+      });
     })();
   </script>
 {% endblock %}

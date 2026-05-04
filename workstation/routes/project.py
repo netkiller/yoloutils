@@ -310,7 +310,7 @@ def project_items(workspace: Path):
                 **meta,
                 "path": path,
                 "images": "images" in children,
-                "dataset": "dataset" in children,
+                "dataset": "datasets" in children or "dataset" in children,
                 "models": "models" in children,
                 "image_count": count_files(path / "images", IMAGE_EXTS),
                 "model_count": count_files(path / "models", MODEL_EXTS),
@@ -369,7 +369,7 @@ async def form_fields(request: Request):
 
 
 def ensure_project_structure(path: Path):
-    for subdir in ("images", "dataset", "models"):
+    for subdir in ("images", "datasets", "models"):
         (path / subdir).mkdir(parents=True, exist_ok=True)
 
 
