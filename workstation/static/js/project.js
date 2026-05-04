@@ -247,17 +247,19 @@ async function uploadFiles(zone, files) {
     const path = item.path || file.webkitRelativePath || file.name;
     formData.append("files", file, path);
   });
+  setUploadProgress(zone, 0);
   zone.classList.add("uploading");
+  zone.classList.remove("upload-complete");
 
   try {
-    const response = await fetch(`/project/${project}/upload/${kind}`, {
-      method: "POST",
-      body: formData,
+    const {status, data} = await uploadWithProgress(`/project/${project}/upload/${kind}`, formData, (percent) => {
+      setUploadProgress(zone, percent);
     });
-    const data = await response.json();
-    if (!response.ok || !data.ok) {
+    if (status < 200 || status >= 300 || !data.ok) {
       throw new Error(data.error || "上传失败");
     }
+    setUploadProgress(zone, 100);
+    zone.classList.add("upload-complete");
     if (kind === "images") {
       document.querySelector("[data-image-count]").textContent = `${data.count} 个文件`;
       setAnnotateReady({imagesReady: data.count > 0});
@@ -277,19 +279,77 @@ async function uploadFiles(zone, files) {
   } catch (error) {
     alert(error.message);
   } finally {
-    zone.classList.remove("uploading");
+    window.setTimeout(() => {
+      zone.classList.remove("uploading", "upload-complete");
+      setUploadProgress(zone, 0);
+    }, zone.classList.contains("upload-complete") ? 500 : 0);
   }
 }
 
-document.querySelectorAll("[data-upload-zone]").forEach((zone) => {
-  const input = zone.querySelector("input");
-  const panel = zone.closest(".upload-panel");
-  const directoryInput = panel?.querySelector("[data-directory-input]");
-  const directoryButton = panel?.querySelector("[data-directory-button]");
+function setUploadProgress(zone, percent) {
+  zone.querySelector(".upload-icon")?.style.setProperty("--upload-progress", `${Math.max(0, Math.min(100, percent))}%`);
+}
 
+function uploadWithProgress(url, formData, onProgress) {
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open("POST", url);
+    request.upload.addEventListener("progress", (event) => {
+      if (!event.lengthComputable) {
+        return;
+      }
+      onProgress(Math.round((event.loaded / event.total) * 100));
+    });
+    request.addEventListener("load", () => {
+      let data = {};
+      try {
+        data = JSON.parse(request.responseText || "{}");
+      } catch (error) {
+        reject(new Error("上传响应解析失败"));
+        return;
+      }
+      resolve({status: request.status, data});
+    });
+    request.addEventListener("error", () => reject(new Error("上传失败")));
+    request.addEventListener("abort", () => reject(new Error("上传已取消")));
+    request.send(formData);
+  });
+}
+
+document.querySelectorAll("[data-upload-zone]").forEach((zone) => {
+  const input = zone.querySelector("[data-file-input]") || zone.querySelector("input");
+  const directoryInput = zone.querySelector("[data-directory-input]");
+  const directoryButton = zone.querySelector("[data-directory-button]");
+
+  zone.addEventListener("click", (event) => {
+    if (event.target.closest("input")) {
+      return;
+    }
+    if (event.target.closest("[data-directory-button]")) {
+      return;
+    }
+    input.click();
+  });
+  zone.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+    event.preventDefault();
+    input.click();
+  });
   input.addEventListener("change", () => uploadFiles(zone, filesFromFileList(input.files)));
+  input.addEventListener("click", () => {
+    input.value = "";
+  });
   directoryInput?.addEventListener("change", () => uploadFiles(zone, filesFromFileList(directoryInput.files)));
-  directoryButton?.addEventListener("click", () => directoryInput?.click());
+  directoryInput?.addEventListener("click", () => {
+    directoryInput.value = "";
+  });
+  directoryButton?.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    directoryInput?.click();
+  });
   zone.addEventListener("dragover", (event) => {
     event.preventDefault();
     zone.classList.add("dragging");

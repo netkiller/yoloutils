@@ -3,7 +3,7 @@
 {% block title %}{{ project.name }}{% endblock %}
 
 {% block styles %}
-  <link rel="stylesheet" href="/static/css/project.css?v=20260504-avatar-bg">
+  <link rel="stylesheet" href="/static/css/project.css?v=20260504-upload-progress">
 {% endblock %}
 
 {% block content %}
@@ -30,11 +30,16 @@
           <h2>上传图片</h2>
           <span class="count" data-image-count>{{ project.image_count }} 个文件</span>
         </div>
-        <label class="drop-zone" data-upload-zone data-upload-kind="images">
-          <input type="file" name="files" accept="image/*" multiple webkitdirectory directory hidden>
-          <span class="upload-icon" aria-hidden="true">⇧</span>
+        <div class="drop-zone" data-upload-zone data-upload-kind="images" role="button" tabindex="0">
+          <input type="file" name="files" accept="image/*,.txt" multiple hidden data-file-input>
+          <input type="file" name="files" accept="image/*,.txt" multiple webkitdirectory directory hidden data-directory-input>
+          <span class="upload-icon" aria-hidden="true"><span class="upload-symbol">⇧</span></span>
           <span>点击上传图片，或拖拽到这里</span>
-        </label>
+          <span class="upload-options">
+            <span>选择文件</span>
+            <button type="button" data-directory-button>选择目录</button>
+          </span>
+        </div>
         <a
           class="action-link{% if not project.has_images %} disabled{% endif %}"
           href="/annotate/?project={{ project.directory }}"
@@ -49,11 +54,11 @@
           <h2>classes.txt</h2>
           <span class="count" data-classes-status>{% if project.has_classes %}已上传{% else %}未上传{% endif %}</span>
         </div>
-        <label class="classes-upload-card" data-upload-zone data-upload-kind="classes">
+        <div class="classes-upload-card" data-upload-zone data-upload-kind="classes" role="button" tabindex="0">
           <input type="file" name="files" accept=".txt,text/plain" hidden>
-          <span class="upload-icon" aria-hidden="true">⇧</span>
+          <span class="upload-icon" aria-hidden="true"><span class="upload-symbol">⇧</span></span>
           <span data-upload-label>上传 classes.txt</span>
-        </label>
+        </div>
         <button class="secondary-button" type="button" id="editClassesButton" data-classes-edit-label>
           {% if project.has_classes %}编辑{% else %}创建 classes.txt{% endif %}
         </button>
@@ -64,11 +69,16 @@
           <h2>上传模型</h2>
           <span class="count" data-model-count>{{ project.model_count }} 个文件</span>
         </div>
-        <label class="drop-zone" data-upload-zone data-upload-kind="model">
-          <input type="file" name="files" accept=".pt,.onnx,.engine,.torchscript,.tflite,.mlmodel" multiple webkitdirectory directory hidden>
-          <span class="upload-icon" aria-hidden="true">⇧</span>
+        <div class="drop-zone" data-upload-zone data-upload-kind="model" role="button" tabindex="0">
+          <input type="file" name="files" accept=".pt,.onnx,.engine,.torchscript,.tflite,.mlmodel" multiple hidden data-file-input>
+          <input type="file" name="files" accept=".pt,.onnx,.engine,.torchscript,.tflite,.mlmodel" multiple webkitdirectory directory hidden data-directory-input>
+          <span class="upload-icon" aria-hidden="true"><span class="upload-symbol">⇧</span></span>
           <span>点击上传模型，或拖拽到这里</span>
-        </label>
+          <span class="upload-options">
+            <span>选择文件</span>
+            <button type="button" data-directory-button>选择目录</button>
+          </span>
+        </div>
         <a class="action-link{% if not project.has_models %} disabled{% endif %}" href="/train" data-model-action>去推理</a>
       </article>
     </section>
@@ -95,5 +105,5 @@
   {% set footer_left = project.path %}
   {% include "partials/footer.html" %}
 
-  <script src="/static/js/project.js"></script>
+  <script src="/static/js/project.js?v=20260504-upload-progress"></script>
 {% endblock %}
