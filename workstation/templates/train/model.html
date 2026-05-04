@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% block title %}{{ task.name }}{% endblock %}
+
+{% block styles %}
+  <link rel="stylesheet" href="/static/css/train.css?v=20260504-models">
+{% endblock %}
+
+{% block content %}
+  <main class="model-detail-main">
+    <section class="train-head">
+      <div>
+        <a class="back-link" href="/train{% if current_project %}?project={{ current_project }}{% endif %}">返回模型</a>
+        <h1>{{ task.name }}</h1>
+        <p>{{ task.project }} / {{ task.dataset }} · {{ task.model }}</p>
+      </div>
+      <div class="task-actions model-downloads">
+        {% if assets.has_best %}
+          <a href="/train/models/{{ task.id }}/weights/best.pt">下载 best.pt</a>
+        {% endif %}
+        {% if assets.has_last %}
+          <a href="/train/models/{{ task.id }}/weights/last.pt">下载 last.pt</a>
+        {% endif %}
+      </div>
+    </section>
+
+    <section class="model-layout">
+      <aside class="model-side">
+        <section class="model-section">
+          <h2>运行目录</h2>
+          <p>{{ assets.run_dir }}</p>
+        </section>
+        <section class="model-section">
+          <h2>args</h2>
+          {% if assets.args %}
+            <pre class="args-output">{{ assets.args }}</pre>
+          {% else %}
+            <div class="empty small-empty">暂无 args 参数</div>
+          {% endif %}
+        </section>
+        <section class="model-section">
+          <h2>结果文件</h2>
+          {% if assets.files %}
+            <div class="result-file-list">
+              {% for file in assets.files %}
+                <a href="{{ file.href }}">{{ file.name }}</a>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="empty small-empty">暂无结果文件</div>
+          {% endif %}
+        </section>
+      </aside>
+
+      <section class="model-results">
+        <section class="model-section">
+          <h2>结果图片</h2>
+          {% if assets.images %}
+            <div class="result-image-grid">
+              {% for image in assets.images %}
+                <article class="result-image-card">
+                  <img src="{{ image.src }}" alt="{{ image.name }}" loading="lazy">
+                  <span title="{{ image.name }}">{{ image.name }}</span>
+                </article>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="empty">暂无结果图片</div>
+          {% endif %}
+        </section>
+
+        <section class="model-section">
+          <h2>results.csv</h2>
+          {% if assets.csv.headers %}
+            <div class="result-table-wrap">
+              <table class="result-table">
+                <thead>
+                  <tr>
+                    {% for header in assets.csv.headers %}
+                      <th>{{ header }}</th>
+                    {% endfor %}
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for row in assets.csv.rows %}
+                    <tr>
+                      {% for cell in row %}
+                        <td>{{ cell }}</td>
+                      {% endfor %}
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <div class="empty">暂无 results.csv 数据</div>
+          {% endif %}
+        </section>
+      </section>
+    </section>
+  </main>
+
+  {% set footer_id = "stats" %}
+  {% set footer_left = workspace %}
+  {% include "partials/footer.html" %}
+{% endblock %}

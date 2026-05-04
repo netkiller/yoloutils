@@ -3,52 +3,115 @@
 {% block title %}训练队列{% endblock %}
 
 {% block styles %}
-  <link rel="stylesheet" href="/static/css/train.css?v=20260504-train-options">
+  <link rel="stylesheet" href="/static/css/train.css?v=20260504-model-date">
 {% endblock %}
 
 {% block content %}
   <main>
     <section class="train-head">
       <div>
-        <h1>训练队列</h1>
+        <h1>模型训练</h1>
       </div>
       <a class="primary-link" href="/train/new{% if current_project %}?project={{ current_project }}{% endif %}">新建训练</a>
     </section>
 
-    {% if tasks %}
-      <section class="task-list" aria-label="训练任务">
-        {% for task in tasks %}
-          <article class="task-card">
-            <div>
-              <h2>{{ task.name }}</h2>
-              <p>{{ task.project }} / {{ task.dataset }}</p>
-            </div>
-            <span class="status">{{ task.status }}</span>
-            <div class="task-meta">
-              <span>model: {{ task.model }}</span>
-              <span>epochs: {{ task.epochs }}</span>
-              {% if task.get("model_version") %}<span>version: {{ task.model_version }}</span>{% endif %}
-              {% if task.get("model_size") %}<span>size: {{ task.model_size }}</span>{% endif %}
-              {% if task.get("imgsz") %}<span>imgsz: {{ task.imgsz }}</span>{% endif %}
-              {% if task.get("batch") %}<span>batch: {{ task.batch }}</span>{% endif %}
-              {% if task.get("device") %}<span>device: {{ task.device }}</span>{% endif %}
-              {% if task.get("workers") is not none %}<span>workers: {{ task.workers }}</span>{% endif %}
-              {% if task.get("amp") %}<span>amp: {{ task.amp }}</span>{% endif %}
-              {% if task.get("data") %}<span>data: {{ task.data }}</span>{% endif %}
-            </div>
-            <div class="task-actions">
-              <a href="/train/tasks/{{ task.id }}">查看</a>
-              {% if task.status in ["排队中", "进行中"] %}
-                <form method="post" action="/train/tasks/{{ task.id }}/cancel">
-                  <button type="submit">取消</button>
-                </form>
-              {% endif %}
-            </div>
-          </article>
-        {% endfor %}
-      </section>
+    <section class="train-tabs" aria-label="训练视图">
+      <a class="train-tab{% if active_tab == 'models' %} active{% endif %}" href="/train{% if current_project %}?project={{ current_project }}{% endif %}">模型</a>
+      <a class="train-tab{% if active_tab == 'queue' %} active{% endif %}" href="/train?tab=queue{% if current_project %}&project={{ current_project }}{% endif %}">训练队列</a>
+    </section>
+
+    {% if active_tab == "models" %}
+      {% if models %}
+        <section class="model-list" aria-label="已训练模型">
+          {% for item in models %}
+            {% set task = item.task %}
+            <article class="model-card">
+              <a class="model-card-link" href="/train/models/{{ task.id }}">
+                <div>
+                  <h2>{{ task.name }}</h2>
+                  {% if item.metrics %}
+                    <div class="model-metrics">
+                      {% for metric in item.metrics %}
+                        <span><b>{{ metric.label }}:</b> {{ metric.value }}</span>
+                      {% endfor %}
+                    </div>
+                  {% elif item.summary %}
+                    <p>{{ item.summary }}</p>
+                  {% endif %}
+                </div>
+                <span class="model-date">{{ item.display_time }}</span>
+                {% if item.results_image %}
+                  <div class="model-card-preview">
+                    <img src="{{ item.results_image }}" alt="{{ task.name }} results" loading="lazy">
+                  </div>
+                {% endif %}
+                <div class="task-meta">
+                  {% if task.model %}<span>{{ task.model }}</span>{% endif %}
+                  {% if task.epochs %}<span>epochs: {{ task.epochs }}</span>{% endif %}
+                  {% if task.get("model_version") %}<span>{{ task.model_version }}</span>{% endif %}
+                  {% if task.get("model_size") %}<span>size: {{ task.model_size }}</span>{% endif %}
+                </div>
+              </a>
+              <div class="task-actions">
+                {% if item.has_best %}
+                  <a href="/train/models/{{ task.id }}/weights/best.pt">下载 best.pt</a>
+                {% else %}
+                  <span class="disabled-action">best.pt</span>
+                {% endif %}
+                {% if item.has_last %}
+                  <a href="/train/models/{{ task.id }}/weights/last.pt">下载 last.pt</a>
+                {% else %}
+                  <span class="disabled-action">last.pt</span>
+                {% endif %}
+              </div>
+            </article>
+          {% endfor %}
+        </section>
+      {% else %}
+        <section class="empty">暂无训练完成的模型</section>
+      {% endif %}
     {% else %}
-      <section class="empty">暂无训练任务</section>
+      <section class="queue-filter" aria-label="训练队列筛选">
+        <a class="{% if queue_filter == 'active' %}active{% endif %}" href="/train?tab=queue&queue=active{% if current_project %}&project={{ current_project }}{% endif %}">未完成</a>
+        <a class="{% if queue_filter == 'completed' %}active{% endif %}" href="/train?tab=queue&queue=completed{% if current_project %}&project={{ current_project }}{% endif %}">已完成</a>
+        <a class="{% if queue_filter == 'all' %}active{% endif %}" href="/train?tab=queue&queue=all{% if current_project %}&project={{ current_project }}{% endif %}">全部</a>
+      </section>
+
+      {% if queue_tasks %}
+        <section class="task-list" aria-label="训练任务">
+          {% for task in queue_tasks %}
+            <article class="task-card">
+              <div>
+                <h2>{{ task.name }}</h2>
+                <p>{{ task.project }} / {{ task.dataset }}</p>
+              </div>
+              <span class="status">{{ task.status }}</span>
+              <div class="task-meta">
+                <span>model: {{ task.model }}</span>
+                <span>epochs: {{ task.epochs }}</span>
+                {% if task.get("model_version") %}<span>version: {{ task.model_version }}</span>{% endif %}
+                {% if task.get("model_size") %}<span>size: {{ task.model_size }}</span>{% endif %}
+                {% if task.get("imgsz") %}<span>imgsz: {{ task.imgsz }}</span>{% endif %}
+                {% if task.get("batch") %}<span>batch: {{ task.batch }}</span>{% endif %}
+                {% if task.get("device") %}<span>device: {{ task.device }}</span>{% endif %}
+                {% if task.get("workers") is not none %}<span>workers: {{ task.workers }}</span>{% endif %}
+                {% if task.get("amp") %}<span>amp: {{ task.amp }}</span>{% endif %}
+                {% if task.get("data") %}<span>data: {{ task.data }}</span>{% endif %}
+              </div>
+              <div class="task-actions">
+                <a href="/train/tasks/{{ task.id }}">查看日志</a>
+                {% if task.status in ["排队中", "进行中"] %}
+                  <form method="post" action="/train/tasks/{{ task.id }}/cancel">
+                    <button type="submit">取消</button>
+                  </form>
+                {% endif %}
+              </div>
+            </article>
+          {% endfor %}
+        </section>
+      {% else %}
+        <section class="empty">暂无训练任务</section>
+      {% endif %}
     {% endif %}
   </main>
 

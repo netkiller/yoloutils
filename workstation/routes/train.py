@@ -1,5 +1,7 @@
 import json
 import os
+import csv
+import base64
 import shutil
 import subprocess
 import threading
@@ -9,7 +11,7 @@ from urllib.parse import parse_qs
 from uuid import uuid4
 
 from fastapi import APIRouter, Request, status
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from routes.project import header_context
@@ -22,6 +24,10 @@ worker_thread = None
 running_processes = {}
 MODEL_VERSIONS = [f"YOLOv{number}" for number in range(3, 13)] + ["YOLO26"]
 MODEL_SIZES = ["N", "S", "M", "L", "X"]
+COMPLETE_STATUS = "完成"
+ACTIVE_STATUSES = {"排队中", "进行中"}
+WEIGHT_FILES = {"best.pt", "last.pt"}
+RESULT_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
 
 
 def clean_model_version(value: str):
@@ -45,6 +51,13 @@ def model_weight(version: str, size: str):
 def optional_int(value: str):
     value = (value or "").strip()
     return int(value) if value else None
+
+
+def display_datetime(value: str):
+    value = (value or "").strip()
+    if not value:
+        return ""
+    return value.replace("T", " ")[:16]
 
 
 def workspace_path():
@@ -159,6 +172,220 @@ def log_file(task_id):
     return queue_dir() / "logs" / f"{task_id}.log"
 
 
+def is_inside(path: Path, parent: Path):
+    try:
+        path.relative_to(parent)
+        return True
+    except ValueError:
+        return False
+
+
+def project_runs_dir(project: str):
+    return workspace_path() / project / "runs"
+
+
+def expected_run_dir(task):
+    return project_runs_dir(task["project"]) / task["name"]
+
+
+def task_run_dir(task):
+    stored = task.get("run_path")
+    if stored:
+        path = Path(stored).expanduser().resolve()
+        runs = project_runs_dir(task["project"]).resolve()
+        if is_inside(path, runs) and path.is_dir():
+            return path
+
+    expected = expected_run_dir(task)
+    if expected.is_dir():
+        return expected.resolve()
+
+    runs = project_runs_dir(task["project"])
+    if not runs.is_dir():
+        return expected.resolve()
+    candidates = [path for path in runs.iterdir() if path.is_dir() and path.name.startswith(task["name"])]
+    if not candidates:
+        return expected.resolve()
+    return max(candidates, key=lambda path: path.stat().st_mtime).resolve()
+
+
+def encode_run_id(project: str, run_name: str):
+    raw = f"{project}/{run_name}".encode("utf-8")
+    return "run-" + base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+
+
+def decode_run_id(model_id: str):
+    if not model_id.startswith("run-"):
+        return None
+    payload = model_id.removeprefix("run-")
+    payload += "=" * (-len(payload) % 4)
+    try:
+        project, run_name = base64.urlsafe_b64decode(payload.encode("ascii")).decode("utf-8").split("/", 1)
+    except (ValueError, UnicodeDecodeError):
+        return None
+    return project, run_name
+
+
+def synthetic_run_task(project: str, run_dir: Path):
+    return {
+        "id": encode_run_id(project, run_dir.name),
+        "name": run_dir.name,
+        "project": project,
+        "dataset": "runs",
+        "model": "",
+        "epochs": "",
+        "status": COMPLETE_STATUS,
+        "run_path": str(run_dir.resolve()),
+        "synthetic_run": True,
+    }
+
+
+def model_items(tasks, current_project: str = ""):
+    items = []
+    seen_runs = set()
+    for task in tasks:
+        if task.get("status") != COMPLETE_STATUS:
+            continue
+        run_dir = task_run_dir(task)
+        if run_dir.is_dir():
+            seen_runs.add(run_dir.resolve())
+        weights_dir = run_dir / "weights"
+        items.append(
+            {
+                "task": task,
+                "run_dir": run_dir,
+                "has_best": (weights_dir / "best.pt").is_file(),
+                "has_last": (weights_dir / "last.pt").is_file(),
+                "results_image": f"/train/models/{task['id']}/files/results.png" if (run_dir / "results.png").is_file() else "",
+                "metrics": run_metrics_summary(run_dir),
+                "summary": f"{task.get('project', '')} / {task.get('dataset', '')}",
+                "updated_at": datetime.fromtimestamp(run_dir.stat().st_mtime).isoformat(timespec="seconds")
+                if run_dir.is_dir()
+                else task.get("finished_at", task.get("created_at", "")),
+                "display_time": display_datetime(task.get("finished_at") or (
+                    datetime.fromtimestamp(run_dir.stat().st_mtime).isoformat(timespec="seconds")
+                    if run_dir.is_dir()
+                    else task.get("created_at", "")
+                )),
+            }
+        )
+    for project_dir in project_dirs():
+        if current_project and project_dir.name != current_project:
+            continue
+        runs_dir = project_dir / "runs"
+        if not runs_dir.is_dir():
+            continue
+        for run_dir in sorted((path for path in runs_dir.iterdir() if path.is_dir()), key=lambda item: item.name.lower()):
+            resolved = run_dir.resolve()
+            if resolved in seen_runs:
+                continue
+            task = synthetic_run_task(project_dir.name, run_dir)
+            weights_dir = run_dir / "weights"
+            items.append(
+                {
+                    "task": task,
+                    "run_dir": resolved,
+                    "has_best": (weights_dir / "best.pt").is_file(),
+                    "has_last": (weights_dir / "last.pt").is_file(),
+                    "results_image": f"/train/models/{task['id']}/files/results.png" if (run_dir / "results.png").is_file() else "",
+                    "metrics": run_metrics_summary(run_dir),
+                    "summary": "",
+                    "updated_at": datetime.fromtimestamp(run_dir.stat().st_mtime).isoformat(timespec="seconds"),
+                    "display_time": datetime.fromtimestamp(run_dir.stat().st_mtime).strftime("%Y-%m-%d %H:%M"),
+                }
+            )
+    return sorted(items, key=lambda item: item["updated_at"], reverse=True)
+
+
+def filtered_queue_tasks(tasks, queue_filter: str):
+    if queue_filter == "completed":
+        return [task for task in tasks if task.get("status") == COMPLETE_STATUS]
+    if queue_filter == "active":
+        return [task for task in tasks if task.get("status") != COMPLETE_STATUS]
+    return tasks
+
+
+def read_text_file(path: Path, max_chars: int = 12000):
+    if not path.is_file():
+        return ""
+    return path.read_text(encoding="utf-8", errors="replace")[:max_chars]
+
+
+def read_results_csv(path: Path, max_rows: int = 80):
+    if not path.is_file():
+        return {"headers": [], "rows": []}
+    with path.open("r", encoding="utf-8", errors="replace", newline="") as handle:
+        reader = csv.reader(handle)
+        rows = list(reader)
+    if not rows:
+        return {"headers": [], "rows": []}
+    return {"headers": rows[0], "rows": rows[1:max_rows + 1]}
+
+
+def format_metric(value: str):
+    value = (value or "").strip()
+    if not value:
+        return "-"
+    try:
+        return f"{float(value):.3f}"
+    except ValueError:
+        return value
+
+
+def run_metrics_summary(run_dir: Path):
+    path = run_dir / "results.csv"
+    if not path.is_file():
+        return ""
+    with path.open("r", encoding="utf-8", errors="replace", newline="") as handle:
+        rows = [row for row in csv.DictReader(handle) if row]
+    if not rows:
+        return ""
+    last = rows[-1]
+    epoch = (last.get("epoch") or "-").strip()
+    map50 = format_metric(last.get("metrics/mAP50(B)") or last.get("metrics/mAP50"))
+    map5095 = format_metric(last.get("metrics/mAP50-95(B)") or last.get("metrics/mAP50-95"))
+    return [
+        {"label": "Epochs", "value": epoch},
+        {"label": "mAP50", "value": map50},
+        {"label": "mAP50-95", "value": map5095},
+    ]
+
+
+def run_result_assets(task):
+    run_dir = task_run_dir(task)
+    if not run_dir.is_dir():
+        return {
+            "run_dir": run_dir,
+            "has_best": False,
+            "has_last": False,
+            "args": "",
+            "csv": {"headers": [], "rows": []},
+            "images": [],
+            "files": [],
+        }
+
+    args = read_text_file(run_dir / "args.yaml") or read_text_file(run_dir / "args.json") or read_text_file(run_dir / "args.txt")
+    images = []
+    files = []
+    for path in sorted(run_dir.rglob("*"), key=lambda item: item.relative_to(run_dir).as_posix().lower()):
+        if not path.is_file():
+            continue
+        relative = path.relative_to(run_dir).as_posix()
+        if path.suffix.lower() in RESULT_IMAGE_EXTS:
+            images.append({"name": relative, "src": f"/train/models/{task['id']}/files/{relative}"})
+        elif path.name not in WEIGHT_FILES:
+            files.append({"name": relative, "size": path.stat().st_size, "href": f"/train/models/{task['id']}/files/{relative}"})
+    return {
+        "run_dir": run_dir,
+        "has_best": (run_dir / "weights" / "best.pt").is_file(),
+        "has_last": (run_dir / "weights" / "last.pt").is_file(),
+        "args": args,
+        "csv": read_results_csv(run_dir / "results.csv"),
+        "images": images,
+        "files": files,
+    }
+
+
 def train_command(task):
     data_value = task.get("data") or str(write_data_yaml(task))
     command = [
@@ -168,7 +395,7 @@ def train_command(task):
         f"data={data_value}",
         f"model={task['model']}",
         f"epochs={task['epochs']}",
-        f"project={workspace_path() / task['project'] / 'runs'}",
+        f"project={project_runs_dir(task['project'])}",
         f"name={task['name']}",
     ]
     for key in ("imgsz", "batch", "device", "workers", "amp"):
@@ -180,7 +407,13 @@ def train_command(task):
 
 def run_task(task):
     task_id = task["id"]
-    update_task(task_id, status="进行中", started_at=datetime.now().isoformat(timespec="seconds"))
+    run_dir = expected_run_dir(task)
+    update_task(
+        task_id,
+        status="进行中",
+        run_path=str(run_dir),
+        started_at=datetime.now().isoformat(timespec="seconds"),
+    )
     command = train_command(task)
     append_log(task_id, "$ " + " ".join(str(part) for part in command) + "\n\n")
     if shutil.which("yolo") is None:
@@ -234,13 +467,15 @@ async def form_fields(request: Request):
 
 
 @router.get("/train")
-def train(request: Request, project: str = ""):
+def train(request: Request, project: str = "", tab: str = "models", queue: str = "active"):
     workspace = workspace_path()
     current_project = project or request.cookies.get("current_project", "")
     with queue_lock:
         tasks = list(reversed(load_tasks()))
     if current_project:
         tasks = [task for task in tasks if task.get("project") == current_project]
+    active_tab = tab if tab in {"models", "queue"} else "models"
+    queue_filter = queue if queue in {"active", "completed", "all"} else "active"
     response = templates.TemplateResponse(
         request=request,
             name="train/index.html",
@@ -248,6 +483,10 @@ def train(request: Request, project: str = ""):
             "request": request,
             "workspace": workspace,
             "tasks": tasks,
+            "queue_tasks": filtered_queue_tasks(tasks, queue_filter),
+            "models": model_items(tasks, current_project),
+            "active_tab": active_tab,
+            "queue_filter": queue_filter,
             "active_page": "train",
             "current_project": current_project,
             **header_context(request, workspace),
@@ -256,6 +495,73 @@ def train(request: Request, project: str = ""):
     if current_project:
         response.set_cookie("current_project", current_project, httponly=True, samesite="lax")
     return response
+
+
+def find_task(task_id: str):
+    return next((item for item in load_tasks() if item["id"] == task_id), None)
+
+
+def resolve_model_task(model_id: str):
+    task = find_task(model_id)
+    if task is not None:
+        return task
+    decoded = decode_run_id(model_id)
+    if decoded is None:
+        return None
+    project, run_name = decoded
+    runs_dir = project_runs_dir(project).resolve()
+    run_dir = (runs_dir / run_name).resolve()
+    if not is_inside(run_dir, runs_dir) or not run_dir.is_dir():
+        return None
+    return synthetic_run_task(project, run_dir)
+
+
+@router.get("/train/models/{task_id}")
+def train_model(request: Request, task_id: str):
+    workspace = workspace_path()
+    task = resolve_model_task(task_id)
+    if task is None:
+        return RedirectResponse(url="/train", status_code=status.HTTP_303_SEE_OTHER)
+    current_project = task.get("project", request.cookies.get("current_project", ""))
+    assets = run_result_assets(task)
+    return templates.TemplateResponse(
+        request=request,
+        name="train/model.html",
+        context={
+            "request": request,
+            "workspace": workspace,
+            "task": task,
+            "assets": assets,
+            "active_page": "train",
+            "current_project": current_project,
+            **header_context(request, workspace),
+        },
+    )
+
+
+@router.get("/train/models/{task_id}/weights/{weight_name}")
+def download_model_weight(task_id: str, weight_name: str):
+    task = resolve_model_task(task_id)
+    if task is None or weight_name not in WEIGHT_FILES:
+        return JSONResponse({"ok": False, "error": "模型不存在"}, status_code=404)
+    run_dir = task_run_dir(task)
+    path = (run_dir / "weights" / weight_name).resolve()
+    weights_dir = (run_dir / "weights").resolve()
+    if not is_inside(path, weights_dir) or not path.is_file():
+        return JSONResponse({"ok": False, "error": "模型文件不存在"}, status_code=404)
+    return FileResponse(path, filename=f"{task['name']}-{weight_name}")
+
+
+@router.get("/train/models/{task_id}/files/{file_path:path}")
+def train_model_file(task_id: str, file_path: str):
+    task = resolve_model_task(task_id)
+    if task is None:
+        return JSONResponse({"ok": False, "error": "文件不存在"}, status_code=404)
+    run_dir = task_run_dir(task).resolve()
+    path = (run_dir / file_path).resolve()
+    if not is_inside(path, run_dir) or not path.is_file():
+        return JSONResponse({"ok": False, "error": "文件不存在"}, status_code=404)
+    return FileResponse(path)
 
 
 @router.get("/train/new")

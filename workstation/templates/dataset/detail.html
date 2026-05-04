@@ -3,15 +3,14 @@
 {% block title %}{{ dataset.name }}{% endblock %}
 
 {% block styles %}
-  <link rel="stylesheet" href="/static/css/dataset.css?v=20260504-tabs">
+  <link rel="stylesheet" href="/static/css/dataset.css?v=20260504-classes-cards">
 {% endblock %}
 
 {% block content %}
-  <main>
+  <main class="dataset-detail-main">
     <section class="dataset-detail-head" aria-labelledby="dataset-title">
       <div>
         <h1 id="dataset-title">{{ dataset.name }}</h1>
-        <p>{{ dataset.project }} / {{ dataset.path }}</p>
       </div>
       <a class="project-link-button" href="/dataset?project={{ dataset.project_dir }}">返回数据集</a>
     </section>
@@ -23,22 +22,101 @@
       <div class="summary-card"><strong>{{ dataset.splits.val.images + dataset.splits.test.images }}</strong><span>val / test</span></div>
     </section>
 
+    <section class="classes-dashboard" aria-label="classes.txt">
+      {% if dataset.annotations.rows %}
+        <section class="classes-card">
+          <div class="classes-card-head">
+            <h2>Class 分布</h2>
+            <p>{{ dataset.annotations.total_classes }} classes · {{ dataset.annotations.total_annotations_label }} total annotations</p>
+          </div>
+          <div class="class-vertical-chart" aria-label="Class 标注分布">
+            <div class="class-scale" aria-hidden="true">
+              {% for value in dataset.annotations.scale %}
+                <span>{{ value }}</span>
+              {% endfor %}
+            </div>
+            <div class="class-plot">
+              {% for item in dataset.annotations.rows %}
+                <div class="class-column">
+                  <div class="class-column-bar" title="{{ item.name }}: {{ item.count }}">
+                    <span style="height: {{ item.percent }}%"></span>
+                  </div>
+                  <strong>{{ item.count }}</strong>
+                  <em title="{{ item.name }}">{{ item.name }}</em>
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+        </section>
+
+        <section class="classes-card">
+          <div class="classes-card-head">
+            <h2>Classes</h2>
+            <p>{{ dataset.annotations.total_classes }} classes · {{ dataset.annotations.total_annotations_label }} annotations</p>
+          </div>
+          <div class="classes-table-wrap">
+            <table class="classes-table">
+              <thead>
+                <tr>
+                  <th>索引</th>
+                  <th>名称</th>
+                  <th>标注量</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for item in dataset.annotations.rows %}
+                  <tr>
+                    <td>{{ item.index }}</td>
+                    <td>{{ item.name }}</td>
+                    <td>{{ item.count }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      {% else %}
+        <section class="classes-card">
+          <div class="empty">暂无 classes.txt 或标注数据</div>
+        </section>
+      {% endif %}
+    </section>
+
     <section class="dataset-tabs" data-dataset-tabs aria-label="数据集图片">
       <div class="dataset-tab-list" role="tablist" aria-label="数据集 split">
-        {% for split_name, files in dataset.files.items() %}
-          <button
-            type="button"
-            class="dataset-tab{% if loop.first %} active{% endif %}"
-            role="tab"
-            id="tab-{{ split_name }}"
-            aria-controls="panel-{{ split_name }}"
-            aria-selected="{{ 'true' if loop.first else 'false' }}"
-            data-split-tab="{{ split_name }}"
-          >
-            <span>{{ split_name }}</span>
-            <strong>{{ files | length }}</strong>
-          </button>
-        {% endfor %}
+        <div class="dataset-tab-buttons">
+          {% for split_name, files in dataset.files.items() %}
+            {% set total = files | length %}
+            {% set initial_end = 100 if total > 100 else total %}
+            <button
+              type="button"
+              class="dataset-tab{% if loop.first %} active{% endif %}"
+              role="tab"
+              id="tab-{{ split_name }}"
+              aria-controls="panel-{{ split_name }}"
+              aria-selected="{{ 'true' if loop.first else 'false' }}"
+              data-split-tab="{{ split_name }}"
+            >
+              <span>{{ split_name }}（<span data-tab-range>{{ "1-" ~ initial_end if total else "0-0" }}</span> / {{ total }} images）</span>
+            </button>
+          {% endfor %}
+        </div>
+        <div class="dataset-tab-tools" aria-label="分页控制">
+          <label class="page-size-control">
+            <span>每页</span>
+            <select data-page-size-select>
+              <option value="50">50</option>
+              <option value="100" selected>100</option>
+              <option value="200">200</option>
+              <option value="500">500</option>
+            </select>
+          </label>
+          <div class="dataset-pager" data-pager>
+            <button type="button" data-page-prev>上一页</button>
+            <span data-page-label>第 1 / 1 页</span>
+            <button type="button" data-page-next>下一页</button>
+          </div>
+        </div>
       </div>
 
       {% for split_name, files in dataset.files.items() %}
@@ -48,47 +126,43 @@
           id="panel-{{ split_name }}"
           aria-labelledby="tab-{{ split_name }}"
           data-split-panel="{{ split_name }}"
-          data-page-size="500"
+          data-page-size="100"
           {% if not loop.first %}hidden{% endif %}
         >
-          <div class="list-head">
-            <h2>{{ split_name }}</h2>
-            <span class="count"><span data-page-range>0-0</span> / {{ files | length }} images</span>
-          </div>
-
           {% if files %}
             <div class="dataset-file-grid" data-file-grid>
               {% for file in files %}
-                <article class="dataset-file-card" data-file-card data-index="{{ loop.index0 }}" {% if loop.index0 >= 500 %}hidden{% endif %}>
+                <article class="dataset-file-card" data-file-card data-index="{{ loop.index0 }}" {% if loop.index0 >= 100 %}hidden{% endif %}>
                   <img src="{{ file.media }}" alt="{{ file.name }}" loading="lazy">
                   <span title="{{ file.name }}">{{ file.name }}{% if file.label %} · label{% endif %}</span>
                 </article>
               {% endfor %}
-            </div>
-            <div class="dataset-pager" data-pager>
-              <button type="button" data-page-prev>上一页</button>
-              <span data-page-label>第 1 / 1 页</span>
-              <button type="button" data-page-next>下一页</button>
             </div>
           {% else %}
             <div class="empty">暂无 {{ split_name }} 图片</div>
           {% endif %}
         </div>
       {% endfor %}
+
     </section>
   </main>
 
   {% set footer_id = "stats" %}
-  {% set footer_left = dataset.path %}
+  {% set footer_left = "" %}
   {% include "partials/footer.html" %}
 
   <script>
     (() => {
-      const pageSize = 500;
       const panels = new Map(Array.from(document.querySelectorAll("[data-split-panel]")).map((panel) => [panel.dataset.splitPanel, panel]));
+      const pageSizeSelect = document.querySelector("[data-page-size-select]");
+      const pageLabel = document.querySelector("[data-page-label]");
+      const prevButton = document.querySelector("[data-page-prev]");
+      const nextButton = document.querySelector("[data-page-next]");
+      let activeSplit = document.querySelector("[data-split-tab].active")?.dataset.splitTab || "train";
 
       function updatePanel(panel) {
         const cards = Array.from(panel.querySelectorAll("[data-file-card]"));
+        const pageSize = Number(panel.dataset.pageSize || pageSizeSelect?.value || "100");
         const total = cards.length;
         const totalPages = Math.max(1, Math.ceil(total / pageSize));
         const page = Math.min(Math.max(Number(panel.dataset.page || "1"), 1), totalPages);
@@ -98,17 +172,19 @@
         cards.forEach((card, index) => {
           card.hidden = index < start || index >= end;
         });
-        const range = panel.querySelector("[data-page-range]");
+        const tab = document.querySelector(`[data-split-tab="${panel.dataset.splitPanel}"]`);
+        const range = tab?.querySelector("[data-tab-range]");
         if (range) range.textContent = total ? `${start + 1}-${end}` : "0-0";
-        const label = panel.querySelector("[data-page-label]");
-        if (label) label.textContent = `第 ${page} / ${totalPages} 页`;
-        const prev = panel.querySelector("[data-page-prev]");
-        const next = panel.querySelector("[data-page-next]");
-        if (prev) prev.disabled = page <= 1;
-        if (next) next.disabled = page >= totalPages;
+        if (panel.dataset.splitPanel === activeSplit) {
+          if (pageLabel) pageLabel.textContent = `第 ${page} / ${totalPages} 页`;
+          if (prevButton) prevButton.disabled = page <= 1;
+          if (nextButton) nextButton.disabled = page >= totalPages;
+          if (pageSizeSelect) pageSizeSelect.value = String(pageSize);
+        }
       }
 
       function activate(split) {
+        activeSplit = split;
         document.querySelectorAll("[data-split-tab]").forEach((tab) => {
           const active = tab.dataset.splitTab === split;
           tab.classList.toggle("active", active);
@@ -126,18 +202,34 @@
         tab.addEventListener("click", () => activate(tab.dataset.splitTab));
       });
 
-      panels.forEach((panel) => {
-        panel.dataset.page = panel.dataset.page || "1";
-        panel.querySelector("[data-page-prev]")?.addEventListener("click", () => {
-          panel.dataset.page = String(Number(panel.dataset.page || "1") - 1);
-          updatePanel(panel);
-        });
-        panel.querySelector("[data-page-next]")?.addEventListener("click", () => {
-          panel.dataset.page = String(Number(panel.dataset.page || "1") + 1);
-          updatePanel(panel);
-        });
+      pageSizeSelect?.addEventListener("change", () => {
+        const panel = panels.get(activeSplit);
+        if (!panel) return;
+        panel.dataset.pageSize = pageSizeSelect.value;
+        panel.dataset.page = "1";
         updatePanel(panel);
       });
+
+      prevButton?.addEventListener("click", () => {
+        const panel = panels.get(activeSplit);
+        if (!panel) return;
+        panel.dataset.page = String(Number(panel.dataset.page || "1") - 1);
+        updatePanel(panel);
+      });
+
+      nextButton?.addEventListener("click", () => {
+        const panel = panels.get(activeSplit);
+        if (!panel) return;
+        panel.dataset.page = String(Number(panel.dataset.page || "1") + 1);
+        updatePanel(panel);
+      });
+
+      panels.forEach((panel) => {
+        panel.dataset.page = panel.dataset.page || "1";
+        panel.dataset.pageSize = panel.dataset.pageSize || "100";
+        updatePanel(panel);
+      });
+      activate(activeSplit);
     })();
   </script>
 {% endblock %}

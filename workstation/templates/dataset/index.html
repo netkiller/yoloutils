@@ -3,7 +3,7 @@
 {% block title %}数据集{% endblock %}
 
 {% block styles %}
-  <link rel="stylesheet" href="/static/css/dataset.css?v=20260503-chart">
+  <link rel="stylesheet" href="/static/css/dataset.css?v=20260504-two-column">
 {% endblock %}
 
 {% block content %}
@@ -24,7 +24,7 @@
                 <h2>{{ dataset.name }}</h2>
                 <p>{{ dataset.project }}</p>
               </div>
-              <span>{{ dataset.total_images }} images</span>
+              <span>{{ dataset.updated_date }}</span>
             </div>
 
             <div class="dataset-chart" aria-label="train val test 比例">
@@ -37,16 +37,15 @@
                   </span>
                 {% endfor %}
               </div>
-            </div>
-
-            <div class="split-grid">
-              {% for split_name, split in dataset.splits.items() %}
-                <div class="split">
-                  <strong>{{ split_name }}</strong>
-                  <span>{{ split.images }} images</span>
-                  <span>{{ split.labels }} labels</span>
-                </div>
-              {% endfor %}
+              <div class="split-grid">
+                {% for split_name, split in dataset.splits.items() %}
+                  <div class="split">
+                    <strong>{{ split_name }}</strong>
+                    <span>{{ split.images }} images</span>
+                    <span>{{ split.labels }} labels</span>
+                  </div>
+                {% endfor %}
+              </div>
             </div>
 
             <div class="dataset-footer">

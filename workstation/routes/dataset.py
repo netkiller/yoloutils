@@ -3,6 +3,7 @@ import re
 import shutil
 import tempfile
 import zipfile
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Request, status
@@ -83,6 +84,11 @@ def copy_image_with_label(source: Path, source_root: Path, target_root: Path):
         shutil.copy2(label, target.with_suffix(".txt"))
 
 
+def project_classes_file(project_path: Path):
+    candidates = [project_path / "classes.txt", project_path / "images" / "classes.txt"]
+    return next((candidate for candidate in candidates if candidate.is_file()), None)
+
+
 def build_dataset(workspace: Path, project: str, name: str, val_percent: int, test_percent: int):
     name = (name or "").strip()
     if not name or not DATASET_NAME_PATTERN.match(name):
@@ -112,6 +118,10 @@ def build_dataset(workspace: Path, project: str, name: str, val_percent: int, te
         split_dir.mkdir(parents=True, exist_ok=True)
         for source in split_files:
             copy_image_with_label(source, images_root, split_dir)
+
+    classes_file = project_classes_file(project_path)
+    if classes_file:
+        shutil.copy2(classes_file, dataset_dir / "classes.txt")
 
     return {
         "path": str(dataset_dir),
@@ -160,6 +170,69 @@ def split_image_items(path: Path):
     return items
 
 
+def read_classes_for_dataset(dataset_path: Path):
+    path = dataset_path / "classes.txt"
+    if not path.is_file():
+        path = project_classes_file(dataset_path.parent.parent) or dataset_path.parent.parent / "classes.txt"
+    if not path.is_file():
+        return {"exists": False, "class_names": [], "text": ""}
+    text = path.read_text(encoding="utf-8", errors="replace")
+    return {
+        "exists": True,
+        "class_names": [line.strip() for line in text.splitlines() if line.strip()],
+        "text": text,
+    }
+
+
+def class_annotations(path: Path, class_names: list[str]):
+    counts = {}
+    for label_file in sorted(path.rglob("*.txt"), key=lambda item: item.as_posix().lower()):
+        try:
+            lines = label_file.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            parts = line.split()
+            if not parts:
+                continue
+            try:
+                index = int(float(parts[0]))
+            except ValueError:
+                continue
+            counts[index] = counts.get(index, 0) + 1
+
+    max_index = max(counts.keys(), default=-1)
+    total_classes = max(len(class_names), max_index + 1)
+    rows = []
+    max_count = max(counts.values(), default=0)
+    total_annotations = sum(counts.values())
+    for index in range(total_classes):
+        count = counts.get(index, 0)
+        rows.append(
+            {
+                "index": index,
+                "name": class_names[index] if index < len(class_names) else f"class_{index}",
+                "count": count,
+                "percent": round(count / max_count * 100, 2) if max_count else 0,
+            }
+        )
+    return {
+        "rows": rows,
+        "total_classes": total_classes,
+        "total_annotations": total_annotations,
+        "total_annotations_label": f"{total_annotations:,}",
+        "scale": [
+            max_count,
+            round(max_count * 0.75),
+            round(max_count * 0.5),
+            round(max_count * 0.25),
+            0,
+        ]
+        if max_count
+        else [0, 0, 0, 0, 0],
+    }
+
+
 def dataset_items(workspace: Path, project: str = ""):
     datasets = []
     if not workspace.is_dir():
@@ -200,6 +273,8 @@ def dataset_items(workspace: Path, project: str = ""):
                 {
                     "name": dataset_dir.name,
                     "path": dataset_dir,
+                    "updated_at": dataset_dir.stat().st_mtime,
+                    "updated_date": datetime.fromtimestamp(dataset_dir.stat().st_mtime).strftime("%Y-%m-%d %H:%M"),
                     "project": project_name(project_dir),
                     "project_dir": project_dir.name,
                     "splits": splits,
@@ -222,6 +297,8 @@ def dataset_summary(path: Path, project: str, name: str):
         "val": count_split(path / "val"),
         "test": count_split(path / "test"),
     }
+    classes = read_classes_for_dataset(path)
+    annotations = class_annotations(path, classes["class_names"])
     return {
         "name": name,
         "project_dir": project,
@@ -231,6 +308,8 @@ def dataset_summary(path: Path, project: str, name: str):
         "total_images": sum(split["images"] for split in splits.values()),
         "total_labels": sum(split["labels"] for split in splits.values()),
         "files": split_image_items(path),
+        "classes": classes,
+        "annotations": annotations,
     }
 
 
