@@ -9,7 +9,7 @@ from urllib.parse import parse_qs
 from uuid import uuid4
 
 from fastapi import APIRouter, Request, status
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from routes.project import header_context
@@ -309,6 +309,22 @@ def train_task(request: Request, task_id: str):
             **header_context(request, workspace),
         },
     )
+
+
+@router.get("/train/tasks/{task_id}/logs")
+def train_task_logs(task_id: str):
+    tasks = load_tasks()
+    task = next((item for item in tasks if item["id"] == task_id), None)
+    if task is None:
+        return JSONResponse({"ok": False, "error": "任务不存在"}, status_code=404)
+    path = log_file(task_id)
+    log = path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
+    return {
+        "ok": True,
+        "task": task,
+        "log": log,
+        "size": path.stat().st_size if path.is_file() else 0,
+    }
 
 
 @router.post("/train/tasks/{task_id}/cancel")

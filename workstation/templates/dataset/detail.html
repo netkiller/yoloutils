@@ -3,7 +3,7 @@
 {% block title %}{{ dataset.name }}{% endblock %}
 
 {% block styles %}
-  <link rel="stylesheet" href="/static/css/dataset.css?v=20260504-detail">
+  <link rel="stylesheet" href="/static/css/dataset.css?v=20260504-tabs">
 {% endblock %}
 
 {% block content %}
@@ -23,29 +23,121 @@
       <div class="summary-card"><strong>{{ dataset.splits.val.images + dataset.splits.test.images }}</strong><span>val / test</span></div>
     </section>
 
-    {% for split_name, files in dataset.files.items() %}
-      <section class="dataset-split-section" aria-labelledby="split-{{ split_name }}">
-        <div class="list-head">
-          <h2 id="split-{{ split_name }}">{{ split_name }}</h2>
-          <span class="count">{{ files | length }} images</span>
-        </div>
-        {% if files %}
-          <div class="dataset-file-grid">
-            {% for file in files %}
-              <article class="dataset-file-card">
-                <img src="{{ file.media }}" alt="{{ file.name }}" loading="lazy">
-                <span title="{{ file.name }}">{{ file.name }}{% if file.label %} · label{% endif %}</span>
-              </article>
-            {% endfor %}
+    <section class="dataset-tabs" data-dataset-tabs aria-label="数据集图片">
+      <div class="dataset-tab-list" role="tablist" aria-label="数据集 split">
+        {% for split_name, files in dataset.files.items() %}
+          <button
+            type="button"
+            class="dataset-tab{% if loop.first %} active{% endif %}"
+            role="tab"
+            id="tab-{{ split_name }}"
+            aria-controls="panel-{{ split_name }}"
+            aria-selected="{{ 'true' if loop.first else 'false' }}"
+            data-split-tab="{{ split_name }}"
+          >
+            <span>{{ split_name }}</span>
+            <strong>{{ files | length }}</strong>
+          </button>
+        {% endfor %}
+      </div>
+
+      {% for split_name, files in dataset.files.items() %}
+        <div
+          class="dataset-tab-panel{% if loop.first %} active{% endif %}"
+          role="tabpanel"
+          id="panel-{{ split_name }}"
+          aria-labelledby="tab-{{ split_name }}"
+          data-split-panel="{{ split_name }}"
+          data-page-size="500"
+          {% if not loop.first %}hidden{% endif %}
+        >
+          <div class="list-head">
+            <h2>{{ split_name }}</h2>
+            <span class="count"><span data-page-range>0-0</span> / {{ files | length }} images</span>
           </div>
-        {% else %}
-          <div class="empty">暂无 {{ split_name }} 图片</div>
-        {% endif %}
-      </section>
-    {% endfor %}
+
+          {% if files %}
+            <div class="dataset-file-grid" data-file-grid>
+              {% for file in files %}
+                <article class="dataset-file-card" data-file-card data-index="{{ loop.index0 }}" {% if loop.index0 >= 500 %}hidden{% endif %}>
+                  <img src="{{ file.media }}" alt="{{ file.name }}" loading="lazy">
+                  <span title="{{ file.name }}">{{ file.name }}{% if file.label %} · label{% endif %}</span>
+                </article>
+              {% endfor %}
+            </div>
+            <div class="dataset-pager" data-pager>
+              <button type="button" data-page-prev>上一页</button>
+              <span data-page-label>第 1 / 1 页</span>
+              <button type="button" data-page-next>下一页</button>
+            </div>
+          {% else %}
+            <div class="empty">暂无 {{ split_name }} 图片</div>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </section>
   </main>
 
   {% set footer_id = "stats" %}
   {% set footer_left = dataset.path %}
   {% include "partials/footer.html" %}
+
+  <script>
+    (() => {
+      const pageSize = 500;
+      const panels = new Map(Array.from(document.querySelectorAll("[data-split-panel]")).map((panel) => [panel.dataset.splitPanel, panel]));
+
+      function updatePanel(panel) {
+        const cards = Array.from(panel.querySelectorAll("[data-file-card]"));
+        const total = cards.length;
+        const totalPages = Math.max(1, Math.ceil(total / pageSize));
+        const page = Math.min(Math.max(Number(panel.dataset.page || "1"), 1), totalPages);
+        panel.dataset.page = String(page);
+        const start = (page - 1) * pageSize;
+        const end = Math.min(start + pageSize, total);
+        cards.forEach((card, index) => {
+          card.hidden = index < start || index >= end;
+        });
+        const range = panel.querySelector("[data-page-range]");
+        if (range) range.textContent = total ? `${start + 1}-${end}` : "0-0";
+        const label = panel.querySelector("[data-page-label]");
+        if (label) label.textContent = `第 ${page} / ${totalPages} 页`;
+        const prev = panel.querySelector("[data-page-prev]");
+        const next = panel.querySelector("[data-page-next]");
+        if (prev) prev.disabled = page <= 1;
+        if (next) next.disabled = page >= totalPages;
+      }
+
+      function activate(split) {
+        document.querySelectorAll("[data-split-tab]").forEach((tab) => {
+          const active = tab.dataset.splitTab === split;
+          tab.classList.toggle("active", active);
+          tab.setAttribute("aria-selected", String(active));
+        });
+        panels.forEach((panel, name) => {
+          const active = name === split;
+          panel.hidden = !active;
+          panel.classList.toggle("active", active);
+          if (active) updatePanel(panel);
+        });
+      }
+
+      document.querySelectorAll("[data-split-tab]").forEach((tab) => {
+        tab.addEventListener("click", () => activate(tab.dataset.splitTab));
+      });
+
+      panels.forEach((panel) => {
+        panel.dataset.page = panel.dataset.page || "1";
+        panel.querySelector("[data-page-prev]")?.addEventListener("click", () => {
+          panel.dataset.page = String(Number(panel.dataset.page || "1") - 1);
+          updatePanel(panel);
+        });
+        panel.querySelector("[data-page-next]")?.addEventListener("click", () => {
+          panel.dataset.page = String(Number(panel.dataset.page || "1") + 1);
+          updatePanel(panel);
+        });
+        updatePanel(panel);
+      });
+    })();
+  </script>
 {% endblock %}
