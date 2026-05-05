@@ -203,10 +203,10 @@ def main():
 
     print(f"Yolo Workstation: {url}")
     print(f"Workspace: {workspace}")
-    if args.dataset:
-        print(f"Dataset: {Path(args.dataset).expanduser().resolve()}")
-    if args.run:
-        print(f"Run: {Path(args.run).expanduser().resolve()}")
+    if args.datasets:
+        print(f"Dataset: {Path(args.datasets).expanduser().resolve()}")
+    if args.runs:
+        print(f"Run: {Path(args.runs).expanduser().resolve()}")
     if args.demo:
         print("Demo: enabled")
     if args.open:
