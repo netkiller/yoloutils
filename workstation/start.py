@@ -59,8 +59,8 @@ def apply_environment(args):
     os.environ["YOLOUTILS_DEMO"] = "1" if args.demo else "0"
 
     optional_paths = {
-        "YOLOUTILS_DATASET": args.dataset,
-        "YOLOUTILS_RUN": args.run,
+        "YOLOUTILS_DATASET": args.datasets,
+        "YOLOUTILS_RUN": args.runs,
     }
     for key, value in optional_paths.items():
         if value:
@@ -87,12 +87,12 @@ def open_app_window(url: str):
                 return
 
     for command in (
-        ["google-chrome", f"--app={url}", "--new-window"],
-        ["chrome", f"--app={url}", "--new-window"],
-        ["chromium", f"--app={url}", "--new-window"],
-        ["chromium-browser", f"--app={url}", "--new-window"],
-        ["microsoft-edge", f"--app={url}", "--new-window"],
-        ["brave-browser", f"--app={url}", "--new-window"],
+            ["google-chrome", f"--app={url}", "--new-window"],
+            ["chrome", f"--app={url}", "--new-window"],
+            ["chromium", f"--app={url}", "--new-window"],
+            ["chromium-browser", f"--app={url}", "--new-window"],
+            ["microsoft-edge", f"--app={url}", "--new-window"],
+            ["brave-browser", f"--app={url}", "--new-window"],
     ):
         try:
             subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
