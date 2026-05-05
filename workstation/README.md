@@ -1,6 +1,8 @@
 # Yolo workstation
 
-本地 FastAPI 站点可以使用 `site/start.py` 启动：
+## 本地运行
+
+本地 FastAPI 站点可以使用 `start.py` 启动：
 
 ```shell
 cd workstation
@@ -19,7 +21,7 @@ python3 start.py -w /Users/neo/tmp/yolo/source --reload
 也可以使用 `run.sh` 透传参数：
 
 ```shell
-./run.sh -w /Users/neo/tmp/yolo/source --reload
+./entrypoint.sh -w /Users/neo/tmp/yolo/source --reload
 ```
 
 启动后可访问：
@@ -35,3 +37,9 @@ python3 start.py -w /Users/neo/tmp/yolo/source -d
 ```
 
 后台模式会在工作目录写入 `.yoloutils-workstation.pid` 和 `.yoloutils-workstation.log`。
+
+## Docker 部署
+
+```shell
+
+```

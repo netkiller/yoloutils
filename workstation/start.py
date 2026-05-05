@@ -18,13 +18,13 @@ def build_parser():
     parser.add_argument("-p", "--port", type=int, default=8000, help="监听端口")
     parser.add_argument("-d", "--daemon", action="store_true", default=False, help="后台运行")
     parser.add_argument("-w", "--workspace", type=str, default=None, help="标注工作目录")
-    parser.add_argument("-s", "--dataset", type=str, default=None, help="数据集目录")
-    parser.add_argument("-r", "--run", type=str, default=None, help="训练目录")
-    parser.add_argument("-c", "--classes", type=str, default=None, help="classes.txt 文件")
+    parser.add_argument("-s", "--datasets", type=str, default=None, help="数据集目录")
+    parser.add_argument("-r", "--runs", type=str, default=None, help="训练目录")
     parser.add_argument("--open", action="store_true", default=False, help="启动服务后打开无地址栏应用窗口")
     parser.add_argument("-t", "--team", action="store_true", default=False, help="团队协作模式")
     parser.add_argument("--mDNS", dest="mdns", type=str, default=None, help=".local 分享域名")
     parser.add_argument("--reload", action="store_true", default=False, help="启用 uvicorn reload")
+    parser.add_argument("--demo", action="store_true", default=False, help="演示模式")
     return parser
 
 
@@ -56,11 +56,11 @@ def apply_environment(args):
     else:
         os.environ.pop("YOLOUTILS_MDNS", None)
     os.environ["YOLOUTILS_TEAM"] = "1" if args.team else "0"
+    os.environ["YOLOUTILS_DEMO"] = "1" if args.demo else "0"
 
     optional_paths = {
         "YOLOUTILS_DATASET": args.dataset,
         "YOLOUTILS_RUN": args.run,
-        "YOLOUTILS_CLASSES": args.classes,
     }
     for key, value in optional_paths.items():
         if value:
@@ -126,7 +126,7 @@ def start_browser_opener(url: str):
 
 def daemon_command(args):
     command = [sys.executable, str(Path(__file__).resolve())]
-    for option in ("host", "port", "workspace", "dataset", "run", "classes", "mdns"):
+    for option in ("host", "port", "workspace", "dataset", "run", "mdns"):
         value = getattr(args, option)
         if value is None:
             continue
@@ -138,6 +138,8 @@ def daemon_command(args):
         command.append("--team")
     if args.reload:
         command.append("--reload")
+    if args.demo:
+        command.append("--demo")
     return command
 
 
@@ -183,7 +185,7 @@ def check_dependencies():
             missing.append(package)
     if missing:
         raise SystemExit(
-            f"缺少依赖: {', '.join(missing)}，请先执行: pip install -r site/requirements.txt"
+            f"缺少依赖: {', '.join(missing)}，请先执行: pip install -r requirements.txt"
         )
 
 
@@ -205,8 +207,8 @@ def main():
         print(f"Dataset: {Path(args.dataset).expanduser().resolve()}")
     if args.run:
         print(f"Run: {Path(args.run).expanduser().resolve()}")
-    if args.classes:
-        print(f"Classes: {Path(args.classes).expanduser().resolve()}")
+    if args.demo:
+        print("Demo: enabled")
     if args.open:
         start_browser_opener(url)
         print("Browser: opening")

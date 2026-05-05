@@ -22,6 +22,12 @@
   color: var(--muted);
 }
 
+.demo-note {
+  margin: 4px 0 0;
+  color: #b45309;
+  font-size: 13px;
+}
+
 .primary-link,
 .secondary-link,
 .task-actions a {

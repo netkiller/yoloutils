@@ -3,7 +3,7 @@
 {% block title %}新建训练{% endblock %}
 
 {% block styles %}
-  <link rel="stylesheet" href="/static/css/train.css?v=20260504-train-options">
+  <link rel="stylesheet" href="/static/css/train.css?v=20260505-demo-mode">
 {% endblock %}
 
 {% block content %}
@@ -14,6 +14,9 @@
           <h1>新建训练任务</h1>
           <a href="/dataset" aria-label="关闭">×</a>
         </div>
+        {% if demo_mode %}
+          <p class="demo-note">当前为演示模式，不会启动训练。</p>
+        {% endif %}
 
         <label>
           <span>任务名称</span>

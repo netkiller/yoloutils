@@ -66,6 +66,10 @@ def workspace_path():
     return Path(workspace).expanduser().resolve() if workspace else Path.cwd().resolve()
 
 
+def demo_mode_enabled():
+    return os.environ.get("YOLOUTILS_DEMO") == "1"
+
+
 def queue_dir():
     path = workspace_path() / ".train"
     (path / "logs").mkdir(parents=True, exist_ok=True)
@@ -572,6 +576,7 @@ def train(request: Request, project: str = "", tab: str = "models", queue: str =
             "active_page": "train",
             "current_project": current_project,
             "current_project_name": display_project_name(workspace, current_project),
+            "demo_mode": demo_mode_enabled(),
             **header_context(request, workspace),
         },
     )
@@ -666,6 +671,7 @@ def new_train(request: Request, project: str = "", dataset: str = ""):
             "model_sizes": MODEL_SIZES,
             "default_model_version": "YOLO26",
             "default_model_size": "N",
+            "demo_mode": demo_mode_enabled(),
             "active_page": "train",
             "current_project": current_project,
             **header_context(request, workspace),
@@ -704,7 +710,7 @@ async def create_train(request: Request):
         "workers": optional_int(form.get("workers", [""])[0]),
         "amp": form.get("amp", [""])[0].strip(),
         "data": data_value,
-        "status": "排队中",
+        "status": "演示模式" if demo_mode_enabled() else "排队中",
         "created_at": datetime.now().isoformat(timespec="seconds"),
     }
     with queue_lock:
@@ -712,7 +718,10 @@ async def create_train(request: Request):
         tasks.append(task)
         save_tasks(tasks)
     append_log(task["id"], f"任务已创建: {task['created_at']}\n")
-    ensure_worker()
+    if demo_mode_enabled():
+        append_log(task["id"], "当前为演示模式，不会启动训练。\n")
+    else:
+        ensure_worker()
     return RedirectResponse(url="/train", status_code=status.HTTP_303_SEE_OTHER)
 
 
