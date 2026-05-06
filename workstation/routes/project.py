@@ -182,8 +182,8 @@ def share_url(request: Request):
 
 
 def header_context(request: Request, workspace: Path):
-    username = current_username(request, workspace)
     is_team_mode = team_mode_enabled()
+    username = current_username(request, workspace) if is_team_mode else ""
     return {
         "username": username,
         "username_initial": username[:1],
@@ -418,8 +418,9 @@ async def uploaded_files(request: Request):
 @router.get("/project")
 def project(request: Request):
     workspace = workspace_path()
-    username = current_username(request, workspace)
-    online_users = read_online_users(workspace)
+    is_team_mode = team_mode_enabled()
+    username = current_username(request, workspace) if is_team_mode else ""
+    online_users = read_online_users(workspace) if is_team_mode else []
     projects = project_items(workspace)
     project_names = {project["directory"]: project["name"] for project in projects}
     try:
@@ -433,7 +434,6 @@ def project(request: Request):
                 "error": request.query_params.get("error"),
                 "active_page": "project",
                 "show_create_project": True,
-                "login_required": not username,
                 "online_users": user_items(online_users, read_user_projects(workspace), project_names),
                 **header_context(request, workspace),
             },
@@ -448,16 +448,40 @@ def project(request: Request):
         )
 
 
-@router.post("/project/login")
+@router.get("/team")
+def team(request: Request):
+    workspace = workspace_path()
+    is_team_mode = team_mode_enabled()
+    username = current_username(request, workspace) if is_team_mode else ""
+    projects = project_items(workspace)
+    project_names = {project["directory"]: project["name"] for project in projects}
+    online_users = read_online_users(workspace) if is_team_mode else []
+    response = templates.TemplateResponse(
+        request=request,
+        name="team/index.html",
+        context={
+            "request": request,
+            "workspace": workspace,
+            "error": request.query_params.get("error"),
+            "active_page": "team",
+            "username": username,
+            "online_users": user_items(online_users, read_user_projects(workspace), project_names),
+            **header_context(request, workspace),
+        },
+    )
+    return response
+
+
+@router.post("/team/login")
 async def login(request: Request):
     form = await form_fields(request)
     workspace = workspace_path()
     username = (form.get("username", [""])[0] or "").strip()
     users = read_online_users(workspace)
     if not username:
-        return project_redirect("请输入用户名")
+        return RedirectResponse(url=f"/team?{urlencode({'error': '请输入用户名'})}", status_code=status.HTTP_303_SEE_OTHER)
     if username in users:
-        return project_redirect("用户名已存在，请更换用户名")
+        return RedirectResponse(url=f"/team?{urlencode({'error': '用户名已存在，请更换用户名'})}", status_code=status.HTTP_303_SEE_OTHER)
     users.append(username)
     write_online_users(workspace, users)
     response = RedirectResponse(url="/project", status_code=status.HTTP_303_SEE_OTHER)
@@ -465,19 +489,29 @@ async def login(request: Request):
     return response
 
 
-@router.post("/project/logout")
+@router.post("/project/login")
+async def legacy_login(request: Request):
+    return await login(request)
+
+
+@router.post("/team/logout")
 def logout(request: Request):
     workspace = workspace_path()
     username = unquote(request.cookies.get("workstation_username") or "").strip()
     users = [user for user in read_online_users(workspace) if user != username]
     write_online_users(workspace, users)
-    response = RedirectResponse(url="/project", status_code=status.HTTP_303_SEE_OTHER)
+    response = RedirectResponse(url="/team", status_code=status.HTTP_303_SEE_OTHER)
     response.delete_cookie("workstation_username")
     response.delete_cookie("current_project")
     return response
 
 
-@router.post("/project/heartbeat")
+@router.post("/project/logout")
+def legacy_logout(request: Request):
+    return logout(request)
+
+
+@router.post("/team/heartbeat")
 def heartbeat(request: Request):
     workspace = workspace_path()
     username = unquote(request.cookies.get("workstation_username") or "").strip()
@@ -490,6 +524,11 @@ def heartbeat(request: Request):
         "ok": True,
         "users": user_items(read_online_users(workspace), read_user_projects(workspace), project_names),
     }
+
+
+@router.post("/project/heartbeat")
+def legacy_heartbeat(request: Request):
+    return heartbeat(request)
 
 
 @router.post("/project")
@@ -551,13 +590,15 @@ def delete_project(directory: str):
 @router.get("/project/{directory}")
 def project_detail(directory: str, request: Request):
     workspace = workspace_path()
-    username = current_username(request, workspace)
+    is_team_mode = team_mode_enabled()
+    username = current_username(request, workspace) if is_team_mode else ""
     path = project_dir(workspace, directory)
     if path is None or not path.is_dir():
         return project_redirect("项目不存在")
 
     ensure_project_structure(path)
-    write_user_project(workspace, username, directory)
+    if is_team_mode:
+        write_user_project(workspace, username, directory)
     try:
         meta = read_project_meta(path, read_project_registry(workspace))
         image_count = count_files(path / "images", IMAGE_EXTS)

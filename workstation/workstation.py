@@ -1080,6 +1080,7 @@ class Workstation:
       <span class="shortcut-key">⌘D</span><span class="shortcut-desc">删除当前标注</span>
       <span class="shortcut-key">DEL</span><span class="shortcut-desc">删除选中的 box</span>
       <span class="shortcut-key">⌘R</span><span class="shortcut-desc">重置当前操作</span>
+      <span class="shortcut-key">⌘～ / ⌘` / ⌘0-9</span><span class="shortcut-desc">选择对应索引的标签</span>
       <span class="shortcut-key">ESC</span><span class="shortcut-desc">还原图片缩放 / 关闭快捷键窗口</span>
       <span class="shortcut-key">滚轮</span><span class="shortcut-desc">快速放大或缩小图片</span>
       <span class="shortcut-key">双击图像标题</span><span class="shortcut-desc">隐藏或显示左右栏</span>
@@ -1939,6 +1940,30 @@ class Workstation:
       if (row) row.classList.add("active");
     }
 
+    function selectClassByShortcut(classId) {
+      const row = Array.from(document.querySelectorAll(".label-row"))
+        .find(item => Number(item.dataset.classId) === classId);
+      if (!row) return false;
+      selectClassLabel(classId, row.dataset.label || classLabels[classId] || String(classId), row);
+      row.scrollIntoView({block: "nearest"});
+      return true;
+    }
+
+    function labelShortcutIndex(event) {
+      const key = String(event.key || "").toLowerCase();
+      const code = String(event.code || "");
+      const keyCode = event.keyCode || event.which || 0;
+      if (
+        key === "0" || key === "`" || key === "~" || key === "～" || key === "·" ||
+        key === "º" || key === "§" || key === "±" ||
+        code === "Backquote" || code === "Digit0" || code === "Numpad0" || code === "IntlBackslash" ||
+        keyCode === 192 || keyCode === 48 || keyCode === 96
+      ) {
+        return 0;
+      }
+      return /^[1-9]$/.test(key) ? Number(key) : null;
+    }
+
     function updateAnnotationButtons() {
       editModeToggle.classList.toggle("active", annotateMode);
       editModeToggle.querySelector(".header-icon").textContent = annotateMode ? "●" : "◌";
@@ -1980,6 +2005,8 @@ class Workstation:
           const row = document.createElement("button");
           row.type = "button";
           row.className = "label-row";
+          row.dataset.classId = String(index);
+          row.dataset.label = label;
           row.innerHTML = `<span class="swatch" style="background:${colors[index % colors.length]}"></span><span>${index}: ${escapeHtml(label)}</span>`;
           row.onclick = () => selectClassLabel(index, label, row);
           labelsEl.appendChild(row);
@@ -2141,7 +2168,7 @@ class Workstation:
     async function updateProjectHeartbeat() {
       if (!window.yoloutilsUsername) return;
       try {
-        const response = await fetch("/project/heartbeat", {method: "POST"});
+        const response = await fetch("/team/heartbeat", {method: "POST"});
         const data = await response.json().catch(() => ({}));
         if (!response.ok || !data.ok) return;
         window.yoloutilsOnlineUsers = data.users || [];
@@ -2538,7 +2565,11 @@ class Workstation:
         }
         if (!(event.metaKey || event.ctrlKey)) return;
         const key = event.key.toLowerCase();
-        if (key === "d") {
+        const labelShortcut = labelShortcutIndex(event);
+        if (labelShortcut !== null) {
+          event.preventDefault();
+          selectClassByShortcut(labelShortcut);
+        } else if (key === "d") {
           event.preventDefault();
           if (!deleteAnnotation.disabled) deleteAnnotation.click();
         } else if (key === "m") {

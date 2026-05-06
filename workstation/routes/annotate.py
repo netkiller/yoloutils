@@ -26,7 +26,7 @@ class SiteWorkstation(Workstation):
     def _directory_tree(self, path: Path):
         tree = super()._directory_tree(path)
         if path == self.workspace and path.name == "images":
-            tree["name"] = "根目录"
+            tree["name"] = getattr(self, "root_label", "") or "根目录"
         return tree
 
 
@@ -157,6 +157,23 @@ def project_images_workspace(project: str):
     return images_dir.resolve()
 
 
+def project_display_name(project: str):
+    if not project:
+        return "根目录"
+    workspace = site_workspace()
+    project_dir = (workspace / project).resolve()
+    if project_dir == workspace or not is_inside(project_dir, workspace):
+        return project
+    meta_file = project_dir / ".project"
+    if not meta_file.is_file():
+        return project_dir.name
+    try:
+        data = json.loads(meta_file.read_text(encoding="utf-8"))
+        return str(data.get("name") or project_dir.name)
+    except (OSError, json.JSONDecodeError):
+        return project_dir.name
+
+
 def write_error_log(workstation: Workstation, error: Exception):
     workspace = workstation.workspace if workstation.workspace else PROJECT_ROOT
     log_file = workspace / ".yoloutils-annotate-error.log"
@@ -202,7 +219,7 @@ def workstation_html(workstation: Workstation, active_mode: str = "annotate", pr
             f'<span class="enterprise-link" style="width:34px;height:34px;display:inline-flex;align-items:center;justify-content:center;padding:0;border-radius:50%;font-size:18px;font-weight:400;line-height:1;background:{user_color(username)};color:#fff">'
             f'{html_escape(username[:1])}</span>'
             f'<span class="enterprise-link">{escaped_username}</span>'
-            '<form method="post" action="/project/logout" style="margin:0"><button class="enterprise-link" type="submit">注销</button></form>',
+            '<form method="post" action="/team/logout" style="margin:0"><button class="enterprise-link" type="submit">注销</button></form>',
             1,
         )
         .replace(
@@ -353,6 +370,7 @@ def create_workstation():
     workstation.mdns = workstation._normalize_mdns(
         os.environ.get("YOLOUTILS_MDNS", "netkiller.local")
     )
+    workstation.root_label = "根目录"
     workstation.class_groups = workstation._load_class_groups()
     workstation.classes_file = (
         workstation.class_groups[0]["path"] if workstation.class_groups else None
@@ -366,6 +384,7 @@ def create_workstation():
 def apply_project_workspace(workstation: Workstation, project: str):
     images_dir = project_images_workspace(project)
     workstation.workspace = images_dir if images_dir is not None else site_workspace()
+    workstation.root_label = project_display_name(project) if images_dir is not None else "根目录"
     workstation.class_groups = workstation._load_class_groups()
     workstation.classes_file = (
         workstation.class_groups[0]["path"] if workstation.class_groups else None
@@ -405,10 +424,11 @@ def create_annotate_app():
     def index(request: Request):
         try:
             username = current_username(request)
-            if not username:
-                return RedirectResponse(url="/project", status_code=status.HTTP_303_SEE_OTHER)
-            project = request.query_params.get("project", "")
-            write_user_project(username, project)
+            if team_mode_enabled() and not username:
+                return RedirectResponse(url="/team", status_code=status.HTTP_303_SEE_OTHER)
+            project = request.query_params.get("project") or request.cookies.get("current_project", "")
+            if team_mode_enabled():
+                write_user_project(username, project)
             apply_project_workspace(workstation, project)
             response = HTMLResponse(workstation_html(workstation, "annotate", project, username))
             if project:

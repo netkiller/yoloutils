@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block title %}团队{% endblock %}
+
+{% block styles %}
+  <link rel="stylesheet" href="/static/css/project.css?v=20260506-team">
+{% endblock %}
+
+{% block content %}
+  <main>
+    <section class="toolbar" aria-labelledby="team-title">
+      <div>
+        <h1 id="team-title">登陆工作站</h1>
+        <p class="project-description muted">团队协作模式下，进入工作站前需要使用一个在线用户名。</p>
+      </div>
+    </section>
+
+    {% if error %}
+      <p class="error">{{ error }}</p>
+    {% endif %}
+
+    <section class="team-login-card">
+      <form class="login-form" method="post" action="/team/login">
+        <div class="login-layout">
+          <section class="online-users" aria-labelledby="online-users-title">
+            <h2 id="online-users-title">在线用户</h2>
+            <div class="online-user-card">
+              {% if online_users %}
+                <div class="online-user-list" data-login-user-list>
+                  {% for user in online_users %}
+                    <div class="online-user" title="{{ user.name }}">
+                      <span class="online-user-dot" style="--user-color: {{ user.color }}" aria-hidden="true">{{ user.initial }}</span>
+                      <span class="online-user-name">{{ user.name }}</span>
+                    </div>
+                  {% endfor %}
+                </div>
+              {% else %}
+                <p data-login-empty>暂无在线用户</p>
+              {% endif %}
+            </div>
+          </section>
+          <section class="login-fields">
+            {% if username %}
+              <div class="current-user-card">
+                <span class="online-user-dot" style="--user-color: {{ username_color }}" aria-hidden="true">{{ username_initial }}</span>
+                <div>
+                  <strong>{{ username }}</strong>
+                  <span>当前已登录</span>
+                </div>
+              </div>
+              <div class="dialog-actions login-actions">
+                <a class="close-project-link" href="/project">进入项目</a>
+              </div>
+            {% else %}
+              <label>
+                <span>用户名</span>
+                <input name="username" type="text" autocomplete="name" required autofocus>
+              </label>
+              <div class="dialog-actions login-actions">
+                <button type="submit">进入</button>
+              </div>
+            {% endif %}
+          </section>
+        </div>
+      </form>
+    </section>
+  </main>
+
+  {% set footer_id = "stats" %}
+  {% set footer_left = workspace %}
+  {% include "partials/footer.html" %}
+
+  <script src="/static/js/project.js?v=20260506-team"></script>
+{% endblock %}

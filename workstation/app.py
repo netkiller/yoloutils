@@ -2,6 +2,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+from starlette.requests import Request
 from starlette.responses import RedirectResponse
 
 from routes.annotate import create_annotate_app
@@ -27,8 +28,9 @@ def index():
 
 
 @app.get("/annotate", include_in_schema=False)
-def annotate():
-    return RedirectResponse(url="/annotate/")
+def annotate(request: Request):
+    query = f"?{request.url.query}" if request.url.query else ""
+    return RedirectResponse(url=f"/annotate/{query}")
 
 
 app.mount("/annotate", create_annotate_app())

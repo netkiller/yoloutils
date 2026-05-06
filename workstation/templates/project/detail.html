@@ -3,7 +3,7 @@
 {% block title %}项目 {{ project.name }}{% endblock %}
 
 {% block styles %}
-  <link rel="stylesheet" href="/static/css/project.css?v=20260504-sftp-card">
+  <link rel="stylesheet" href="/static/css/project.css?v=20260506-rsync">
 {% endblock %}
 
 {% block content %}
@@ -81,16 +81,23 @@
         </div>
         <a class="action-link{% if not project.has_models %} disabled{% endif %}" href="/train" data-model-action>去推理</a>
       </article>
+    </section>
 
-      <article class="upload-panel sftp-panel" data-sftp-path="{{ project.path }}">
+    <section class="sftp-panel" data-sftp-path="{{ project.path }}">
+      <div class="panel-head">
+        <h2>使用 SFTP 上传</h2>
+        <button class="copy-icon-button" type="button" data-copy-sftp title="复制 SFTP URL" aria-label="复制 SFTP URL">⎘</button>
+      </div>
+      <div class="sftp-url-card">
+        <span data-sftp-url>sftp://{{ project.path }}</span>
+      </div>
+      <div class="sftp-command-grid">
         <div class="panel-head">
-          <h2>使用 SFTP 上传</h2>
-          <button class="copy-icon-button" type="button" data-copy-sftp title="复制 SFTP URL" aria-label="复制 SFTP URL">⎘</button>
+          <h2>使用 Rsync 上传</h2>
+          <button class="copy-icon-button" type="button" data-copy-rsync title="复制 rsync 命令" aria-label="复制 rsync 命令">⎘</button>
         </div>
-        <div class="sftp-url-card">
-          <span data-sftp-url>sftp://{{ project.path }}</span>
-        </div>
-      </article>
+        <code data-rsync-source="./images/" data-rsync-path="{{ project.path }}/images/" data-rsync-command></code>
+      </div>
     </section>
   </main>
 
@@ -115,5 +122,5 @@
   {% set footer_left = project.path %}
   {% include "partials/footer.html" %}
 
-  <script src="/static/js/project.js?v=20260504-sftp-card"></script>
+  <script src="/static/js/project.js?v=20260506-rsync"></script>
 {% endblock %}

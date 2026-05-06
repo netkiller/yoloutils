@@ -131,48 +131,6 @@
     </form>
   </dialog>
 
-  {% if login_required %}
-    <div class="login-backdrop" aria-hidden="true"></div>
-  {% endif %}
-  <dialog id="loginDialog" class="project-dialog login-dialog" {% if login_required %}open{% endif %}>
-    <form class="login-form" method="post" action="/project/login">
-      <div class="dialog-head">
-        <h2>登陆工作站</h2>
-      </div>
-      {% if error and login_required %}
-        <p class="error">{{ error }}</p>
-      {% endif %}
-      <div class="login-layout">
-        <section class="online-users" aria-labelledby="online-users-title">
-          <h3 id="online-users-title">在线用户</h3>
-          <div class="online-user-card">
-            {% if online_users %}
-              <div class="online-user-list" data-login-user-list>
-                {% for user in online_users %}
-                  <div class="online-user" title="{{ user.name }}">
-                    <span class="online-user-dot" style="--user-color: {{ user.color }}" aria-hidden="true">{{ user.initial }}</span>
-                    <span class="online-user-name">{{ user.name }}</span>
-                  </div>
-                {% endfor %}
-              </div>
-            {% else %}
-              <p data-login-empty>暂无在线用户</p>
-            {% endif %}
-          </div>
-        </section>
-        <section class="login-fields">
-          <label>
-            <span>用户名</span>
-            <input name="username" type="text" autocomplete="name" required autofocus>
-          </label>
-          <div class="dialog-actions login-actions">
-            <button type="submit">进入</button>
-          </div>
-        </section>
-      </div>
-    </form>
-  </dialog>
-
   <dialog id="editProjectDialog" class="project-dialog">
     <form id="editProjectForm" method="post">
       <div class="dialog-head">

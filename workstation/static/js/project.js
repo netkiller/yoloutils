@@ -7,6 +7,27 @@ const classesForm = document.getElementById("classesForm");
 const editClassesButton = document.getElementById("editClassesButton");
 const sftpPanel = document.querySelector("[data-sftp-path]");
 
+function copyFeedback(button, text) {
+  if (!button || !text) {
+    return;
+  }
+  navigator.clipboard.writeText(text).then(() => {
+    button.textContent = "✓";
+    setTimeout(() => { button.textContent = "⎘"; }, 1200);
+  }).catch(() => {
+    button.textContent = "!";
+    setTimeout(() => { button.textContent = "⎘"; }, 1200);
+  });
+}
+
+function remoteHost() {
+  return window.location.hostname || "127.0.0.1";
+}
+
+function remotePath(path) {
+  return `${remoteHost()}:${path.startsWith("/") ? "" : "/"}${path}`;
+}
+
 function escapeHtml(value) {
   return String(value || "").replace(/[&<>"']/g, (char) => ({
     "&": "&amp;",
@@ -54,7 +75,7 @@ async function heartbeat() {
     return;
   }
   try {
-    const response = await fetch("/project/heartbeat", {method: "POST"});
+    const response = await fetch("/team/heartbeat", {method: "POST"});
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.ok) {
       return;
@@ -72,21 +93,22 @@ if (sftpPanel) {
   const target = sftpPanel.querySelector("[data-sftp-url]");
   const button = sftpPanel.querySelector("[data-copy-sftp]");
   const path = sftpPanel.dataset.sftpPath || "";
-  const host = window.location.hostname || "127.0.0.1";
-  const url = `sftp://${host}${path.startsWith("/") ? "" : "/"}${path}`;
+  const url = `sftp://${remoteHost()}${path.startsWith("/") ? "" : "/"}${path}`;
   if (target) target.textContent = url;
-  button?.addEventListener("click", async () => {
-    if (!url) return;
-    try {
-      await navigator.clipboard.writeText(url);
-      button.textContent = "✓";
-      setTimeout(() => { button.textContent = "⎘"; }, 1200);
-    } catch (error) {
-      button.textContent = "!";
-      setTimeout(() => { button.textContent = "⎘"; }, 1200);
-    }
+  button?.addEventListener("click", () => {
+    copyFeedback(button, url);
   });
 }
+
+document.querySelectorAll("[data-rsync-command]").forEach((target) => {
+  const container = target.closest("[data-rsync-path]") || target;
+  const source = container.dataset.rsyncSource || "./";
+  const path = container.dataset.rsyncPath || "";
+  const command = `rsync -avz ${source} ${remotePath(path)}`;
+  const button = target.closest(".sftp-command-grid, .command-card")?.querySelector("[data-copy-rsync]");
+  target.textContent = command;
+  button?.addEventListener("click", () => copyFeedback(button, command));
+});
 
 if (createDialog && openCreateDialog) {
   openCreateDialog.addEventListener("click", () => createDialog.showModal());
