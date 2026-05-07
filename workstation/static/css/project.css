@@ -78,6 +78,10 @@ textarea {
   background: var(--panel);
 }
 
+.project-users-panel {
+  margin-bottom: 16px;
+}
+
 .team-user-list {
   display: grid;
   align-content: start;
@@ -384,9 +388,38 @@ textarea {
   gap: 16px;
 }
 
+.team-chat-layout {
+  min-height: 0;
+  height: 100%;
+  display: grid;
+  grid-template-columns: 240px minmax(420px, 1fr);
+  align-items: stretch;
+  gap: 16px;
+}
+
+main.team-main {
+  width: min(1280px, calc(100vw - 32px));
+  height: calc(100dvh - 84px);
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+main.team-main > .team-chat-layout {
+  grid-template-columns: 240px minmax(420px, 1fr);
+}
+
+.team-page-card {
+  min-height: 0;
+  height: 100%;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
 .online-users,
 .login-fields {
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   align-content: start;
   gap: 8px;
 }
@@ -396,18 +429,20 @@ textarea {
   font-size: 13px;
 }
 
-.online-users h3 {
+.online-users h2 {
   margin: 0;
   color: var(--text);
-  font-size: 13px;
+  font-size: 15px;
 }
 
 .online-user-card {
   min-height: 180px;
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #f8fafc;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  overflow: auto;
 }
 
 .online-users p {
@@ -417,17 +452,28 @@ textarea {
 .online-user-list {
   display: grid;
   align-content: start;
-  gap: 4px;
+  gap: 6px;
 }
 
 .online-user {
   min-width: 0;
-  min-height: 26px;
+  height: 40px;
   display: flex;
   align-items: center;
   gap: 8px;
+  padding: 4px 8px;
+  border: 1px solid #e6edf5;
+  border-radius: 8px;
+  background: #f8fafc;
   overflow: hidden;
   white-space: nowrap;
+}
+
+.online-user .online-user-dot {
+  width: 28px;
+  height: 28px;
+  flex-basis: 28px;
+  font-size: 15px;
 }
 
 .online-user-dot {
@@ -468,6 +514,131 @@ textarea {
 .current-user-card strong,
 .current-user-card span {
   display: block;
+}
+
+.team-chat {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  padding: 0;
+}
+
+.team-chat-head {
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--line);
+  background: #f8fafc;
+}
+
+.team-chat-head h2 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.team-chat-head span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.team-chat-messages {
+  min-height: 0;
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  padding: 14px;
+  overflow: auto;
+  background: #ffffff;
+}
+
+.team-chat-message {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.team-chat-message.mine {
+  grid-template-columns: minmax(0, 1fr) 34px;
+}
+
+.team-chat-message.mine .online-user-dot {
+  grid-column: 2;
+}
+
+.team-chat-message.mine > div {
+  grid-column: 1;
+  grid-row: 1;
+  justify-self: end;
+}
+
+.team-chat-message > div {
+  max-width: min(680px, 86%);
+}
+
+.team-chat-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.team-chat-message.mine .team-chat-meta {
+  justify-content: flex-end;
+}
+
+.team-chat-meta strong {
+  color: var(--text);
+}
+
+.team-chat-meta time {
+  color: #7b8794;
+}
+
+.team-chat-message p {
+  margin: 0;
+  padding: 9px 11px;
+  border: 1px solid #e6edf5;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.team-chat-message.mine p {
+  border-color: #bfdbfe;
+  background: #dbeafe;
+}
+
+.team-chat-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 10px;
+  padding: 12px;
+  border-top: 1px solid var(--line);
+  background: #f8fafc;
+}
+
+.team-chat-form textarea {
+  width: 100%;
+  min-height: 56px;
+  max-height: 96px;
+  resize: none;
+  line-height: 1.35;
+}
+
+.team-chat-form button {
+  height: 56px;
+  min-width: 76px;
 }
 
 .current-user-card span {
@@ -844,6 +1015,11 @@ textarea {
 
   .login-layout {
     grid-template-columns: 1fr;
+  }
+
+  .team-chat-layout {
+    grid-template-columns: 240px minmax(420px, 1fr);
+    overflow-x: auto;
   }
 
   form {

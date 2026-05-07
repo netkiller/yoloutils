@@ -6,14 +6,15 @@
       <form class="logout-form" method="post" action="/team/logout">
         <button type="submit">注销</button>
       </form>
+      {% if current_project %}
+        <a class="close-current-project" href="/project" title="关闭当前项目"><span class="nav-icon">×</span><span>关闭项目</span></a>
+      {% endif %}
     {% else %}
       <strong>Yolo Workstation</strong>
     {% endif %}
   </div>
   <nav aria-label="主导航">
-    {% if is_team_mode %}
-      <a{% if active_page == "team" %} class="active"{% endif %} href="/team"><span class="nav-icon">◌</span><span>团队</span></a>
-    {% endif %}
+    <a{% if active_page == "team" %} class="active"{% endif %} href="/team{% if current_project %}?project={{ current_project }}{% endif %}"><span class="nav-icon">◌</span><span>团队</span></a>
     <a{% if active_page == "project" %} class="active"{% endif %} href="{% if current_project %}/project/{{ current_project }}{% else %}/project{% endif %}"><span class="nav-icon">▤</span><span>项目</span></a>
     {% if current_project %}
       {% if project_ready | default(true) %}

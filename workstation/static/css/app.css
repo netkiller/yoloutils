@@ -90,9 +90,14 @@ header {
   align-items: center;
 }
 
-.logout-form button {
+.logout-form button,
+.brand-title .close-current-project {
   height: 30px;
   min-width: 62px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
   padding: 0 9px;
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -100,9 +105,16 @@ header {
   color: #334e68;
   font-size: 12px;
   line-height: 1;
+  text-decoration: none;
 }
 
-.logout-form button:hover {
+.brand-title .close-current-project,
+.brand-title .close-current-project:visited {
+  color: #334e68;
+}
+
+.logout-form button:hover,
+.brand-title .close-current-project:hover {
   background: #e6f0ff;
   color: #243b53;
 }

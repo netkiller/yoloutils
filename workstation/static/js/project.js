@@ -24,8 +24,17 @@ function remoteHost() {
   return window.location.hostname || "127.0.0.1";
 }
 
+function remoteUser() {
+  return document.querySelector("[data-remote-user]")?.dataset.remoteUser || "";
+}
+
+function remoteAuthority() {
+  const user = remoteUser();
+  return `${user ? `${user}@` : ""}${remoteHost()}`;
+}
+
 function remotePath(path) {
-  return `${remoteHost()}:${path.startsWith("/") ? "" : "/"}${path}`;
+  return `${remoteAuthority()}:${path.startsWith("/") ? "" : "/"}${path}`;
 }
 
 function escapeHtml(value) {
@@ -43,17 +52,26 @@ function renderOnlineUsers(users) {
   const loginList = document.querySelector("[data-login-user-list]");
   const renderDot = (user) => `<span class="online-user-dot" style="--user-color: ${escapeHtml(user.color)}" aria-hidden="true">${escapeHtml(user.initial)}</span>`;
   if (teamList) {
-    teamList.innerHTML = users.length
-      ? users.map((user) => `
+    const currentProject = teamList.dataset.currentProject || "";
+    const visibleUsers = currentProject
+      ? users.filter((user) => user.project === currentProject)
+      : users;
+    teamList.innerHTML = visibleUsers.length
+      ? visibleUsers.map((user) => `
         <article class="team-user" title="${escapeHtml(user.name)}">
           ${renderDot(user)}
           <div>
             <strong>${escapeHtml(user.name)}</strong>
-            <span>${user.project ? `参与项目：${escapeHtml(user.project_name || user.project)}` : "未打开项目"}</span>
+            <span>${currentProject ? "正在打开项目" : (user.project ? `参与项目：${escapeHtml(user.project_name || user.project)}` : "未打开项目")}</span>
           </div>
         </article>
       `).join("")
-      : '<div class="empty compact" data-team-empty>暂无在线用户</div>';
+      : `<div class="empty compact" data-team-empty>${currentProject ? "暂无在线用户打开该项目" : "暂无在线用户"}</div>`;
+    if (currentProject) {
+      document.querySelectorAll("[data-online-count]").forEach((item) => {
+        item.textContent = `${visibleUsers.length}`;
+      });
+    }
   }
   if (loginList) {
     loginList.innerHTML = users.length
@@ -89,11 +107,90 @@ async function heartbeat() {
 heartbeat();
 setInterval(heartbeat, 15000);
 
+const teamChat = document.querySelector("[data-team-chat]");
+const teamChatMessages = document.querySelector("[data-team-chat-messages]");
+const teamChatForm = document.querySelector("[data-team-chat-form]");
+
+function renderTeamChat(messages) {
+  if (!teamChat || !teamChatMessages) {
+    return;
+  }
+  const currentUser = teamChat.dataset.currentUser || "";
+  teamChatMessages.innerHTML = messages.length
+    ? messages.map((message) => `
+      <article class="team-chat-message${message.username === currentUser ? " mine" : ""}">
+        <span class="online-user-dot" style="--user-color: ${escapeHtml(message.color)}" aria-hidden="true">${escapeHtml(message.initial)}</span>
+        <div>
+          <div class="team-chat-meta"><strong>${escapeHtml(message.username)}</strong><time>${escapeHtml(message.time)}</time></div>
+          <p>${escapeHtml(message.message)}</p>
+        </div>
+      </article>
+    `).join("")
+    : '<div class="empty compact" data-team-chat-empty>暂无聊天消息</div>';
+  teamChatMessages.scrollTop = teamChatMessages.scrollHeight;
+}
+
+async function loadTeamChat() {
+  if (!teamChat) {
+    return;
+  }
+  try {
+    const response = await fetch("/team/chat", {cache: "no-store"});
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) {
+      return;
+    }
+    renderTeamChat(data.messages || []);
+  } catch (error) {
+    // The next refresh will retry.
+  }
+}
+
+if (teamChatForm) {
+  teamChatForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const input = teamChatForm.elements.message;
+    const message = input.value.trim();
+    if (!message) {
+      input.focus();
+      return;
+    }
+    input.disabled = true;
+    try {
+      const response = await fetch("/team/chat", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({message}),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.ok) {
+        alert(data.error || "发送失败");
+        return;
+      }
+      input.value = "";
+      renderTeamChat(data.messages || []);
+    } catch (error) {
+      alert("发送失败");
+    } finally {
+      input.disabled = false;
+      input.focus();
+    }
+  });
+  teamChatForm.elements.message?.addEventListener("keydown", (event) => {
+    if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+      event.preventDefault();
+      teamChatForm.requestSubmit();
+    }
+  });
+  loadTeamChat();
+  setInterval(loadTeamChat, 3000);
+}
+
 if (sftpPanel) {
   const target = sftpPanel.querySelector("[data-sftp-url]");
   const button = sftpPanel.querySelector("[data-copy-sftp]");
   const path = sftpPanel.dataset.sftpPath || "";
-  const url = `sftp://${remoteHost()}${path.startsWith("/") ? "" : "/"}${path}`;
+  const url = `sftp://${remoteAuthority()}${path.startsWith("/") ? "" : "/"}${path}`;
   if (target) target.textContent = url;
   button?.addEventListener("click", () => {
     copyFeedback(button, url);
@@ -159,6 +256,7 @@ if (classesDialog && classesForm && editClassesButton) {
     if (status) status.textContent = "已上传";
     const buttonLabel = document.querySelector("[data-classes-edit-label]");
     if (buttonLabel) buttonLabel.textContent = "编辑";
+    window.yoloutilsReloadFooterConsole?.();
     classesDialog.close();
   });
 }
@@ -319,6 +417,7 @@ async function uploadFiles(zone, files) {
       const buttonLabel = document.querySelector("[data-classes-edit-label]");
       if (buttonLabel) buttonLabel.textContent = "编辑";
     }
+    window.yoloutilsReloadFooterConsole?.();
   } catch (error) {
     alert(error.message);
   } finally {

@@ -23,7 +23,7 @@
     <span>ESC</span><span>关闭弹窗或还原图片缩放</span>
   </div>
 </div>
-<section class="footer-console" data-footer-console hidden>
+<section class="footer-console" data-footer-console{% if footer_console_url %} data-footer-console-url="{{ footer_console_url }}"{% endif %} hidden>
   <pre>控制台暂无输出</pre>
 </section>
 <script>
@@ -41,11 +41,37 @@
       if (event.key === "Escape" && popover && !popover.hidden) popover.hidden = true;
     });
   })();
-  document.querySelector("[data-footer-console-toggle]")?.addEventListener("click", (event) => {
+  (() => {
+    const toggle = document.querySelector("[data-footer-console-toggle]");
     const panel = document.querySelector("[data-footer-console]");
-    if (!panel) return;
-    const open = panel.hasAttribute("hidden");
-    panel.toggleAttribute("hidden", !open);
-    event.currentTarget.classList.toggle("active", open);
-  });
+    const output = panel?.querySelector("pre");
+    async function loadConsole() {
+      if (!panel || !output || !panel.dataset.footerConsoleUrl) {
+        return;
+      }
+      output.textContent = "正在读取控制台日志...";
+      try {
+        const response = await fetch(panel.dataset.footerConsoleUrl, {cache: "no-store"});
+        const data = await response.json();
+        if (!response.ok || !data.ok) {
+          output.textContent = data.error || "控制台日志读取失败";
+          return;
+        }
+        const lines = data.lines || [];
+        output.textContent = lines.length
+          ? [`日志文件：${data.file}`, "", ...lines].join("\n")
+          : `日志文件：${data.file}\n\n暂无上传日志`;
+      } catch (error) {
+        output.textContent = "控制台日志读取失败";
+      }
+    }
+    window.yoloutilsReloadFooterConsole = loadConsole;
+    toggle?.addEventListener("click", (event) => {
+      if (!panel) return;
+      const open = panel.hasAttribute("hidden");
+      panel.toggleAttribute("hidden", !open);
+      event.currentTarget.classList.toggle("active", open);
+      if (open) loadConsole();
+    });
+  })();
 </script>

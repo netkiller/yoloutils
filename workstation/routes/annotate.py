@@ -157,6 +157,16 @@ def project_images_workspace(project: str):
     return images_dir.resolve()
 
 
+def project_root_workspace(project: str):
+    if not project:
+        return None
+    workspace = site_workspace()
+    project_dir = (workspace / project).resolve()
+    if project_dir == workspace or not is_inside(project_dir, workspace):
+        return None
+    return project_dir if project_dir.is_dir() else None
+
+
 def project_display_name(project: str):
     if not project:
         return "根目录"
@@ -191,10 +201,21 @@ def workstation_html(workstation: Workstation, active_mode: str = "annotate", pr
     online_users = user_items(read_online_users())
     project_url = f"/project/{quote(project, safe='')}" if project else "/project"
     project_query = f"?project={quote(project, safe='')}" if project else ""
+    team_url = f"/team{project_query}" if project else "/team"
+    close_project_button = (
+        '<button class="enterprise-link" type="button" title="关闭当前项目" onclick="location.href=\'/project\'">'
+        '<span class="header-icon">×</span><span>关闭项目</span></button>'
+        if project else ""
+    )
     project_button = (
         '<button id="projectButton" class="header-button" '
         f'title="项目" onclick="location.href=\'{project_url}\'">'
         '<span class="header-icon">▤</span><span>项目</span></button>'
+    )
+    team_button = (
+        '<button id="teamButton" class="header-button" title="团队" '
+        f'onclick="location.href=\'{team_url}\'">'
+        '<span class="header-icon">◌</span><span>团队</span></button>'
     )
     html = (
         html.replace('"/api/', '"/annotate/api/')
@@ -219,7 +240,8 @@ def workstation_html(workstation: Workstation, active_mode: str = "annotate", pr
             f'<span class="enterprise-link" style="width:34px;height:34px;display:inline-flex;align-items:center;justify-content:center;padding:0;border-radius:50%;font-size:18px;font-weight:400;line-height:1;background:{user_color(username)};color:#fff">'
             f'{html_escape(username[:1])}</span>'
             f'<span class="enterprise-link">{escaped_username}</span>'
-            '<form method="post" action="/team/logout" style="margin:0"><button class="enterprise-link" type="submit">注销</button></form>',
+            '<form method="post" action="/team/logout" style="margin:0"><button class="enterprise-link" type="submit">注销</button></form>'
+            f'{close_project_button}',
             1,
         )
         .replace(
@@ -239,7 +261,7 @@ def workstation_html(workstation: Workstation, active_mode: str = "annotate", pr
         )
         .replace(
             '<button id="annotateModeButton"',
-            f'{project_button}<button id="annotateModeButton"',
+            f'{team_button}{project_button}<button id="annotateModeButton"',
             1,
         )
         .replace(
@@ -357,6 +379,7 @@ def create_workstation():
     run = os.environ.get("YOLOUTILS_RUN")
 
     workstation.workspace = site_workspace()
+    workstation.model_root = workstation.workspace
     workstation.dataset = Path(dataset).expanduser().resolve() if dataset else None
     workstation.run = Path(run).expanduser().resolve() if run else None
     workstation.requested_classes_file = os.environ.get("YOLOUTILS_CLASSES") or None
@@ -384,6 +407,7 @@ def create_workstation():
 def apply_project_workspace(workstation: Workstation, project: str):
     images_dir = project_images_workspace(project)
     workstation.workspace = images_dir if images_dir is not None else site_workspace()
+    workstation.model_root = project_root_workspace(project) if images_dir is not None else workstation.workspace
     workstation.root_label = project_display_name(project) if images_dir is not None else "根目录"
     workstation.class_groups = workstation._load_class_groups()
     workstation.classes_file = (

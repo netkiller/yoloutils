@@ -3,14 +3,14 @@
 {% block title %}团队{% endblock %}
 
 {% block styles %}
-  <link rel="stylesheet" href="/static/css/project.css?v=20260506-team">
+  <link rel="stylesheet" href="/static/css/project.css?v=20260507-team-chat-fill">
 {% endblock %}
 
 {% block content %}
-  <main>
+  <main class="team-main">
     <section class="toolbar" aria-labelledby="team-title">
       <div>
-        <h1 id="team-title">登陆工作站</h1>
+        <h1 id="team-title">团队</h1>
         <p class="project-description muted">团队协作模式下，进入工作站前需要使用一个在线用户名。</p>
       </div>
     </section>
@@ -19,50 +19,63 @@
       <p class="error">{{ error }}</p>
     {% endif %}
 
-    <section class="team-login-card">
-      <form class="login-form" method="post" action="/team/login">
-        <div class="login-layout">
-          <section class="online-users" aria-labelledby="online-users-title">
-            <h2 id="online-users-title">在线用户</h2>
-            <div class="online-user-card">
-              {% if online_users %}
-                <div class="online-user-list" data-login-user-list>
-                  {% for user in online_users %}
-                    <div class="online-user" title="{{ user.name }}">
-                      <span class="online-user-dot" style="--user-color: {{ user.color }}" aria-hidden="true">{{ user.initial }}</span>
-                      <span class="online-user-name">{{ user.name }}</span>
-                    </div>
-                  {% endfor %}
+    <section class="team-chat-layout">
+      <section class="online-users team-page-card" aria-labelledby="online-users-title">
+        <h2 id="online-users-title">在线用户</h2>
+        <div class="online-user-card">
+          {% if online_users %}
+            <div class="online-user-list" data-login-user-list>
+              {% for user in online_users %}
+                <div class="online-user" title="{{ user.name }}">
+                  <span class="online-user-dot" style="--user-color: {{ user.color }}" aria-hidden="true">{{ user.initial }}</span>
+                  <span class="online-user-name">{{ user.name }}</span>
                 </div>
-              {% else %}
-                <p data-login-empty>暂无在线用户</p>
-              {% endif %}
+              {% endfor %}
+            </div>
+          {% else %}
+            <p data-login-empty>暂无在线用户</p>
+          {% endif %}
+        </div>
+      </section>
+      {% if username %}
+        <section class="team-chat team-page-card" data-team-chat data-current-user="{{ username }}">
+          <div class="team-chat-head">
+            <h2>聊天</h2>
+            <span>{{ username }}</span>
+          </div>
+          <div class="team-chat-messages" data-team-chat-messages>
+            {% if chat_messages %}
+              {% for message in chat_messages %}
+                <article class="team-chat-message{% if message.username == username %} mine{% endif %}">
+                  <span class="online-user-dot" style="--user-color: {{ message.color }}" aria-hidden="true">{{ message.initial }}</span>
+                  <div>
+                    <div class="team-chat-meta"><strong>{{ message.username }}</strong><time>{{ message.time }}</time></div>
+                    <p>{{ message.message }}</p>
+                  </div>
+                </article>
+              {% endfor %}
+            {% else %}
+              <div class="empty compact" data-team-chat-empty>暂无聊天消息</div>
+            {% endif %}
+          </div>
+          <form class="team-chat-form" data-team-chat-form>
+            <textarea name="message" rows="2" autocomplete="off" placeholder="输入消息" required></textarea>
+            <button type="submit">发送</button>
+          </form>
+        </section>
+      {% else %}
+        <form class="login-form team-page-card" method="post" action="/team/login">
+          <section class="login-fields">
+            <label>
+              <span>用户名</span>
+              <input name="username" type="text" autocomplete="name" required autofocus>
+            </label>
+            <div class="dialog-actions login-actions">
+              <button type="submit">进入</button>
             </div>
           </section>
-          <section class="login-fields">
-            {% if username %}
-              <div class="current-user-card">
-                <span class="online-user-dot" style="--user-color: {{ username_color }}" aria-hidden="true">{{ username_initial }}</span>
-                <div>
-                  <strong>{{ username }}</strong>
-                  <span>当前已登录</span>
-                </div>
-              </div>
-              <div class="dialog-actions login-actions">
-                <a class="close-project-link" href="/project">进入项目</a>
-              </div>
-            {% else %}
-              <label>
-                <span>用户名</span>
-                <input name="username" type="text" autocomplete="name" required autofocus>
-              </label>
-              <div class="dialog-actions login-actions">
-                <button type="submit">进入</button>
-              </div>
-            {% endif %}
-          </section>
-        </div>
-      </form>
+        </form>
+      {% endif %}
     </section>
   </main>
 
@@ -70,5 +83,5 @@
   {% set footer_left = workspace %}
   {% include "partials/footer.html" %}
 
-  <script src="/static/js/project.js?v=20260506-team"></script>
+  <script src="/static/js/project.js?v=20260507-chat"></script>
 {% endblock %}

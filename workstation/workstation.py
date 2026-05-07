@@ -69,6 +69,8 @@ class Workstation:
         self.classes_file = None
         self.class_groups = []
         self.classes = []
+        self.model_root = None
+        self.model_cache = {}
 
     def main(
         self,
@@ -512,6 +514,87 @@ class Workstation:
         result["classes_files"] = len(self.class_groups)
         return result
 
+    def _models_root(self):
+        return (self.model_root or self.workspace).resolve()
+
+    def _model_files(self):
+        root = self._models_root()
+        models_dir = root / "models"
+        if not models_dir.is_dir():
+            return []
+        exts = (".pt", ".onnx", ".engine", ".torchscript", ".tflite", ".mlmodel")
+        models = []
+        for path in sorted(models_dir.rglob("*"), key=lambda item: item.as_posix().lower()):
+            if not path.is_file() or path.suffix.lower() not in exts:
+                continue
+            stat = path.stat()
+            models.append(
+                {
+                    "name": path.stem,
+                    "filename": path.name,
+                    "path": path.relative_to(root).as_posix(),
+                    "size_mb": round(stat.st_size / 1024 / 1024, 2),
+                    "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="minutes"),
+                }
+            )
+        return models
+
+    def _safe_model_path(self, model_path: str):
+        root = self._models_root()
+        path = (root / (model_path or "")).resolve()
+        if path == root or root not in path.parents or not path.is_file():
+            raise HTTPException(status_code=404, detail="model not found")
+        models_dir = (root / "models").resolve()
+        if path != models_dir and models_dir not in path.parents:
+            raise HTTPException(status_code=400, detail="invalid model path")
+        return path
+
+    def _predict_boxes(self, image_path: str, model_path: str):
+        path = self._safe_path(image_path)
+        if not self._is_image(path):
+            raise HTTPException(status_code=404, detail="image not found")
+        model_file = self._safe_model_path(model_path)
+        try:
+            from ultralytics import YOLO
+        except ImportError as error:
+            raise HTTPException(status_code=500, detail="缺少 ultralytics，无法自动识别") from error
+        try:
+            model = self.model_cache.get(str(model_file))
+            if model is None:
+                model = YOLO(str(model_file))
+                self.model_cache[str(model_file)] = model
+            results = model.predict(str(path), verbose=False)
+        except Exception as error:
+            raise HTTPException(status_code=500, detail=f"自动识别失败: {error}") from error
+        boxes = []
+        max_classes = self._max_class_count()
+        for result in results:
+            result_boxes = getattr(result, "boxes", None)
+            if result_boxes is None or result_boxes.cls is None or result_boxes.xywhn is None:
+                continue
+            classes = result_boxes.cls.cpu().tolist()
+            coords = result_boxes.xywhn.cpu().tolist()
+            for index, xywh in enumerate(coords):
+                class_id = int(classes[index])
+                if max_classes and class_id >= max_classes:
+                    continue
+                label = self.classes[class_id] if 0 <= class_id < len(self.classes) else str(class_id)
+                boxes.append(
+                    {
+                        "class_id": class_id,
+                        "label": label,
+                        "cx": float(xywh[0]),
+                        "cy": float(xywh[1]),
+                        "width": float(xywh[2]),
+                        "height": float(xywh[3]),
+                    }
+                )
+        return {
+            "image": self._relative(path),
+            "model": model_file.relative_to(self._models_root()).as_posix(),
+            "boxes": boxes,
+        }
+
     def _read_annotation(self, image_path: str):
         path = self._safe_path(image_path)
         if not self._is_image(path):
@@ -753,6 +836,10 @@ class Workstation:
         def files(directory: str = Query(default="")):
             return {"directory": directory, "files": self._list_files(directory)}
 
+        @app.get("/api/models")
+        def models():
+            return {"models": self._model_files()}
+
         @app.get("/api/classes")
         def classes():
             return {
@@ -843,6 +930,14 @@ class Workstation:
                 str(payload.get("username", "")).strip(),
             )
 
+        @app.post("/api/auto-annotate")
+        async def auto_annotate(request: Request):
+            payload = await request.json()
+            return self._predict_boxes(
+                payload.get("path", ""),
+                str(payload.get("model", "")).strip(),
+            )
+
         @app.post("/api/file/delete")
         async def delete_file(request: Request):
             payload = await request.json()
@@ -882,7 +977,7 @@ class Workstation:
     .header-title { min-width: 0; display: flex; align-items: center; gap: 8px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
     .brand-link { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: #1f2933; text-decoration: none; }
     .brand-link:hover { color: #1d4ed8; }
-    .enterprise-link { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; height: 24px; padding: 0 8px; border: 1px solid #d9e2ec; border-radius: 6px; color: #334e68; background: #fff; font-size: 12px; line-height: 1; text-decoration: none; }
+    .enterprise-link { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: 5px; height: 24px; padding: 0 8px; border: 1px solid #d9e2ec; border-radius: 6px; color: #334e68; background: #fff; font-size: 12px; line-height: 1; text-decoration: none; }
     .enterprise-link:hover { background: #e6f0ff; color: #243b53; }
     .header-modes { display: flex; align-items: center; justify-content: center; gap: 8px; }
     .header-actions { min-width: 0; display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
@@ -908,8 +1003,9 @@ class Workstation:
     .viewer-header { position: relative; }
     .viewer-header h2 { padding-right: 76px; }
     .pane-title-icon { display: inline-block; width: 16px; margin-right: 6px; color: #52606d; font-size: 15px; line-height: 1; font-weight: 500; text-align: center; }
-    .icon-button { flex: 0 0 24px; width: 24px; min-width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; padding: 0; text-align: center; border-radius: 5px; font-size: 14px; color: #52606d; }
+    .icon-button { flex: 0 0 28px; width: 28px; min-width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; padding: 0; text-align: center; border-radius: 6px; font-size: 16px; line-height: 1; color: #52606d; }
     .icon-button:hover { background: #e6f0ff; color: #243b53; }
+    .collapse-button { font-size: 14px; line-height: 1; padding-bottom: 1px; }
     .viewer-tools { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; }
     .tool-button { width: auto; min-width: 34px; height: 28px; padding: 0 8px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid #d9e2ec; border-radius: 6px; background: #fff; color: #334e68; font-size: 12px; line-height: 1; white-space: nowrap; }
     .tool-button:hover { background: #e6f0ff; color: #243b53; }
@@ -925,16 +1021,31 @@ class Workstation:
     .main-splitter { cursor: col-resize; background: #d9e2ec; }
     .main-splitter:hover, .main-splitter.dragging { background: #bcccdc; }
     .tree, .files, .labels, .exif { padding: 8px; }
-    .tree { flex: 4 1 80%; min-height: 0; overflow: auto; }
+    .tree { flex: 1 1 auto; min-height: 0; overflow: auto; }
     .files { flex: 1 1 auto; min-height: 0; overflow: auto; }
-    .collaboration { display: none; flex: 1 1 20%; min-height: 72px; overflow: hidden; border-top: 1px solid #d9e2ec; background: #fff; }
+    .model-pane { flex: 0 0 120px; min-height: 72px; overflow: hidden; border-top: 1px solid #d9e2ec; background: #fff; }
+    .model-list { height: calc(100% - 34px); overflow: auto; display: grid; align-content: start; gap: 2px; padding: 6px 8px; color: #52606d; font-size: 12px; line-height: 1.35; }
+    .model-row { width: 100%; min-height: 28px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; padding: 5px 6px; text-align: left; }
+    .model-row.active { background: #dbeafe; color: #1d4ed8; }
+    .model-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #243b53; }
+    .model-row.active .model-name { color: #1d4ed8; }
+    .model-meta { color: #7b8794; white-space: nowrap; }
+    .model-empty { padding: 4px 0; color: #7b8794; }
+    .panel-splitter { flex: 0 0 5px; height: 5px; cursor: row-resize; border-top: 1px solid #d9e2ec; border-bottom: 1px solid #d9e2ec; background: #edf2f7; }
+    .panel-splitter:hover, .panel-splitter.dragging { background: #bcccdc; }
+    .tree-pane.model-collapsed .model-pane { flex: 0 0 34px; min-height: 34px; }
+    .tree-pane.model-collapsed .model-list { display: none; }
+    .tree-pane.model-collapsed .model-splitter { display: none; }
+    .collaboration { display: none; flex: 0 0 120px; min-height: 72px; overflow: hidden; border-top: 1px solid #d9e2ec; background: #fff; }
     body.team-mode .collaboration { display: block; }
-    .tree-pane.collaboration-collapsed .tree { flex: 1 1 auto; }
+    body:not(.team-mode) .collaboration-splitter { display: none; }
     .tree-pane.collaboration-collapsed .collaboration { flex: 0 0 34px; min-height: 34px; }
     .tree-pane.collaboration-collapsed .collaboration-users { display: none; }
+    .tree-pane.collaboration-collapsed .collaboration-splitter { display: none; }
     .collaboration-header h2 { display: flex; align-items: center; }
+    .pane-title-count { margin-left: 2px; color: #1f2933; font-size: 13px; font-weight: 750; line-height: 1; }
     .collaboration-tools { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 4px; }
-    .online-count { min-width: 16px; color: #1f2933; font-size: 13px; font-weight: 750; line-height: 1; text-align: right; }
+    .online-count { min-width: 0; color: #1f2933; font-size: 13px; font-weight: 750; line-height: 1; text-align: left; }
     .collaboration-users { height: calc(100% - 34px); overflow: auto; display: grid; align-content: start; gap: 2px; padding: 6px 8px; color: #52606d; font-size: 12px; line-height: 1.35; }
     .collaboration-user { display: flex; align-items: center; gap: 7px; min-height: 22px; min-width: 0; overflow: hidden; white-space: nowrap; }
     .collaboration-dot { flex: 0 0 7px; width: 7px; height: 7px; border-radius: 50%; background: var(--user-color, #22c55e); box-shadow: 0 0 0 1px rgba(31, 41, 51, .08); }
@@ -997,9 +1108,6 @@ class Workstation:
     .right-panel.histogram-collapsed .histogram { display: none; }
     .right-pane.exif-pane { flex: 1 1 auto; }
     .right-panel.exif-collapsed .top-info-pane { flex: 1 1 auto; }
-    .right-panel.exif-collapsed .labels-pane { flex: 1 1 auto; }
-    .right-panel.exif-collapsed .histogram-pane { flex: 0 0 34px; }
-    .right-panel.exif-collapsed .histogram-splitter, .right-panel.exif-collapsed .histogram { display: none; }
     .right-panel.exif-collapsed .splitter { display: none; }
     .right-panel.exif-collapsed .exif-pane { flex: 0 0 34px; min-height: 34px; overflow: hidden; }
     .right-panel.exif-collapsed .exif { display: none; }
@@ -1184,12 +1292,22 @@ class Workstation:
           </div>
         </div>
         <div id="tree" class="tree"></div>
+        <div id="modelSplitter" class="panel-splitter model-splitter" title="拖动调整目录和模型高度"></div>
+        <div id="modelPane" class="model-pane">
+          <div class="pane-header">
+            <h2><span class="pane-title-icon">◎</span>模型 <strong id="modelCount" class="pane-title-count">-</strong></h2>
+            <div class="collaboration-tools">
+              <button id="toggleModelPane" class="icon-button collapse-button" title="折叠/展开模型">⌄</button>
+            </div>
+          </div>
+          <div id="modelList" class="model-list"></div>
+        </div>
+        <div id="collaborationSplitter" class="panel-splitter collaboration-splitter" title="拖动调整模型和协作高度"></div>
         <div id="collaboration" class="collaboration">
           <div class="pane-header collaboration-header">
-            <h2><span class="pane-title-icon">◌</span>协作</h2>
+            <h2><span class="pane-title-icon">◌</span>协作 <strong id="onlineCount" class="pane-title-count">-</strong></h2>
             <div class="collaboration-tools">
-              <strong id="onlineCount" class="online-count">-</strong>
-              <button id="toggleCollaboration" class="icon-button" title="折叠/展开协作">⌄</button>
+              <button id="toggleCollaboration" class="icon-button collapse-button" title="折叠/展开协作">⌄</button>
             </div>
           </div>
           <div id="collaborationUsers" class="collaboration-users"></div>
@@ -1237,13 +1355,13 @@ class Workstation:
         </div>
         <div id="histogramSplitter" class="histogram-splitter" title="拖动调整标签和直方图比例"></div>
         <div id="histogramPane" class="histogram-pane">
-          <div class="pane-header"><h2><span class="pane-title-icon">▥</span>直方图</h2><button id="toggleHistogram" class="icon-button" title="折叠/展开直方图">⌄</button></div>
+          <div class="pane-header"><h2><span class="pane-title-icon">▥</span>直方图</h2><button id="toggleHistogram" class="icon-button collapse-button" title="折叠/展开直方图">⌄</button></div>
           <div id="histogram" class="histogram"><canvas id="histogramCanvas"></canvas></div>
         </div>
       </div>
       <div id="splitter" class="splitter" title="拖动调整标签和 EXIF 面板比例"></div>
       <div id="exifPane" class="right-pane exif-pane">
-        <div class="pane-header"><h2><span class="pane-title-icon">※</span>信息</h2><button id="toggleExif" class="icon-button" title="折叠/展开信息">⌄</button></div>
+        <div class="pane-header"><h2><span class="pane-title-icon">※</span>信息</h2><button id="toggleExif" class="icon-button collapse-button" title="折叠/展开信息">⌄</button></div>
         <div id="exif" class="exif"><div class="empty">请选择图片</div></div>
       </div>
     </aside>
@@ -1302,6 +1420,7 @@ class Workstation:
     const histogramCtx = histogramCanvas.getContext("2d");
     const splitter = document.getElementById("splitter");
     const rightPanel = document.getElementById("rightPanel");
+    const exifPane = document.getElementById("exifPane");
     const hideRight = document.getElementById("hideRight");
     const showRight = document.getElementById("showRight");
     const editClasses = document.getElementById("editClasses");
@@ -1331,6 +1450,13 @@ class Workstation:
     const onlineCount = document.getElementById("onlineCount");
     const collaborationUsers = document.getElementById("collaborationUsers");
     const toggleCollaboration = document.getElementById("toggleCollaboration");
+    const modelList = document.getElementById("modelList");
+    const modelCount = document.getElementById("modelCount");
+    const modelPane = document.getElementById("modelPane");
+    const toggleModelPane = document.getElementById("toggleModelPane");
+    const modelSplitter = document.getElementById("modelSplitter");
+    const collaboration = document.getElementById("collaboration");
+    const collaborationSplitter = document.getElementById("collaborationSplitter");
     const consoleToggle = document.getElementById("consoleToggle");
     const consoleSplitter = document.getElementById("consoleSplitter");
     const consoleLog = document.getElementById("consoleLog");
@@ -1375,6 +1501,9 @@ class Workstation:
     const collapsedDirs = new Set();
     let statisticsData = null;
     let histogramExpandedTopHeight = null;
+    let selectedAutoModel = "";
+    let autoAnnotateEnabled = false;
+    let autoAnnotateRunning = false;
 
     async function getJson(url) {
       const response = await fetch(url);
@@ -1659,6 +1788,7 @@ class Workstation:
         resetImageZoom();
         drawHistogram(image);
         redrawImage();
+        runAutoAnnotate();
       };
       image.onerror = () => {
         currentImage = null;
@@ -1947,6 +2077,94 @@ class Workstation:
       selectClassLabel(classId, row.dataset.label || classLabels[classId] || String(classId), row);
       row.scrollIntoView({block: "nearest"});
       return true;
+    }
+
+    function updateAutoAnnotateButton() {
+      const hasModel = Boolean(selectedAutoModel);
+      autoAnnotate.disabled = !hasModel || autoAnnotateRunning;
+      autoAnnotate.classList.toggle("active", hasModel && autoAnnotateEnabled);
+      autoAnnotate.querySelector(".header-icon").textContent = autoAnnotateRunning ? "…" : (autoAnnotateEnabled ? "●" : "◎");
+      autoAnnotate.querySelector("span:last-child").textContent = autoAnnotateRunning ? "识别" : "自动";
+      autoAnnotate.title = hasModel
+        ? (autoAnnotateEnabled ? `自动识别已启用：${selectedAutoModel}` : `自动识别已禁用：${selectedAutoModel}`)
+        : "请选择模型后启用自动识别";
+    }
+
+    function renderAutoModels(models) {
+      modelCount.textContent = models.length;
+      modelList.innerHTML = "";
+      if (!models.length) {
+        modelList.innerHTML = '<div class="model-empty">models 目录暂无模型</div>';
+        selectedAutoModel = "";
+        autoAnnotateEnabled = false;
+        updateAutoAnnotateButton();
+        return;
+      }
+      models.forEach(model => {
+        const row = document.createElement("button");
+        row.type = "button";
+        row.className = "model-row";
+        row.dataset.modelPath = model.path;
+        row.title = model.path;
+        row.innerHTML = `<span class="model-name">${escapeHtml(model.filename)}</span><span class="model-meta">${model.size_mb} MB</span>`;
+        row.onclick = () => selectAutoModel(model.path, row);
+        modelList.appendChild(row);
+      });
+      if (selectedAutoModel) {
+        const active = modelList.querySelector(`[data-model-path="${CSS.escape(selectedAutoModel)}"]`);
+        if (active) active.classList.add("active");
+        else {
+          selectedAutoModel = "";
+          autoAnnotateEnabled = false;
+        }
+      }
+      updateAutoAnnotateButton();
+    }
+
+    async function loadAutoModels() {
+      try {
+        const data = await getJson("/api/models");
+        renderAutoModels(data.models || []);
+      } catch (error) {
+        modelCount.textContent = "!";
+        modelList.innerHTML = `<div class="model-empty">模型加载失败：${escapeHtml(error.message)}</div>`;
+        selectedAutoModel = "";
+        autoAnnotateEnabled = false;
+        updateAutoAnnotateButton();
+      }
+    }
+
+    function selectAutoModel(path, row = null) {
+      selectedAutoModel = path || "";
+      autoAnnotateEnabled = Boolean(selectedAutoModel);
+      document.querySelectorAll(".model-row").forEach(item => item.classList.remove("active"));
+      if (row) row.classList.add("active");
+      updateAutoAnnotateButton();
+      if (currentImage && !currentBoxes.length) runAutoAnnotate();
+    }
+
+    async function runAutoAnnotate() {
+      if (!autoAnnotateEnabled || !selectedAutoModel || !currentPath || lockedByOther || autoAnnotateRunning) return;
+      if (currentBoxes.length) return;
+      const path = currentPath;
+      const model = selectedAutoModel;
+      autoAnnotateRunning = true;
+      updateAutoAnnotateButton();
+      try {
+        const data = await postJson("/api/auto-annotate", {path, model});
+        if (path !== currentPath || model !== selectedAutoModel || !autoAnnotateEnabled) return;
+        const boxes = cloneBoxes(data.boxes || []);
+        if (!boxes.length) return;
+        currentBoxes = boxes;
+        selectedBoxIndex = -1;
+        setBoxesDirty(true);
+        redrawImage();
+      } catch (error) {
+        autoAnnotate.title = error.message || "自动识别失败";
+      } finally {
+        autoAnnotateRunning = false;
+        updateAutoAnnotateButton();
+      }
     }
 
     function labelShortcutIndex(event) {
@@ -2304,6 +2522,7 @@ class Workstation:
       await loadConfig();
       await loadTree();
       await loadLabels();
+      await loadAutoModels();
       await loadStatistics();
       const rootButton = document.querySelector("#tree .tree-select");
       if (rootButton) {
@@ -2781,7 +3000,12 @@ class Workstation:
     }
 
     function initViewerTools() {
-      autoAnnotate.addEventListener("click", showEnterpriseNotice);
+      autoAnnotate.addEventListener("click", () => {
+        if (!selectedAutoModel) return;
+        autoAnnotateEnabled = !autoAnnotateEnabled;
+        updateAutoAnnotateButton();
+        if (autoAnnotateEnabled && currentImage && !currentBoxes.length) runAutoAnnotate();
+      });
       maskAnnotation.addEventListener("click", () => {
         maskEnabled = !maskEnabled;
         maskAnnotation.classList.toggle("active", maskEnabled);
@@ -2845,11 +3069,20 @@ class Workstation:
       window.addEventListener("mousemove", event => {
         if (!dragging || rightPanel.classList.contains("exif-collapsed")) return;
         const rect = rightPanel.getBoundingClientRect();
-        const min = 96;
+        const minTop = 120;
+        const minExif = 72;
         const splitterSize = splitter.getBoundingClientRect().height;
-        const topHeight = Math.min(Math.max(event.clientY - rect.top, min), rect.height - min - splitterSize);
+        const topHeight = Math.min(
+          Math.max(event.clientY - rect.top, minTop),
+          rect.height - minExif - splitterSize,
+        );
+        const exifHeight = Math.max(minExif, rect.height - topHeight - splitterSize);
         topInfoPane.style.flexBasis = `${topHeight}px`;
         topInfoPane.style.flexGrow = "0";
+        topInfoPane.style.flexShrink = "0";
+        exifPane.style.flexBasis = `${exifHeight}px`;
+        exifPane.style.flexGrow = "0";
+        exifPane.style.flexShrink = "0";
         redrawHistogram();
       });
       window.addEventListener("mouseup", () => {
@@ -2893,8 +3126,72 @@ class Workstation:
       requestAnimationFrame(() => drawHistogram(currentImage));
     }
 
+    function visiblePanelHeight(panel) {
+      return panel && panel.offsetParent !== null ? panel.getBoundingClientRect().height : 0;
+    }
+
+    function setPanelHeight(panel, height) {
+      if (!panel) return;
+      panel.style.flexBasis = `${Math.round(height)}px`;
+      panel.style.flexGrow = "0";
+      panel.style.flexShrink = "0";
+    }
+
+    function initTreePaneSplitters() {
+      const minTree = 90;
+      const minPanel = 72;
+      const headerOnly = 34;
+      modelSplitter?.addEventListener("mousedown", event => {
+        if (treePane.classList.contains("model-collapsed")) return;
+        const startY = event.clientY;
+        const startModel = visiblePanelHeight(modelPane);
+        modelSplitter.classList.add("dragging");
+        const onMove = moveEvent => {
+          const rect = treePane.getBoundingClientRect();
+          const collaborationHeight = treePane.classList.contains("collaboration-collapsed")
+            ? headerOnly
+            : visiblePanelHeight(collaboration);
+          const splitters = modelSplitter.getBoundingClientRect().height + visiblePanelHeight(collaborationSplitter);
+          const maxModel = Math.max(minPanel, rect.height - minTree - collaborationHeight - splitters);
+          setPanelHeight(modelPane, Math.min(Math.max(startModel - (moveEvent.clientY - startY), minPanel), maxModel));
+        };
+        const onUp = () => {
+          modelSplitter.classList.remove("dragging");
+          window.removeEventListener("mousemove", onMove);
+          window.removeEventListener("mouseup", onUp);
+        };
+        window.addEventListener("mousemove", onMove);
+        window.addEventListener("mouseup", onUp);
+        event.preventDefault();
+      });
+      collaborationSplitter?.addEventListener("mousedown", event => {
+        if (treePane.classList.contains("collaboration-collapsed")) return;
+        const startY = event.clientY;
+        const startCollaboration = visiblePanelHeight(collaboration);
+        collaborationSplitter.classList.add("dragging");
+        const onMove = moveEvent => {
+          const rect = treePane.getBoundingClientRect();
+          const modelHeight = treePane.classList.contains("model-collapsed")
+            ? headerOnly
+            : visiblePanelHeight(modelPane);
+          const splitters = visiblePanelHeight(modelSplitter) + collaborationSplitter.getBoundingClientRect().height;
+          const maxCollaboration = Math.max(minPanel, rect.height - minTree - modelHeight - splitters);
+          setPanelHeight(collaboration, Math.min(Math.max(startCollaboration - (moveEvent.clientY - startY), minPanel), maxCollaboration));
+        };
+        const onUp = () => {
+          collaborationSplitter.classList.remove("dragging");
+          window.removeEventListener("mousemove", onMove);
+          window.removeEventListener("mouseup", onUp);
+        };
+        window.addEventListener("mousemove", onMove);
+        window.addEventListener("mouseup", onUp);
+        event.preventDefault();
+      });
+    }
+
     function initLeftPanel() {
       let dragging = false;
+      initTreePaneSplitters();
       reloadTree.addEventListener("click", async () => {
         await loadTree();
         await loadStatistics();
@@ -2932,9 +3229,13 @@ class Workstation:
         }
         setMainColumns(520);
       });
+      toggleModelPane.addEventListener("click", () => {
+        const collapsed = treePane.classList.toggle("model-collapsed");
+        toggleModelPane.textContent = collapsed ? "⌃" : "⌄";
+      });
       toggleCollaboration.addEventListener("click", () => {
-        treePane.classList.toggle("collaboration-collapsed");
-        toggleCollaboration.textContent = treePane.classList.contains("collaboration-collapsed") ? "⌃" : "⌄";
+        const collapsed = treePane.classList.toggle("collaboration-collapsed");
+        toggleCollaboration.textContent = collapsed ? "⌃" : "⌄";
       });
     }
 
@@ -3027,6 +3328,7 @@ class Workstation:
       toggleExif.addEventListener("click", () => {
         rightPanel.classList.toggle("exif-collapsed");
         toggleExif.textContent = rightPanel.classList.contains("exif-collapsed") ? "⌃" : "⌄";
+        redrawHistogram();
       });
     }
     init().catch(error => {

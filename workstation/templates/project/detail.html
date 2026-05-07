@@ -24,6 +24,30 @@
       <p class="error">{{ error }}</p>
     {% endif %}
 
+    {% if is_team_mode %}
+      <aside class="team-users-panel project-users-panel" aria-labelledby="project-users-title">
+        <div class="list-head">
+          <h2 id="project-users-title">打开该项目的用户</h2>
+          <span class="count"><span data-online-count>{{ project_users | length }}</span> 人</span>
+        </div>
+        <div class="team-user-list" data-team-user-list data-current-project="{{ project.directory }}">
+          {% if project_users %}
+            {% for user in project_users %}
+              <article class="team-user" title="{{ user.name }}">
+                <span class="online-user-dot" style="--user-color: {{ user.color }}" aria-hidden="true">{{ user.initial }}</span>
+                <div>
+                  <strong>{{ user.name }}</strong>
+                  <span>正在打开项目</span>
+                </div>
+              </article>
+            {% endfor %}
+          {% else %}
+            <div class="empty compact" data-team-empty>暂无在线用户打开该项目</div>
+          {% endif %}
+        </div>
+      </aside>
+    {% endif %}
+
     <section class="upload-layout" data-project="{{ project.directory }}">
       <article class="upload-panel">
         <div class="panel-head">
@@ -79,17 +103,17 @@
             <button type="button" data-directory-button>选择目录</button>
           </span>
         </div>
-        <a class="action-link{% if not project.has_models %} disabled{% endif %}" href="/train" data-model-action>去推理</a>
+        <a class="action-link{% if not project.has_models %} disabled{% endif %}" href="/train?project={{ project.directory }}" data-model-action>去推理</a>
       </article>
     </section>
 
-    <section class="sftp-panel" data-sftp-path="{{ project.path }}">
+    <section class="sftp-panel" data-sftp-path="{{ project.path }}/images" data-remote-user="{{ remote_user }}">
       <div class="panel-head">
         <h2>使用 SFTP 上传</h2>
         <button class="copy-icon-button" type="button" data-copy-sftp title="复制 SFTP URL" aria-label="复制 SFTP URL">⎘</button>
       </div>
       <div class="sftp-url-card">
-        <span data-sftp-url>sftp://{{ project.path }}</span>
+        <span data-sftp-url>sftp://{{ remote_user }}@{{ project.path }}/images</span>
       </div>
       <div class="sftp-command-grid">
         <div class="panel-head">
@@ -120,7 +144,8 @@
 
   {% set footer_id = "stats" %}
   {% set footer_left = project.path %}
+  {% set footer_console_url = "/project/" ~ project.directory ~ "/logs" %}
   {% include "partials/footer.html" %}
 
-  <script src="/static/js/project.js?v=20260506-rsync"></script>
+  <script src="/static/js/project.js?v=20260507-log"></script>
 {% endblock %}
