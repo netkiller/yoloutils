@@ -197,7 +197,6 @@ def header_context(request: Request, workspace: Path):
         "username_color": user_color(username) if username else "",
         "is_team_mode": is_team_mode,
         "share_url": share_url(request) if is_team_mode else "",
-        "edition_label": "企业版" if is_team_mode else "社区版",
     }
 
 
@@ -437,6 +436,19 @@ def project_detail_redirect(directory: str, error: str = None):
     return RedirectResponse(url=url, status_code=status.HTTP_303_SEE_OTHER)
 
 
+def login_redirect(error: str = None):
+    url = "/login"
+    if error:
+        url = f"{url}?{urlencode({'error': error})}"
+    return RedirectResponse(url=url, status_code=status.HTTP_303_SEE_OTHER)
+
+
+def require_team_login(request: Request, workspace: Path):
+    if not team_mode_enabled():
+        return None
+    return None if current_username(request, workspace) else login_redirect()
+
+
 async def form_fields(request: Request):
     body = (await request.body()).decode("utf-8")
     return parse_qs(body, keep_blank_values=True)
@@ -492,6 +504,9 @@ async def uploaded_files(request: Request):
 @router.get("/project")
 def project(request: Request):
     workspace = workspace_path()
+    login_response = require_team_login(request, workspace)
+    if login_response:
+        return login_response
     is_team_mode = team_mode_enabled()
     username = current_username(request, workspace) if is_team_mode else ""
     online_users = read_online_users(workspace) if is_team_mode else []
@@ -522,10 +537,40 @@ def project(request: Request):
         )
 
 
+@router.get("/login")
+def login_page(request: Request):
+    workspace = workspace_path()
+    if team_mode_enabled() and current_username(request, workspace):
+        return RedirectResponse(url="/team", status_code=status.HTTP_303_SEE_OTHER)
+    projects = project_items(workspace)
+    project_names = {project["directory"]: project["name"] for project in projects}
+    online_users = read_online_users(workspace)
+    return templates.TemplateResponse(
+        request=request,
+        name="team/index.html",
+        context={
+            "request": request,
+            "workspace": workspace,
+            "error": request.query_params.get("error"),
+            "active_page": "team",
+            **header_context(request, workspace),
+            "username": "",
+            "username_initial": "",
+            "username_color": "",
+            "online_users": user_items(online_users, read_user_projects(workspace), project_names),
+            "chat_messages": [],
+            "current_project": "",
+            "login_mode": True,
+        },
+    )
+
+
 @router.get("/team")
 def team(request: Request):
     workspace = workspace_path()
     username = current_username(request, workspace)
+    if team_mode_enabled() and not username:
+        return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
     requested_project = request.query_params.get("project") or request.cookies.get("current_project", "")
     current_project = requested_project if project_dir(workspace, requested_project) else ""
     projects = project_items(workspace)
@@ -560,9 +605,9 @@ async def login(request: Request):
     username = (form.get("username", [""])[0] or "").strip()
     users = read_online_users(workspace)
     if not username:
-        return RedirectResponse(url=f"/team?{urlencode({'error': '请输入用户名'})}", status_code=status.HTTP_303_SEE_OTHER)
+        return login_redirect("请输入用户名")
     if username in users:
-        return RedirectResponse(url=f"/team?{urlencode({'error': '用户名已存在，请更换用户名'})}", status_code=status.HTTP_303_SEE_OTHER)
+        return login_redirect("用户名已存在，请更换用户名")
     users.append(username)
     write_online_users(workspace, users)
     response = RedirectResponse(url="/team", status_code=status.HTTP_303_SEE_OTHER)
@@ -693,6 +738,9 @@ def delete_project(directory: str):
 @router.get("/project/{directory}")
 def project_detail(directory: str, request: Request):
     workspace = workspace_path()
+    login_response = require_team_login(request, workspace)
+    if login_response:
+        return login_response
     is_team_mode = team_mode_enabled()
     username = current_username(request, workspace) if is_team_mode else ""
     path = project_dir(workspace, directory)

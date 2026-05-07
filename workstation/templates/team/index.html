@@ -10,7 +10,7 @@
   <main class="team-main">
     <section class="toolbar" aria-labelledby="team-title">
       <div>
-        <h1 id="team-title">团队</h1>
+        <h1 id="team-title">{% if login_mode %}登录{% else %}团队{% endif %}</h1>
         <p class="project-description muted">团队协作模式下，进入工作站前需要使用一个在线用户名。</p>
       </div>
     </section>

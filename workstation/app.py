@@ -7,7 +7,7 @@ from starlette.responses import RedirectResponse
 
 from routes.annotate import create_annotate_app
 from routes.dataset import router as dataset_router
-from routes.project import router as project_router
+from routes.project import current_username, router as project_router, team_mode_enabled, workspace_path
 from routes.train import router as train_router
 from routes.validate import router as validate_router
 
@@ -23,7 +23,11 @@ app.include_router(validate_router)
 
 
 @app.get("/", include_in_schema=False)
-def index():
+def index(request: Request):
+    if team_mode_enabled():
+        if not current_username(request, workspace_path()):
+            return RedirectResponse(url="/login")
+        return RedirectResponse(url="/team")
     return RedirectResponse(url="/project")
 
 

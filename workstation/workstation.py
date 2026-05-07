@@ -977,7 +977,9 @@ class Workstation:
     .header-title { min-width: 0; display: flex; align-items: center; gap: 8px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
     .brand-link { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: #1f2933; text-decoration: none; }
     .brand-link:hover { color: #1d4ed8; }
-    .enterprise-link { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: 5px; height: 24px; padding: 0 8px; border: 1px solid #d9e2ec; border-radius: 6px; color: #334e68; background: #fff; font-size: 12px; line-height: 1; text-decoration: none; }
+    .enterprise-link { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: 5px; height: 30px; min-width: 62px; padding: 0 9px; border: 1px solid #d9e2ec; border-radius: 6px; color: #334e68; background: #fff; font-size: 12px; line-height: 1; text-decoration: none; }
+    .enterprise-link.user-avatar-link { width: 34px; min-width: 34px; height: 34px; padding: 0; border-radius: 50%; color: #fff; font-size: 18px; font-weight: 400; }
+    .enterprise-link.username-link { max-width: 160px; min-width: 0; overflow: hidden; color: #64748b; text-overflow: ellipsis; white-space: nowrap; }
     .enterprise-link:hover { background: #e6f0ff; color: #243b53; }
     .header-modes { display: flex; align-items: center; justify-content: center; gap: 8px; }
     .header-actions { min-width: 0; display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
@@ -1053,6 +1055,7 @@ class Workstation:
     .collaboration-empty { padding: 4px 0; color: #7b8794; }
     .lock-note { color: #b45309; font-size: 12px; }
     button { width: 100%; border: 0; background: transparent; text-align: left; padding: 7px 8px; border-radius: 6px; cursor: pointer; color: #243b53; font: inherit; }
+    button.enterprise-link { width: auto; min-width: 62px; height: 30px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 0 9px; border: 1px solid #d9e2ec; text-align: center; white-space: nowrap; }
     button:hover, button.active { background: #e6f0ff; }
     .tree-node { position: relative; }
     .tree-row { display: flex; align-items: center; min-width: 0; }
@@ -1098,7 +1101,7 @@ class Workstation:
     .right-panel { display: flex; flex-direction: column; overflow: hidden; }
     main.right-hidden .right-panel { display: none; }
     .right-pane { min-height: 80px; overflow: auto; }
-    .top-info-pane { flex: 0 0 40%; min-height: 180px; display: flex; flex-direction: column; overflow: hidden; }
+    .top-info-pane { flex: 1 1 auto; min-height: 180px; display: flex; flex-direction: column; overflow: hidden; }
     .labels-pane { flex: 1 1 55%; min-height: 42px; overflow: hidden; display: flex; flex-direction: column; }
     .labels { flex: 1 1 auto; min-height: 0; overflow: auto; }
     .histogram-pane { flex: 1 1 45%; min-height: 42px; overflow: hidden; display: flex; flex-direction: column; }
@@ -1106,8 +1109,10 @@ class Workstation:
     .right-panel.histogram-collapsed .histogram-pane { flex: 0 0 34px; }
     .right-panel.histogram-collapsed .histogram-splitter { display: none; }
     .right-panel.histogram-collapsed .histogram { display: none; }
-    .right-pane.exif-pane { flex: 1 1 auto; }
+    .right-pane.exif-pane { flex: 0 0 36%; }
     .right-panel.exif-collapsed .top-info-pane { flex: 1 1 auto; }
+    .right-panel.exif-collapsed .labels-pane { flex: 1 1 auto; }
+    .right-panel.exif-collapsed .histogram-pane { flex: 0 0 28%; }
     .right-panel.exif-collapsed .splitter { display: none; }
     .right-panel.exif-collapsed .exif-pane { flex: 0 0 34px; min-height: 34px; overflow: hidden; }
     .right-panel.exif-collapsed .exif { display: none; }
@@ -1163,7 +1168,6 @@ class Workstation:
   <header>
     <div class="header-title">
       <a class="brand-link" href="https://www.netkiller.cn" target="_blank" rel="noopener noreferrer">Yolo Workstation</a>
-      <a class="enterprise-link" href="https://saas.netkiller.cn/workstation/index.html" target="_blank" rel="noopener noreferrer">企业版</a>
     </div>
     <div class="header-modes">
       <button id="annotateModeButton" class="header-button active" title="当前窗口：标注"><span class="header-icon">▧</span><span>标注</span></button>
@@ -2579,7 +2583,7 @@ class Workstation:
     }
 
     function showEnterpriseNotice() {
-      alert("请切换为企业版");
+      alert("该功能暂未启用");
     }
 
     function initHeaderActions() {
@@ -3326,8 +3330,17 @@ class Workstation:
         redrawHistogram();
       });
       toggleExif.addEventListener("click", () => {
-        rightPanel.classList.toggle("exif-collapsed");
-        toggleExif.textContent = rightPanel.classList.contains("exif-collapsed") ? "⌃" : "⌄";
+        const collapsed = rightPanel.classList.toggle("exif-collapsed");
+        if (collapsed) {
+          topInfoPane.style.flexBasis = "";
+          topInfoPane.style.flexGrow = "1";
+          topInfoPane.style.flexShrink = "1";
+        } else {
+          exifPane.style.flexBasis = "";
+          exifPane.style.flexGrow = "";
+          exifPane.style.flexShrink = "";
+        }
+        toggleExif.textContent = collapsed ? "⌃" : "⌄";
         redrawHistogram();
       });
     }

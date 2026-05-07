@@ -197,13 +197,12 @@ def write_error_log(workstation: Workstation, error: Exception):
 def workstation_html(workstation: Workstation, active_mode: str = "annotate", project: str = "", username: str = ""):
     html = workstation._html()
     escaped_username = html_escape(username)
-    edition_label = "企业版" if team_mode_enabled() else "社区版"
     online_users = user_items(read_online_users())
     project_url = f"/project/{quote(project, safe='')}" if project else "/project"
     project_query = f"?project={quote(project, safe='')}" if project else ""
     team_url = f"/team{project_query}" if project else "/team"
     close_project_button = (
-        '<button class="enterprise-link" type="button" title="关闭当前项目" onclick="location.href=\'/project\'">'
+        '<button class="enterprise-link close-current-project" type="button" title="关闭当前项目" onclick="location.href=\'/project\'">'
         '<span class="header-icon">×</span><span>关闭项目</span></button>'
         if project else ""
     )
@@ -237,16 +236,11 @@ def workstation_html(workstation: Workstation, active_mode: str = "annotate", pr
         .replace(
             '<a class="brand-link" href="https://www.netkiller.cn" target="_blank" rel="noopener noreferrer">Yolo Workstation</a>',
             ""
-            f'<span class="enterprise-link" style="width:34px;height:34px;display:inline-flex;align-items:center;justify-content:center;padding:0;border-radius:50%;font-size:18px;font-weight:400;line-height:1;background:{user_color(username)};color:#fff">'
+            f'<span class="enterprise-link user-avatar-link" style="background:{user_color(username)}">'
             f'{html_escape(username[:1])}</span>'
-            f'<span class="enterprise-link">{escaped_username}</span>'
+            f'<span class="enterprise-link username-link">{escaped_username}</span>'
             '<form method="post" action="/team/logout" style="margin:0"><button class="enterprise-link" type="submit">注销</button></form>'
             f'{close_project_button}',
-            1,
-        )
-        .replace(
-            '<a class="enterprise-link" href="https://saas.netkiller.cn/workstation/index.html" target="_blank" rel="noopener noreferrer">企业版</a>',
-            f'<a class="enterprise-link" href="https://saas.netkiller.cn/workstation/index.html" target="_blank" rel="noopener noreferrer">{edition_label}</a>',
             1,
         )
         .replace(
