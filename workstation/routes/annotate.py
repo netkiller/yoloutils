@@ -349,13 +349,7 @@ def workstation_html(workstation: Workstation, active_mode: str = "annotate", pr
         "document.addEventListener('DOMContentLoaded', () => document.body.classList.remove('username-required'));"
         "</script>"
     )
-    username_gate_style = (
-        "<style>"
-        "#usernameGate{display:none!important}"
-        "body.username-required .username-gate{display:none!important}"
-        "</style>"
-    )
-    return html.replace("</head>", f"{username_gate_style}{user_script}</head>", 1)
+    return html.replace("</head>", f"{user_script}</head>", 1)
 
 
 def html_escape(value: str):

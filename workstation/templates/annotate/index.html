@@ -1,1 +1,2196 @@
-{{ workstation_html | safe }}
+  <div id="shortcutPopover" class="shortcut-popover" hidden>
+    <div class="shortcut-title"><span>快捷键</span><button id="closeShortcuts" type="button" title="关闭">×</button></div>
+    <div class="shortcut-list">
+      <span class="shortcut-key">↑ / ↓</span><span class="shortcut-desc">在目录树中切换目录</span>
+      <span class="shortcut-key">← / →</span><span class="shortcut-desc">切换上一张 / 下一张图片</span>
+      <span class="shortcut-key">⌘M</span><span class="shortcut-desc">切换 box 半透明遮罩</span>
+      <span class="shortcut-key">⌘S</span><span class="shortcut-desc">保存当前标注</span>
+      <span class="shortcut-key">⌘D</span><span class="shortcut-desc">删除当前标注</span>
+      <span class="shortcut-key">DEL</span><span class="shortcut-desc">删除选中的 box</span>
+      <span class="shortcut-key">⌘R</span><span class="shortcut-desc">重置当前操作</span>
+      <span class="shortcut-key">⌘～ / ⌘` / ⌘0-9</span><span class="shortcut-desc">选择对应索引的标签</span>
+      <span class="shortcut-key">ESC</span><span class="shortcut-desc">还原图片缩放 / 关闭快捷键窗口</span>
+      <span class="shortcut-key">滚轮</span><span class="shortcut-desc">快速放大或缩小图片</span>
+      <span class="shortcut-key">双击图像标题</span><span class="shortcut-desc">隐藏或显示左右栏</span>
+    </div>
+  </div>
+  <div id="usernameGate" class="username-gate">
+    <form id="usernameForm" class="username-dialog">
+      <h3>请输入用户名</h3>
+      <input id="usernameInput" type="text" autocomplete="name" placeholder="用户名">
+      <button id="usernameSubmit" type="submit">进入</button>
+    </form>
+  </div>
+  <script>
+    window.yoloutilsUsername = "";
+    window.yoloutilsUsernameReady = new Promise(resolve => {
+      window.yoloutilsResolveUsername = resolve;
+    });
+    window.yoloutilsGetClientId = () => {
+      const key = "yoloutils-workstation-client-id";
+      let id = "";
+      try {
+        id = localStorage.getItem(key) || "";
+      } catch (error) {
+        id = window.yoloutilsClientId || "";
+      }
+      if (!id) {
+        id = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+        try {
+          localStorage.setItem(key, id);
+        } catch (error) {
+          window.yoloutilsClientId = id;
+        }
+      }
+      return id || window.yoloutilsClientId;
+    };
+    window.yoloutilsSubmitUsername = async event => {
+      if (event) event.preventDefault();
+      const input = document.getElementById("usernameInput");
+      const submit = document.getElementById("usernameSubmit");
+      const name = (input?.value || "").trim();
+      if (!name) {
+        input?.focus();
+        return;
+      }
+      if (document.body.dataset.teamMode === "true") {
+        try {
+          if (submit) submit.disabled = true;
+          const response = await fetch("/api/presence", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({client_id: window.yoloutilsGetClientId(), username: name})
+          });
+          if (!response.ok) {
+            let message = await response.text();
+            try {
+              message = JSON.parse(message).detail || message;
+            } catch (error) {
+              // Keep plain response text.
+            }
+            alert(message || "用户名不可用");
+            input?.focus();
+            return;
+          }
+        } catch (error) {
+          alert(`登录失败: ${error.message}`);
+          input?.focus();
+          return;
+        } finally {
+          if (submit) submit.disabled = false;
+        }
+      }
+      window.yoloutilsUsername = name;
+      try {
+        localStorage.setItem("yoloutils-workstation-username", name);
+      } catch (error) {
+        // localStorage can be blocked in some app-window modes.
+      }
+      document.body.classList.remove("username-required");
+      window.yoloutilsResolveUsername?.();
+    };
+    document.addEventListener("DOMContentLoaded", () => {
+      const form = document.getElementById("usernameForm");
+      const input = document.getElementById("usernameInput");
+      try {
+        input.value = localStorage.getItem("yoloutils-workstation-username") || "";
+      } catch (error) {
+        input.value = "";
+      }
+      form?.addEventListener("submit", window.yoloutilsSubmitUsername);
+      if (document.body.classList.contains("username-required")) input?.focus();
+    });
+  </script>
+  <main id="appMain">
+    <div id="leftPanel" class="left-panel">
+      <aside id="treePane" class="left-pane tree-pane">
+        <div class="pane-header">
+          <h2><span class="pane-title-icon">▰</span>目录</h2>
+          <div class="pane-tools">
+            <button id="reloadTree" class="icon-button" title="重载目录">↻</button>
+            <button id="toggleTree" class="icon-button" title="隐藏目录栏">‹</button>
+          </div>
+        </div>
+        <div id="tree" class="tree"></div>
+        <div id="modelSplitter" class="panel-splitter model-splitter" title="拖动调整目录和模型高度"></div>
+        <div id="modelPane" class="model-pane">
+          <div class="pane-header">
+            <h2><span class="pane-title-icon">◎</span>模型 <strong id="modelCount" class="pane-title-count">-</strong></h2>
+            <div class="collaboration-tools">
+              <button id="toggleModelPane" class="icon-button collapse-button" title="折叠/展开模型">▾</button>
+            </div>
+          </div>
+          <div id="modelList" class="model-list"></div>
+        </div>
+        <div id="collaborationSplitter" class="panel-splitter collaboration-splitter" title="拖动调整模型和协作高度"></div>
+        <div id="collaboration" class="collaboration">
+          <div class="pane-header collaboration-header">
+            <h2><span class="pane-title-icon">◌</span>协作 <strong id="onlineCount" class="pane-title-count">-</strong></h2>
+            <div class="collaboration-tools">
+              <button id="toggleCollaboration" class="icon-button collapse-button" title="折叠/展开协作">▾</button>
+            </div>
+          </div>
+          <div id="collaborationUsers" class="collaboration-users"></div>
+        </div>
+      </aside>
+      <div id="leftSplitter" class="vertical-splitter" title="拖动调整目录和文件列表比例"></div>
+      <aside class="left-pane files-pane">
+        <div class="pane-header">
+          <h2><span class="pane-title-icon">▯</span>文件</h2>
+          <div class="pane-tools">
+            <button id="toggleFileSort" class="icon-button" title="未达标排在上面">↑</button>
+            <button id="showTree" class="icon-button" title="显示目录栏">☰</button>
+          </div>
+        </div>
+        <div id="files" class="files"></div>
+      </aside>
+    </div>
+    <div id="mainSplitter" class="main-splitter" title="拖动调整文件列表和图像区域比例"></div>
+    <section class="viewer">
+      <div id="viewerHeader" class="pane-header viewer-header">
+        <h2 id="viewerTitle"><span class="pane-title-icon">▧</span>图像</h2>
+        <div id="zoomIndicator" class="viewer-zoom">100%</div>
+        <div id="lockBanner" class="viewer-lock" hidden></div>
+        <div class="viewer-tools">
+          <button id="maskAnnotation" class="tool-button" title="切换 box 遮罩"><span class="header-icon">◧</span><span>遮罩</span><span class="shortcut-hint">⌘M</span></button>
+          <button id="deleteAnnotation" class="tool-button" title="删除当前标注"><span class="header-icon">×</span><span>删除</span><span class="shortcut-hint">⌘D</span></button>
+          <button id="resetAnnotation" class="tool-button" title="重新读取标注"><span class="header-icon">↺</span><span>重置</span><span class="shortcut-hint">⌘R</span></button>
+          <button id="saveAnnotation" class="tool-button" title="保存当前标注"><span class="header-icon">✓</span><span>保存</span><span class="shortcut-hint">⌘S</span></button>
+          <button id="showRight" class="icon-button" title="显示标签/信息栏">☰</button>
+        </div>
+      </div>
+      <div class="canvas-wrap"><canvas id="canvas"></canvas><div id="empty" class="empty">请选择图片</div></div>
+    </section>
+    <aside id="rightPanel" class="right-panel">
+      <div id="topInfoPane" class="right-pane top-info-pane">
+        <div id="labelsPane" class="labels-pane">
+          <div class="pane-header">
+            <h2><span class="pane-title-icon">⌑</span>标签</h2>
+            <div class="pane-tools">
+              <button id="editClasses" class="icon-button" title="创建 classes.txt">＋</button>
+              <button id="hideRight" class="icon-button" title="隐藏标签/信息栏">›</button>
+            </div>
+          </div>
+          <div id="labels" class="labels"></div>
+        </div>
+        <div id="histogramSplitter" class="histogram-splitter" title="拖动调整标签和直方图比例"></div>
+        <div id="histogramPane" class="histogram-pane">
+          <div class="pane-header"><h2><span class="pane-title-icon">▥</span>直方图</h2><button id="toggleHistogram" class="icon-button collapse-button" title="折叠/展开直方图">▾</button></div>
+          <div id="histogram" class="histogram"><canvas id="histogramCanvas"></canvas></div>
+        </div>
+      </div>
+      <div id="splitter" class="splitter" title="拖动调整标签和 EXIF 面板比例"></div>
+      <div id="exifPane" class="right-pane exif-pane">
+        <div class="pane-header"><h2><span class="pane-title-icon">※</span>信息</h2><button id="toggleExif" class="icon-button collapse-button" title="折叠/展开信息">▾</button></div>
+        <div id="exif" class="exif"><div class="empty">请选择图片</div></div>
+      </div>
+    </aside>
+  </main>
+  <footer id="stats">
+    <div class="stats-left">-</div>
+    <div class="stats-right">
+      <span class="stat"><span class="stat-icon">▧</span>图像 <strong>-</strong></span>
+      <span class="stat"><span class="stat-icon">✓</span>已完成 <strong>-/-</strong></span>
+      <span class="stat"><span class="stat-icon">▯</span>.txt <strong>-</strong></span>
+      <span class="stat"><span class="stat-icon">⌑</span>classes.txt <strong>-</strong></span>
+      <span class="stat bad"><span class="stat-icon">✕</span>损坏图像 <strong>-</strong></span>
+      <span class="stat bad"><span class="stat-icon">!</span>无效 .txt <strong>-</strong></span>
+      <button id="shortcutButton" class="footer-button" type="button"><span class="stat-icon">⌘</span>快捷键</button>
+      <button id="consoleToggle" class="footer-button" type="button"><span class="stat-icon">▤</span>控制台</button>
+    </div>
+  </footer>
+  <div id="consoleSplitter" class="console-splitter" title="拖动调整控制台高度"></div>
+  <section id="consolePanel" class="console-panel"><pre id="consoleLog" class="console-log">控制台未打开</pre></section>
+  <dialog id="classesDialog" class="classes-dialog">
+    <form id="classesForm" class="classes-form">
+      <div class="shortcut-title"><span>编辑 classes.txt</span><button id="closeClassesDialog" type="button" title="关闭">×</button></div>
+      <label>
+        <span>每行一个类别</span>
+        <textarea id="classesContent" rows="12"></textarea>
+      </label>
+      <div class="dialog-actions">
+        <button class="secondary-button" id="cancelClassesDialog" type="button">取消</button>
+        <button type="submit">保存</button>
+      </div>
+    </form>
+  </dialog>
+  <div id="imageContextMenu" class="context-menu" hidden>
+    <button id="deleteFileMenuItem" type="button">删除文件</button>
+  </div>
+  <script>
+    const colors = ["#e11d48", "#2563eb", "#16a34a", "#d97706", "#7c3aed", "#0891b2", "#be123c", "#4d7c0f"];
+    const treeEl = document.getElementById("tree");
+    const filesEl = document.getElementById("files");
+    const appMain = document.getElementById("appMain");
+    const leftPanel = document.getElementById("leftPanel");
+    const leftSplitter = document.getElementById("leftSplitter");
+    const mainSplitter = document.getElementById("mainSplitter");
+    const toggleTree = document.getElementById("toggleTree");
+    const treePane = document.getElementById("treePane");
+    const reloadTree = document.getElementById("reloadTree");
+    const showTree = document.getElementById("showTree");
+    const toggleFileSort = document.getElementById("toggleFileSort");
+    const labelsEl = document.getElementById("labels");
+    const exifEl = document.getElementById("exif");
+    const topInfoPane = document.getElementById("topInfoPane");
+    const labelsPane = document.getElementById("labelsPane");
+    const histogramPane = document.getElementById("histogramPane");
+    const histogramSplitter = document.getElementById("histogramSplitter");
+    const histogramCanvas = document.getElementById("histogramCanvas");
+    const histogramCtx = histogramCanvas.getContext("2d");
+    const splitter = document.getElementById("splitter");
+    const rightPanel = document.getElementById("rightPanel");
+    const exifPane = document.getElementById("exifPane");
+    const hideRight = document.getElementById("hideRight");
+    const showRight = document.getElementById("showRight");
+    const editClasses = document.getElementById("editClasses");
+    const classesDialog = document.getElementById("classesDialog");
+    const classesForm = document.getElementById("classesForm");
+    const classesContent = document.getElementById("classesContent");
+    const closeClassesDialog = document.getElementById("closeClassesDialog");
+    const cancelClassesDialog = document.getElementById("cancelClassesDialog");
+    const autoAnnotate = document.getElementById("autoAnnotate");
+    const editModeToggle = document.getElementById("editModeToggle");
+    const maskAnnotation = document.getElementById("maskAnnotation");
+    const deleteAnnotation = document.getElementById("deleteAnnotation");
+    const resetAnnotation = document.getElementById("resetAnnotation");
+    const saveAnnotation = document.getElementById("saveAnnotation");
+    const toggleHistogram = document.getElementById("toggleHistogram");
+    const toggleExif = document.getElementById("toggleExif");
+    const shareButton = document.getElementById("shareButton");
+    const downloadImage = document.getElementById("downloadImage");
+    const queryButton = document.getElementById("queryButton");
+    const shortcutButton = document.getElementById("shortcutButton");
+    const shortcutPopover = document.getElementById("shortcutPopover");
+    const closeShortcuts = document.getElementById("closeShortcuts");
+    const annotateModeButton = document.getElementById("annotateModeButton");
+    const datasetButton = document.getElementById("datasetButton");
+    const trainButton = document.getElementById("trainButton");
+    const statsEl = document.getElementById("stats");
+    const onlineCount = document.getElementById("onlineCount");
+    const collaborationUsers = document.getElementById("collaborationUsers");
+    const toggleCollaboration = document.getElementById("toggleCollaboration");
+    const modelList = document.getElementById("modelList");
+    const modelCount = document.getElementById("modelCount");
+    const modelPane = document.getElementById("modelPane");
+    const toggleModelPane = document.getElementById("toggleModelPane");
+    const modelSplitter = document.getElementById("modelSplitter");
+    const collaboration = document.getElementById("collaboration");
+    const collaborationSplitter = document.getElementById("collaborationSplitter");
+    const consoleToggle = document.getElementById("consoleToggle");
+    const consoleSplitter = document.getElementById("consoleSplitter");
+    const consoleLog = document.getElementById("consoleLog");
+    const usernameForm = document.getElementById("usernameForm");
+    const usernameInput = document.getElementById("usernameInput");
+    const usernameSubmit = document.getElementById("usernameSubmit");
+    const imageContextMenu = document.getElementById("imageContextMenu");
+    const deleteFileMenuItem = document.getElementById("deleteFileMenuItem");
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+    const empty = document.getElementById("empty");
+    const viewerTitle = document.getElementById("viewerTitle");
+    const viewerHeader = document.getElementById("viewerHeader");
+    const zoomIndicator = document.getElementById("zoomIndicator");
+    const lockBanner = document.getElementById("lockBanner");
+    let currentDir = "";
+    let currentPath = "";
+    let currentImage = null;
+    let imageZoom = 1;
+    let currentBoxes = [];
+    let savedBoxes = [];
+    let draftBox = null;
+    let dragStart = null;
+    let selectedBoxIndex = -1;
+    let boxHitAreas = [];
+    let canvasInteraction = null;
+    let currentFiles = [];
+    let fileSortDirection = "asc";
+    let annotateMode = false;
+    let maskEnabled = false;
+    let boxesDirty = false;
+    let classLabels = [];
+    let classesText = "";
+    let selectedClassId = 0;
+    let selectedClassLabel = "0";
+    let teamMode = false;
+    let username = "";
+    let usernameReady = window.yoloutilsUsernameReady || Promise.resolve();
+    let usernameGateBound = false;
+    let lockedByOther = null;
+    let shareUrl = window.location.origin;
+    const collapsedDirs = new Set();
+    let statisticsData = null;
+    let histogramExpandedTopHeight = null;
+    let selectedAutoModel = "";
+    let autoAnnotateEnabled = false;
+    let autoAnnotateRunning = false;
+
+    async function getJson(url) {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(await response.text());
+      return response.json();
+    }
+
+    async function postJson(url, payload) {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) throw new Error(await response.text());
+      return response.json();
+    }
+
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, char => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+      }[char]));
+    }
+
+    function hashColor(value) {
+      let hash = 0;
+      for (let index = 0; index < value.length; index += 1) {
+        hash = ((hash << 5) - hash + value.charCodeAt(index)) | 0;
+      }
+      return colors[Math.abs(hash) % colors.length];
+    }
+
+    function renderTree(node, parent = treeEl) {
+      const wrapper = document.createElement("div");
+      wrapper.className = "tree-node";
+      const row = document.createElement("div");
+      row.className = "tree-row";
+      const hasChildren = node.children.length > 0;
+      const isRoot = parent === treeEl;
+      if (isRoot) wrapper.classList.add("root-node");
+      const isCollapsed = collapsedDirs.has(node.path);
+      if (hasChildren && !isRoot) {
+        const toggle = document.createElement("button");
+        toggle.type = "button";
+        toggle.className = "tree-toggle";
+        toggle.textContent = isCollapsed ? "▸" : "▾";
+        toggle.title = isCollapsed ? "展开目录" : "折叠目录";
+        toggle.onclick = event => {
+          event.stopPropagation();
+          if (collapsedDirs.has(node.path)) collapsedDirs.delete(node.path);
+          else collapsedDirs.add(node.path);
+          loadTree();
+        };
+        row.appendChild(toggle);
+      } else {
+        const placeholder = document.createElement("span");
+        placeholder.className = "tree-toggle-placeholder";
+        row.appendChild(placeholder);
+      }
+      const button = document.createElement("button");
+      button.className = "tree-select";
+      button.dataset.path = node.path;
+      button.title = node.path || node.name || "/";
+      const icon = document.createElement("span");
+      icon.className = "tree-icon";
+      icon.textContent = node.complete ? "[x]" : "[]";
+      icon.style.color = hashColor(node.path || node.name || "/");
+      const name = document.createElement("span");
+      name.className = "tree-name";
+      name.textContent = node.name || "/";
+      button.appendChild(icon);
+      button.appendChild(name);
+      button.onclick = () => selectDir(node.path, button);
+      row.appendChild(button);
+      wrapper.appendChild(row);
+      if (hasChildren) {
+        const children = document.createElement("div");
+        children.className = "tree-children";
+        children.hidden = isCollapsed;
+        wrapper.appendChild(children);
+        for (const child of node.children) renderTree(child, children);
+      }
+      parent.appendChild(wrapper);
+    }
+
+    async function loadTree() {
+      try {
+        const tree = await getJson("/api/tree");
+        treeEl.innerHTML = "";
+        renderTree(tree);
+        setActiveTreeButton(currentDir);
+        return tree;
+      } catch (error) {
+        treeEl.innerHTML = `<div class="empty">目录加载失败：${escapeHtml(error.message)}</div>`;
+        throw error;
+      }
+    }
+
+    function findTreeButton(path) {
+      return Array.from(document.querySelectorAll("#tree .tree-select"))
+        .find(item => item.dataset.path === path);
+    }
+
+    function setActiveTreeButton(path, button = null) {
+      document.querySelectorAll("#tree .tree-select").forEach(item => item.classList.remove("active"));
+      const activeButton = button || findTreeButton(path);
+      if (activeButton) activeButton.classList.add("active");
+    }
+
+    async function selectDir(path, button) {
+      currentDir = path;
+      setActiveTreeButton(path, button);
+      const data = await getJson(`/api/files?directory=${encodeURIComponent(path)}`);
+      currentFiles = data.files;
+      renderStatistics();
+      renderFiles();
+      if (!currentFiles.some(file => file.path === currentPath)) {
+        await selectFirstCurrentFile();
+      }
+    }
+
+    function fileSortRank(file) {
+      return !file.damaged && file.label_status === "valid" ? 1 : 0;
+    }
+
+    function sortedCurrentFiles() {
+      const direction = fileSortDirection === "desc" ? -1 : 1;
+      return [...currentFiles].sort((left, right) => {
+        const rankDiff = (fileSortRank(left) - fileSortRank(right)) * direction;
+        if (rankDiff !== 0) return rankDiff;
+        return left.name.localeCompare(right.name, "zh-Hans-CN", {numeric: true, sensitivity: "base"});
+      });
+    }
+
+    function fileIcon(name) {
+      const extension = name.toLowerCase().slice(name.lastIndexOf("."));
+      return {
+        ".jpg": "▣",
+        ".jpeg": "▧",
+        ".png": "◩",
+        ".bmp": "▥",
+        ".webp": "◫",
+        ".tif": "◬",
+        ".tiff": "◭",
+        ".heic": "◈",
+        ".heif": "◆",
+        ".avif": "◇",
+      }[extension] || "▯";
+    }
+
+    function renderFiles() {
+      filesEl.innerHTML = "";
+      toggleFileSort.textContent = fileSortDirection === "asc" ? "↑" : "↓";
+      toggleFileSort.title = fileSortDirection === "asc" ? "未达标排在上面" : "已达标排在上面";
+      if (!currentFiles.length) {
+        filesEl.innerHTML = '<div class="empty">没有图片</div>';
+        return;
+      }
+      for (const file of sortedCurrentFiles()) {
+        const row = document.createElement("button");
+        const isInvalid = file.damaged || file.label_status === "empty" || file.label_status === "invalid";
+        const isValid = !file.damaged && file.label_status === "valid";
+        if (isInvalid) row.classList.add("file-invalid");
+        if (isValid) row.classList.add("file-valid");
+        const statusText = file.damaged
+          ? "损坏图像"
+          : file.label_status === "valid"
+            ? `已标注 ${file.label_count || 0}`
+            : file.label_status === "missing"
+              ? "未标注"
+              : file.label_status === "empty"
+                ? "空 .txt"
+                : "无效 .txt";
+        row.innerHTML = `<span class="file-name"><span class="file-icon">${fileIcon(file.name)}</span><span class="file-name-text">${escapeHtml(file.name)}</span></span><span class="file-meta">${statusText}</span>`;
+        row.dataset.path = file.path;
+        row.onclick = () => selectImage(file.path, row);
+        row.oncontextmenu = showContextMenu;
+        filesEl.appendChild(row);
+      }
+      if (currentPath) {
+        const activeRow = Array.from(document.querySelectorAll("#files button"))
+          .find(button => button.dataset.path === currentPath);
+        if (activeRow) activeRow.classList.add("active");
+      }
+    }
+
+    async function refreshCurrentFiles() {
+      const data = await getJson(`/api/files?directory=${encodeURIComponent(currentDir)}`);
+      currentFiles = data.files;
+      renderStatistics();
+      renderFiles();
+    }
+
+    function fileRow(path) {
+      return Array.from(document.querySelectorAll("#files button"))
+        .find(button => button.dataset.path === path);
+    }
+
+    async function selectAdjacentImage(direction) {
+      const files = sortedCurrentFiles();
+      if (!files.length) return;
+      const currentIndex = files.findIndex(file => file.path === currentPath);
+      const index = currentIndex < 0
+        ? 0
+        : (currentIndex + direction + files.length) % files.length;
+      const path = files[index].path;
+      await selectImage(path, fileRow(path));
+    }
+
+    function nextAnnotationFilePath(savedPath) {
+      const files = sortedCurrentFiles().filter(file => file.path !== savedPath);
+      if (!files.length) return "";
+      const incomplete = files.find(file => fileSortRank(file) === 0);
+      return (incomplete || files[0]).path;
+    }
+
+    function nextFileAfterDelete(deletedPath) {
+      const files = sortedCurrentFiles();
+      const index = files.findIndex(file => file.path === deletedPath);
+      const remaining = files.filter(file => file.path !== deletedPath);
+      if (!remaining.length) return "";
+      return remaining[Math.min(Math.max(index, 0), remaining.length - 1)].path;
+    }
+
+    async function selectFirstCurrentFile() {
+      const [firstFile] = sortedCurrentFiles();
+      if (!firstFile) {
+        currentPath = "";
+        currentImage = null;
+        currentBoxes = [];
+        savedBoxes = [];
+        draftBox = null;
+        dragStart = null;
+        selectedBoxIndex = -1;
+        canvasInteraction = null;
+        setBoxesDirty(false);
+        resetImageZoom();
+        viewerTitle.innerHTML = '<span class="pane-title-icon">▧</span>图像';
+        canvas.style.display = "none";
+        empty.style.display = "block";
+        exifEl.innerHTML = '<div class="empty">请选择图片</div>';
+        return;
+      }
+      const row = Array.from(document.querySelectorAll("#files button"))
+        .find(button => button.dataset.path === firstFile.path);
+      await selectImage(firstFile.path, row);
+    }
+
+    async function selectImage(path, button) {
+      document.querySelectorAll("#files button").forEach(item => item.classList.remove("active"));
+      if (button) button.classList.add("active");
+      viewerTitle.innerHTML = `<span class="pane-title-icon">▧</span>${escapeHtml(path.split("/").pop() || path)}`;
+      lockBanner.hidden = true;
+      lockBanner.textContent = "";
+      currentPath = path;
+      currentImage = null;
+      lockedByOther = null;
+      renderStatistics();
+      const annotation = await getJson(`/api/annotation?path=${encodeURIComponent(path)}`);
+      currentBoxes = cloneBoxes(annotation.boxes);
+      savedBoxes = cloneBoxes(annotation.boxes);
+      draftBox = null;
+      dragStart = null;
+      selectedBoxIndex = -1;
+      canvasInteraction = null;
+      setBoxesDirty(false);
+      if (teamMode) await acquireCurrentLock();
+      loadExif(path);
+      const image = new Image();
+      empty.textContent = "读取中...";
+      empty.style.display = "block";
+      canvas.style.display = "none";
+      image.onload = () => {
+        currentImage = image;
+        empty.style.display = "none";
+        canvas.style.display = "block";
+        canvas.width = image.naturalWidth;
+        canvas.height = image.naturalHeight;
+        resetImageZoom();
+        drawHistogram(image);
+        redrawImage();
+        runAutoAnnotate();
+      };
+      image.onerror = () => {
+        currentImage = null;
+        canvas.style.display = "none";
+        empty.textContent = "图片读取失败";
+        empty.style.display = "block";
+      };
+      image.src = `/media?path=${encodeURIComponent(path)}`;
+    }
+
+    function redrawImage() {
+      if (!currentImage) return;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(currentImage, 0, 0);
+      boxHitAreas = [];
+      drawBoxes(currentBoxes, currentImage.naturalWidth, currentImage.naturalHeight);
+      if (draftBox) drawBoxes([draftBox], currentImage.naturalWidth, currentImage.naturalHeight, true);
+    }
+
+    function resetImageZoom() {
+      imageZoom = 1;
+      applyImageZoom();
+    }
+
+    function updateZoomIndicator() {
+      const percent = Math.round(imageZoom * 100);
+      zoomIndicator.innerHTML = `${percent}%<span class="zoom-reset-hint">↺ ESC</span>`;
+      zoomIndicator.hidden = percent === 100;
+    }
+
+    function applyImageZoom() {
+      if (!currentImage) {
+        canvas.style.width = "";
+        canvas.style.height = "";
+        updateZoomIndicator();
+        return;
+      }
+      const wrapper = canvas.parentElement;
+      const availableWidth = Math.max(1, wrapper.clientWidth - 32);
+      const availableHeight = Math.max(1, wrapper.clientHeight - 32);
+      const fitScale = Math.min(
+        1,
+        availableWidth / currentImage.naturalWidth,
+        availableHeight / currentImage.naturalHeight,
+      );
+      canvas.style.width = `${Math.max(1, Math.round(currentImage.naturalWidth * fitScale * imageZoom))}px`;
+      canvas.style.height = `${Math.max(1, Math.round(currentImage.naturalHeight * fitScale * imageZoom))}px`;
+      updateZoomIndicator();
+    }
+
+    function setImageZoom(nextZoom, clientX, clientY) {
+      if (!currentImage) return;
+      const wrapper = canvas.parentElement;
+      const before = canvas.getBoundingClientRect();
+      const ratioX = before.width ? (clientX - before.left) / before.width : 0.5;
+      const ratioY = before.height ? (clientY - before.top) / before.height : 0.5;
+      imageZoom = Math.min(Math.max(nextZoom, 0.1), 8);
+      applyImageZoom();
+      const after = canvas.getBoundingClientRect();
+      wrapper.scrollLeft += ratioX * (after.width - before.width);
+      wrapper.scrollTop += ratioY * (after.height - before.height);
+    }
+
+    function drawHistogram(image) {
+      const sampleWidth = Math.min(256, image.naturalWidth);
+      const sampleHeight = Math.max(1, Math.round(image.naturalHeight * sampleWidth / image.naturalWidth));
+      const sampleCanvas = document.createElement("canvas");
+      sampleCanvas.width = sampleWidth;
+      sampleCanvas.height = sampleHeight;
+      const sampleCtx = sampleCanvas.getContext("2d", { willReadFrequently: true });
+      sampleCtx.drawImage(image, 0, 0, sampleWidth, sampleHeight);
+      const pixels = sampleCtx.getImageData(0, 0, sampleWidth, sampleHeight).data;
+      const red = new Array(256).fill(0);
+      const green = new Array(256).fill(0);
+      const blue = new Array(256).fill(0);
+      for (let index = 0; index < pixels.length; index += 4) {
+        red[pixels[index]] += 1;
+        green[pixels[index + 1]] += 1;
+        blue[pixels[index + 2]] += 1;
+      }
+      const width = histogramCanvas.clientWidth || 180;
+      const height = histogramCanvas.clientHeight || 92;
+      const dpr = window.devicePixelRatio || 1;
+      histogramCanvas.width = Math.round(width * dpr);
+      histogramCanvas.height = Math.round(height * dpr);
+      histogramCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      histogramCtx.clearRect(0, 0, width, height);
+      histogramCtx.fillStyle = "#fff";
+      histogramCtx.fillRect(0, 0, width, height);
+      drawHistogramChannel(red, "#e11d48", width, height);
+      drawHistogramChannel(green, "#16a34a", width, height);
+      drawHistogramChannel(blue, "#2563eb", width, height);
+    }
+
+    function drawHistogramChannel(values, color, width, height) {
+      const maxValue = Math.max(...values);
+      if (!maxValue) return;
+      histogramCtx.beginPath();
+      values.forEach((value, index) => {
+        const x = index / 255 * width;
+        const y = height - value / maxValue * (height - 8) - 4;
+        if (index === 0) histogramCtx.moveTo(x, y);
+        else histogramCtx.lineTo(x, y);
+      });
+      histogramCtx.strokeStyle = color;
+      histogramCtx.globalAlpha = 0.82;
+      histogramCtx.lineWidth = 1.4;
+      histogramCtx.stroke();
+      histogramCtx.globalAlpha = 1;
+    }
+
+    async function loadExif(path) {
+      exifEl.innerHTML = '<div class="empty">读取中...</div>';
+      const data = await getJson(`/api/exif?path=${encodeURIComponent(path)}`);
+      const rows = [];
+      Object.entries(data.info).forEach(([key, value]) => rows.push([key, value]));
+      Object.entries(data.exif).forEach(([key, value]) => rows.push([key, value]));
+      if (!rows.length) {
+        exifEl.innerHTML = '<div class="empty">没有 EXIF 信息</div>';
+        return;
+      }
+      exifEl.innerHTML = "";
+      rows.forEach(([key, value]) => {
+        const row = document.createElement("div");
+        row.className = "kv-row";
+        row.innerHTML = `<div class="kv-key"></div><div class="kv-value"></div>`;
+        row.children[0].textContent = key;
+        row.children[1].textContent = Array.isArray(value) ? value.join(", ") : String(value);
+        exifEl.appendChild(row);
+      });
+    }
+
+    function boxEdges(box) {
+      return {
+        left: box.cx - box.width / 2,
+        right: box.cx + box.width / 2,
+        top: box.cy - box.height / 2,
+        bottom: box.cy + box.height / 2,
+      };
+    }
+
+    function normalizeBoxEdges(edges, template) {
+      const left = Math.min(Math.max(edges.left, 0), 1);
+      const right = Math.min(Math.max(edges.right, 0), 1);
+      const top = Math.min(Math.max(edges.top, 0), 1);
+      const bottom = Math.min(Math.max(edges.bottom, 0), 1);
+      return {
+        ...template,
+        cx: (left + right) / 2,
+        cy: (top + bottom) / 2,
+        width: Math.max(0.003, right - left),
+        height: Math.max(0.003, bottom - top),
+      };
+    }
+
+    function drawSelectedAnchors(box, imageWidth, imageHeight, color) {
+      const edges = boxEdges(box);
+      const points = [
+        [edges.left, edges.top],
+        [box.cx, edges.top],
+        [edges.right, edges.top],
+        [edges.right, box.cy],
+        [edges.right, edges.bottom],
+        [box.cx, edges.bottom],
+        [edges.left, edges.bottom],
+        [edges.left, box.cy],
+      ];
+      const size = Math.max(7, Math.round(Math.min(imageWidth, imageHeight) / 120));
+      ctx.save();
+      ctx.fillStyle = "#fff";
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      for (const [x, y] of points) {
+        ctx.fillRect(x * imageWidth - size / 2, y * imageHeight - size / 2, size, size);
+        ctx.strokeRect(x * imageWidth - size / 2, y * imageHeight - size / 2, size, size);
+      }
+      ctx.restore();
+    }
+
+    function anchorHitAreas(box, imageWidth, imageHeight) {
+      const edges = boxEdges(box);
+      const size = Math.max(10, Math.round(Math.min(imageWidth, imageHeight) / 95));
+      const halfX = size / imageWidth / 2;
+      const halfY = size / imageHeight / 2;
+      return [
+        ["nw", edges.left, edges.top],
+        ["n", box.cx, edges.top],
+        ["ne", edges.right, edges.top],
+        ["e", edges.right, box.cy],
+        ["se", edges.right, edges.bottom],
+        ["s", box.cx, edges.bottom],
+        ["sw", edges.left, edges.bottom],
+        ["w", edges.left, box.cy],
+      ].map(([name, x, y]) => ({
+        name,
+        left: x - halfX,
+        right: x + halfX,
+        top: y - halfY,
+        bottom: y + halfY,
+      }));
+    }
+
+    function drawBoxes(boxes, imageWidth, imageHeight, draft = false) {
+      ctx.lineWidth = Math.max(2, Math.round(Math.min(imageWidth, imageHeight) / 360));
+      ctx.font = `${Math.max(14, Math.round(imageWidth / 80))}px sans-serif`;
+      boxes.forEach((box, index) => {
+        const color = colors[Math.abs(box.class_id) % colors.length];
+        const x = (box.cx - box.width / 2) * imageWidth;
+        const y = (box.cy - box.height / 2) * imageHeight;
+        const width = box.width * imageWidth;
+        const height = box.height * imageHeight;
+        ctx.strokeStyle = color;
+        if (maskEnabled) {
+          ctx.save();
+          ctx.globalAlpha = draft ? 0.18 : 0.26;
+          ctx.fillStyle = color;
+          ctx.fillRect(x, y, width, height);
+          ctx.restore();
+        }
+        if (draft) ctx.setLineDash([8, 6]);
+        ctx.strokeRect(x, y, width, height);
+        ctx.setLineDash([]);
+        const text = box.label;
+        const metrics = ctx.measureText(text);
+        const labelTop = Math.max(0, y - 22);
+        const labelWidth = metrics.width + 10;
+        ctx.fillStyle = color;
+        ctx.fillRect(x, labelTop, labelWidth, 22);
+        ctx.fillStyle = "#fff";
+        ctx.fillText(text, x + 5, Math.max(16, y - 6));
+        if (!draft) {
+          boxHitAreas.push({
+            index,
+            box: {
+              left: x / imageWidth,
+              top: y / imageHeight,
+              right: (x + width) / imageWidth,
+              bottom: (y + height) / imageHeight,
+            },
+            label: {
+              left: x / imageWidth,
+              top: labelTop / imageHeight,
+              right: (x + labelWidth) / imageWidth,
+              bottom: (labelTop + 22) / imageHeight,
+            },
+            anchors: anchorHitAreas(box, imageWidth, imageHeight),
+          });
+          if (index === selectedBoxIndex) drawSelectedAnchors(box, imageWidth, imageHeight, color);
+        }
+      });
+    }
+
+    function cloneBoxes(boxes) {
+      return boxes.map(box => ({...box}));
+    }
+
+    function setBoxesDirty(dirty) {
+      boxesDirty = dirty;
+      updateAnnotationButtons();
+    }
+
+    function deleteSelectedBox() {
+      if (selectedBoxIndex < 0 || lockedByOther) return false;
+      currentBoxes.splice(selectedBoxIndex, 1);
+      selectedBoxIndex = -1;
+      setBoxesDirty(true);
+      redrawImage();
+      return true;
+    }
+
+    function defaultBoxLabel() {
+      return selectedClassLabel || classLabels[selectedClassId] || String(selectedClassId);
+    }
+
+    function selectClassLabel(classId, label, row) {
+      selectedClassId = classId;
+      selectedClassLabel = label;
+      document.querySelectorAll(".label-row").forEach(item => item.classList.remove("active"));
+      if (row) row.classList.add("active");
+    }
+
+    function selectClassByShortcut(classId) {
+      const row = Array.from(document.querySelectorAll(".label-row"))
+        .find(item => Number(item.dataset.classId) === classId);
+      if (!row) return false;
+      selectClassLabel(classId, row.dataset.label || classLabels[classId] || String(classId), row);
+      row.scrollIntoView({block: "nearest"});
+      return true;
+    }
+
+    function updateAutoAnnotateButton() {
+      const hasModel = Boolean(selectedAutoModel);
+      autoAnnotate.disabled = !hasModel || autoAnnotateRunning;
+      autoAnnotate.classList.toggle("active", hasModel && autoAnnotateEnabled);
+      autoAnnotate.querySelector(".header-icon").textContent = autoAnnotateRunning ? "…" : (autoAnnotateEnabled ? "●" : "◎");
+      autoAnnotate.querySelector("span:last-child").textContent = autoAnnotateRunning ? "识别" : "自动";
+      autoAnnotate.title = hasModel
+        ? (autoAnnotateEnabled ? `自动识别已启用：${selectedAutoModel}` : `自动识别已禁用：${selectedAutoModel}`)
+        : "请选择模型后启用自动识别";
+    }
+
+    function renderAutoModels(models) {
+      modelCount.textContent = models.length;
+      modelList.innerHTML = "";
+      if (!models.length) {
+        modelList.innerHTML = '<div class="model-empty">models 目录暂无模型</div>';
+        selectedAutoModel = "";
+        autoAnnotateEnabled = false;
+        updateAutoAnnotateButton();
+        return;
+      }
+      models.forEach(model => {
+        const row = document.createElement("button");
+        row.type = "button";
+        row.className = "model-row";
+        row.dataset.modelPath = model.path;
+        row.title = model.path;
+        row.innerHTML = `<span class="model-name">${escapeHtml(model.filename)}</span><span class="model-meta">${model.size_mb} MB</span>`;
+        row.onclick = () => selectAutoModel(model.path, row);
+        modelList.appendChild(row);
+      });
+      if (selectedAutoModel) {
+        const active = modelList.querySelector(`[data-model-path="${CSS.escape(selectedAutoModel)}"]`);
+        if (active) active.classList.add("active");
+        else {
+          selectedAutoModel = "";
+          autoAnnotateEnabled = false;
+        }
+      }
+      updateAutoAnnotateButton();
+    }
+
+    async function loadAutoModels() {
+      try {
+        const data = await getJson("/api/models");
+        renderAutoModels(data.models || []);
+      } catch (error) {
+        modelCount.textContent = "!";
+        modelList.innerHTML = `<div class="model-empty">模型加载失败：${escapeHtml(error.message)}</div>`;
+        selectedAutoModel = "";
+        autoAnnotateEnabled = false;
+        updateAutoAnnotateButton();
+      }
+    }
+
+    function selectAutoModel(path, row = null) {
+      selectedAutoModel = path || "";
+      autoAnnotateEnabled = Boolean(selectedAutoModel);
+      document.querySelectorAll(".model-row").forEach(item => item.classList.remove("active"));
+      if (row) row.classList.add("active");
+      updateAutoAnnotateButton();
+      if (currentImage && !currentBoxes.length) runAutoAnnotate();
+    }
+
+    async function runAutoAnnotate() {
+      if (!autoAnnotateEnabled || !selectedAutoModel || !currentPath || lockedByOther || autoAnnotateRunning) return;
+      if (currentBoxes.length) return;
+      const path = currentPath;
+      const model = selectedAutoModel;
+      autoAnnotateRunning = true;
+      updateAutoAnnotateButton();
+      try {
+        const data = await postJson("/api/auto-annotate", {path, model});
+        if (path !== currentPath || model !== selectedAutoModel || !autoAnnotateEnabled) return;
+        const boxes = cloneBoxes(data.boxes || []);
+        if (!boxes.length) return;
+        currentBoxes = boxes;
+        selectedBoxIndex = -1;
+        setBoxesDirty(true);
+        redrawImage();
+      } catch (error) {
+        autoAnnotate.title = error.message || "自动识别失败";
+      } finally {
+        autoAnnotateRunning = false;
+        updateAutoAnnotateButton();
+      }
+    }
+
+    function labelShortcutIndex(event) {
+      const key = String(event.key || "").toLowerCase();
+      const code = String(event.code || "");
+      const keyCode = event.keyCode || event.which || 0;
+      if (
+        key === "0" || key === "`" || key === "~" || key === "～" || key === "·" ||
+        key === "º" || key === "§" || key === "±" ||
+        code === "Backquote" || code === "Digit0" || code === "Numpad0" || code === "IntlBackslash" ||
+        keyCode === 192 || keyCode === 48 || keyCode === 96
+      ) {
+        return 0;
+      }
+      return /^[1-9]$/.test(key) ? Number(key) : null;
+    }
+
+    function updateAnnotationButtons() {
+      editModeToggle.classList.toggle("active", annotateMode);
+      editModeToggle.querySelector(".header-icon").textContent = annotateMode ? "●" : "◌";
+      editModeToggle.querySelector("span:last-child").textContent = annotateMode ? "打标" : "只读";
+      editModeToggle.title = annotateMode ? "当前为打标状态" : "当前为只读状态";
+      canvas.classList.toggle("annotating", annotateMode);
+      const locked = Boolean(lockedByOther);
+      saveAnnotation.disabled = locked || !boxesDirty;
+      resetAnnotation.disabled = locked || !boxesDirty;
+      deleteAnnotation.disabled = locked || !currentBoxes.length;
+      editModeToggle.disabled = locked;
+      if (locked) {
+        editModeToggle.title = `团队模式：${lockedByOther.username} 正在标注该图片`;
+      }
+    }
+
+    async function loadLabels() {
+      const data = await getJson("/api/classes");
+      classLabels = data.classes;
+      classesText = data.content || "";
+      if (editClasses) {
+        const hasClasses = Boolean(data.classes_file);
+        editClasses.textContent = hasClasses ? "✎" : "＋";
+        editClasses.title = hasClasses ? "编辑 classes.txt" : "创建 classes.txt";
+      }
+      labelsEl.innerHTML = "";
+      const groups = data.class_groups?.length
+        ? data.class_groups
+        : data.classes_file
+          ? [{classes_file: data.classes_file, classes: data.classes}]
+          : [];
+      let selectedAssigned = false;
+      groups.forEach((group, groupIndex) => {
+        const source = document.createElement("div");
+        source.className = "label-source";
+        source.textContent = group.classes_file;
+        labelsEl.appendChild(source);
+        group.classes.forEach((label, index) => {
+          const row = document.createElement("button");
+          row.type = "button";
+          row.className = "label-row";
+          row.dataset.classId = String(index);
+          row.dataset.label = label;
+          row.innerHTML = `<span class="swatch" style="background:${colors[index % colors.length]}"></span><span>${index}: ${escapeHtml(label)}</span>`;
+          row.onclick = () => selectClassLabel(index, label, row);
+          labelsEl.appendChild(row);
+          if (!selectedAssigned) {
+            selectClassLabel(index, label, row);
+            selectedAssigned = true;
+          }
+        });
+      });
+      if (!groups.length) {
+        selectedClassId = 0;
+        selectedClassLabel = "0";
+        labelsEl.innerHTML = '<div class="empty">未找到 classes.txt</div>';
+      }
+    }
+
+    function openClassesDialog() {
+      if (!classesDialog || !classesContent) return;
+      classesContent.value = classesText || "";
+      classesDialog.showModal();
+      classesContent.focus();
+    }
+
+    async function saveClasses(event) {
+      event.preventDefault();
+      const content = classesContent?.value || "";
+      const response = await fetch("/api/classes", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({content})
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok === false) {
+        alert(data.detail || data.error || "保存失败");
+        return;
+      }
+      classesDialog?.close();
+      await loadLabels();
+      await loadStatistics();
+    }
+
+    async function loadStatistics() {
+      statisticsData = await getJson("/api/statistics");
+      renderStatistics();
+    }
+
+    async function loadConfig() {
+      const embeddedTeamMode = document.body.dataset.teamMode === "true";
+      try {
+        const data = await getJson("/api/config");
+        teamMode = Boolean(data.team_mode);
+        shareUrl = data.share_url || window.location.origin;
+      } catch (error) {
+        teamMode = embeddedTeamMode;
+      }
+      const projectUsers = Array.isArray(window.yoloutilsOnlineUsers) ? window.yoloutilsOnlineUsers : [];
+      document.body.classList.toggle("team-mode", teamMode || projectUsers.length > 0);
+      renderProjectUsers(projectUsers);
+      if (!teamMode) {
+        document.body.classList.remove("username-required");
+        username = "";
+        usernameReady = Promise.resolve();
+        return;
+      }
+      usernameReady = requireUsername();
+      await usernameReady;
+      username = window.yoloutilsUsername || usernameInput.value.trim();
+      await updatePresence();
+    }
+
+    function renderProjectUsers(users) {
+      const byName = new Map();
+      for (const item of users || []) {
+        const user = typeof item === "string" ? {name: item} : item || {};
+        const name = String(user.name || user.username || "").trim();
+        if (!name || byName.has(name)) continue;
+        byName.set(name, {
+          name,
+          color: user.color || userColor(name),
+          initial: user.initial || name.slice(0, 1),
+        });
+      }
+      const names = Array.from(byName.values());
+      onlineCount.textContent = names.length;
+      collaborationUsers.innerHTML = names.length
+        ? names.map(user => {
+            const safeName = escapeHtml(user.name);
+            return `<div class="collaboration-user" title="${safeName}"><span class="collaboration-dot" style="--user-color:${escapeHtml(user.color)}"></span><span class="collaboration-name">${safeName}</span></div>`;
+          }).join("")
+        : '<div class="collaboration-empty">暂无在线用户</div>';
+    }
+
+    function requireUsername() {
+      bindUsernameGate();
+      username = window.yoloutilsUsername || "";
+      if (username) return Promise.resolve();
+      document.body.classList.add("username-required");
+      setTimeout(() => {
+        usernameInput.focus();
+        usernameInput.select();
+      }, 0);
+      return usernameReady;
+    }
+
+    function submitUsername(event = null) {
+      window.yoloutilsSubmitUsername?.(event);
+      username = window.yoloutilsUsername || usernameInput.value.trim();
+      if (teamMode && username) updatePresence();
+    }
+
+    function bindUsernameGate() {
+      if (usernameGateBound) return;
+      usernameGateBound = true;
+    }
+
+    async function loadConsoleLogs() {
+      try {
+        const data = await getJson("/api/logs?lines=200");
+        consoleLog.textContent = [`日志文件: ${data.file}`, "", ...data.lines].join("\\n");
+      } catch (error) {
+        consoleLog.textContent = `读取日志失败: ${error.message}`;
+      }
+    }
+
+    async function toggleConsole() {
+      document.body.classList.toggle("console-open");
+      const button = statsEl.querySelector("#consoleToggle");
+      if (button) button.classList.toggle("active", document.body.classList.contains("console-open"));
+      if (document.body.classList.contains("console-open")) await loadConsoleLogs();
+    }
+
+    function clientId() {
+      return window.yoloutilsGetClientId ? window.yoloutilsGetClientId() : window.yoloutilsClientId;
+    }
+
+    function userColor(value) {
+      const colors = ["#ef4444", "#f97316", "#eab308", "#22c55e", "#14b8a6", "#3b82f6", "#8b5cf6", "#ec4899"];
+      let total = 0;
+      for (const char of value || "") {
+        total += char.charCodeAt(0);
+      }
+      return colors[total % colors.length];
+    }
+
+    async function updatePresence() {
+      if (!teamMode) return;
+      await usernameReady;
+      try {
+        const data = await postJson("/api/presence", {client_id: clientId(), username: username || "独立用户"});
+        const projectUsers = Array.isArray(window.yoloutilsOnlineUsers) ? window.yoloutilsOnlineUsers : [];
+        const presenceUsers = (data.users || []).map(user => user.username);
+        renderProjectUsers([...projectUsers, ...presenceUsers]);
+      } catch (error) {
+        const projectUsers = Array.isArray(window.yoloutilsOnlineUsers) ? window.yoloutilsOnlineUsers : [];
+        renderProjectUsers(projectUsers);
+      }
+    }
+
+    async function updateProjectHeartbeat() {
+      if (!window.yoloutilsUsername) return;
+      try {
+        const response = await fetch("/team/heartbeat", {method: "POST"});
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.ok) return;
+        window.yoloutilsOnlineUsers = data.users || [];
+        if (!teamMode) renderProjectUsers(window.yoloutilsOnlineUsers);
+      } catch (error) {
+        // The next heartbeat will retry.
+      }
+    }
+
+    function leavePresence() {
+      if (!teamMode) return;
+      const payload = JSON.stringify({client_id: clientId()});
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon("/api/presence/leave", new Blob([payload], {type: "application/json"}));
+        return;
+      }
+      fetch("/api/presence/leave", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: payload,
+        keepalive: true,
+      }).catch(() => {});
+    }
+
+    async function acquireCurrentLock() {
+      if (!teamMode || !currentPath) return;
+      await usernameReady;
+      const data = await postJson("/api/lock", {
+        path: currentPath,
+        client_id: clientId(),
+        username,
+      });
+      lockedByOther = data.locked ? data.owner : null;
+      if (lockedByOther) {
+        annotateMode = false;
+        lockBanner.textContent = `锁定：${lockedByOther.username}`;
+        lockBanner.hidden = false;
+      }
+      updateAnnotationButtons();
+    }
+
+    async function releaseCurrentLock(path = currentPath) {
+      if (!teamMode || !path) return;
+      try {
+        await postJson("/api/lock/release", {path, client_id: clientId()});
+      } catch (error) {
+        // Ignore lock release errors; stale locks expire server-side.
+      }
+    }
+
+    function renderBreadcrumb() {
+      const container = document.createElement("div");
+      container.className = "breadcrumb";
+      const home = document.createElement("span");
+      home.className = "breadcrumb-home";
+      home.textContent = "⌂";
+      home.title = "Home";
+      container.appendChild(home);
+      const currentPathParts = currentPath ? currentPath.split("/").filter(Boolean) : [];
+      const fileName = currentPathParts.length ? currentPathParts[currentPathParts.length - 1] : "";
+      const parts = currentPathParts.length
+        ? currentPathParts.slice(0, -1)
+        : currentDir ? currentDir.split("/").filter(Boolean) : [];
+      const crumbs = [];
+      let path = "";
+      for (const part of parts) {
+        path = path ? `${path}/${part}` : part;
+        crumbs.push({name: part, path});
+      }
+      container.title = currentPath || currentDir || ".";
+      crumbs.forEach((crumb, index) => {
+        if (index > 0) {
+          const separator = document.createElement("span");
+          separator.className = "breadcrumb-separator";
+          separator.textContent = ">";
+          container.appendChild(separator);
+        }
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = crumb.name;
+        button.title = crumb.path || ".";
+        button.onclick = () => selectDir(crumb.path);
+        container.appendChild(button);
+      });
+      if (fileName) {
+        if (crumbs.length) {
+          const separator = document.createElement("span");
+          separator.className = "breadcrumb-separator";
+          separator.textContent = ">";
+          container.appendChild(separator);
+        }
+        const file = document.createElement("span");
+        file.className = "breadcrumb-file";
+        file.textContent = fileName;
+        file.title = currentPath;
+        container.appendChild(file);
+      }
+      return container;
+    }
+
+    function renderStatistics() {
+      if (!statisticsData) return;
+      const data = statisticsData;
+      statsEl.innerHTML = `
+        <div class="stats-left"></div>
+        <div class="stats-right">
+          <span class="stat"><span class="stat-icon">▧</span>图像 <strong>${data.images}</strong></span>
+          <span class="stat"><span class="stat-icon">✓</span>已完成 <strong>${data.txt_valid}/${data.images}</strong></span>
+          <span class="stat"><span class="stat-icon">▯</span>.txt <strong>${data.txt_total}</strong></span>
+          <span class="stat"><span class="stat-icon">⌑</span>classes.txt <strong>${data.classes_files}</strong></span>
+          <span class="stat bad"><span class="stat-icon">✕</span>损坏图像 <strong>${data.images_damaged}</strong></span>
+          <span class="stat bad"><span class="stat-icon">!</span>无效 .txt <strong>${data.txt_invalid_total}</strong></span>
+          <button id="shortcutButton" class="footer-button" type="button"><span class="stat-icon">⌘</span>快捷键</button>
+          <button id="consoleToggle" class="footer-button" type="button"><span class="stat-icon">▤</span>控制台</button>
+        </div>
+      `;
+      statsEl.querySelector(".stats-left").appendChild(renderBreadcrumb());
+      const button = statsEl.querySelector("#consoleToggle");
+      button.classList.toggle("active", document.body.classList.contains("console-open"));
+      button.addEventListener("click", toggleConsole);
+      statsEl.querySelector("#shortcutButton")?.addEventListener("click", toggleShortcuts);
+    }
+
+    async function init() {
+      bindUsernameGate();
+      appMain.classList.remove("viewer-focus", "tree-hidden");
+      leftPanel.classList.remove("tree-hidden");
+      canvas.style.display = "none";
+      editClasses?.addEventListener("click", openClassesDialog);
+      classesForm?.addEventListener("submit", saveClasses);
+      closeClassesDialog?.addEventListener("click", () => classesDialog?.close());
+      cancelClassesDialog?.addEventListener("click", () => classesDialog?.close());
+      await loadConfig();
+      await loadTree();
+      await loadLabels();
+      await loadAutoModels();
+      await loadStatistics();
+      const rootButton = document.querySelector("#tree .tree-select");
+      if (rootButton) {
+        await selectDir("", rootButton);
+      } else {
+        currentDir = "";
+        await selectDir("");
+      }
+      initSplitter();
+      initHistogramSplitter();
+      initLeftPanel();
+      initMainSplitter();
+      initConsoleSplitter();
+      initRightPanel();
+      initViewerTools();
+      initViewerFocus();
+      initHeaderActions();
+      initFileSorting();
+      initImageZoom();
+      initKeyboardShortcuts();
+      initCanvasAnnotation();
+      initPresence();
+      updateAnnotationButtons();
+    }
+
+    function initPresence() {
+      updatePresence();
+      updateProjectHeartbeat();
+      setInterval(updatePresence, 15000);
+      setInterval(updateProjectHeartbeat, 15000);
+      setInterval(() => {
+        if (document.body.classList.contains("console-open")) loadConsoleLogs();
+      }, 5000);
+      window.addEventListener("pagehide", leavePresence);
+      window.addEventListener("beforeunload", () => {
+        leavePresence();
+        if (teamMode && currentPath) {
+          navigator.sendBeacon?.(
+            "/api/lock/release",
+            new Blob(
+              [JSON.stringify({path: currentPath, client_id: clientId()})],
+              {type: "application/json"},
+            ),
+          );
+        }
+      });
+    }
+
+    function initFileSorting() {
+      toggleFileSort.addEventListener("click", () => {
+        fileSortDirection = fileSortDirection === "asc" ? "desc" : "asc";
+        renderFiles();
+      });
+    }
+
+    function showEnterpriseNotice() {
+      alert("该功能暂未启用");
+    }
+
+    function initHeaderActions() {
+      annotateModeButton.addEventListener("click", () => alert("当前窗口就是标注窗口"));
+      editModeToggle.addEventListener("click", () => {
+        if (lockedByOther) return;
+        annotateMode = !annotateMode;
+        updateAnnotationButtons();
+      });
+      shareButton?.addEventListener("click", shareCurrentLocation);
+      downloadImage.addEventListener("click", downloadCurrentImage);
+      queryButton.addEventListener("click", showEnterpriseNotice);
+      shortcutButton?.addEventListener("click", toggleShortcuts);
+      closeShortcuts.addEventListener("click", () => {
+        shortcutPopover.hidden = true;
+      });
+      datasetButton.addEventListener("click", showEnterpriseNotice);
+      trainButton.addEventListener("click", showEnterpriseNotice);
+    }
+
+    function toggleShortcuts() {
+      shortcutPopover.hidden = !shortcutPopover.hidden;
+    }
+
+    function visibleTreeButtons() {
+      return Array.from(document.querySelectorAll("#tree .tree-select"))
+        .filter(button => button.offsetParent !== null);
+    }
+
+    async function selectAdjacentTree(direction) {
+      const buttons = visibleTreeButtons();
+      if (!buttons.length) return;
+      const currentIndex = buttons.findIndex(button => button.dataset.path === currentDir);
+      const index = currentIndex < 0
+        ? 0
+        : Math.min(Math.max(currentIndex + direction, 0), buttons.length - 1);
+      const button = buttons[index];
+      await selectDir(button.dataset.path || "", button);
+      button.scrollIntoView({block: "nearest"});
+    }
+
+    function downloadCurrentImage() {
+      if (!currentPath) {
+        alert("请选择图片");
+        return;
+      }
+      const link = document.createElement("a");
+      link.href = `/media?path=${encodeURIComponent(currentPath)}&raw=1`;
+      link.download = currentPath.split("/").pop() || "image";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    }
+
+    function hideContextMenu() {
+      imageContextMenu.hidden = true;
+    }
+
+    function showContextMenu(event) {
+      if (!currentPath) return;
+      event.preventDefault();
+      imageContextMenu.hidden = false;
+      const menuWidth = imageContextMenu.offsetWidth || 132;
+      const menuHeight = imageContextMenu.offsetHeight || 34;
+      imageContextMenu.style.left = `${Math.min(event.clientX, window.innerWidth - menuWidth - 8)}px`;
+      imageContextMenu.style.top = `${Math.min(event.clientY, window.innerHeight - menuHeight - 8)}px`;
+    }
+
+    async function deleteCurrentFile() {
+      hideContextMenu();
+      if (!currentPath || lockedByOther) return;
+      const deletedPath = currentPath;
+      if (!confirm(`删除 ${deletedPath} 和同名 .txt 文件？`)) return;
+      const nextPath = nextFileAfterDelete(deletedPath);
+      try {
+        await postJson("/api/file/delete", {
+          path: deletedPath,
+          client_id: clientId(),
+          username: username || "独立用户",
+        });
+      } catch (error) {
+        alert(error.message);
+        await acquireCurrentLock();
+        return;
+      }
+      currentPath = "";
+      currentImage = null;
+      currentBoxes = [];
+      savedBoxes = [];
+      selectedBoxIndex = -1;
+      setBoxesDirty(false);
+      await loadStatistics();
+      await loadTree();
+      await refreshCurrentFiles();
+      if (nextPath && currentFiles.some(file => file.path === nextPath)) {
+        await selectImage(nextPath, fileRow(nextPath));
+      } else {
+        await selectFirstCurrentFile();
+      }
+    }
+
+    async function shareCurrentLocation() {
+      const serverUrl = shareUrl || window.location.origin;
+      const payload = {
+        title: "Yolo Workstation",
+        text: serverUrl,
+        url: serverUrl,
+      };
+      try {
+        if (navigator.share) {
+          await navigator.share(payload);
+          return;
+        }
+        await navigator.clipboard.writeText(serverUrl);
+        alert("已复制服务地址");
+      } catch (error) {
+        if (navigator.clipboard) {
+          await navigator.clipboard.writeText(serverUrl);
+          alert("已复制服务地址");
+        }
+      }
+    }
+
+    async function queryLocation() {
+      const keyword = prompt("查询目录或当前文件", currentPath || currentDir || "");
+      if (!keyword || !keyword.trim()) return;
+      const query = keyword.trim().toLowerCase();
+      const dirButton = Array.from(document.querySelectorAll("#tree button")).find(button => {
+        const path = (button.dataset.path || "").toLowerCase();
+        const name = button.querySelector(".tree-name")?.textContent.toLowerCase() || "";
+        return path === query || path.includes(query) || name === query || name.includes(query);
+      });
+      if (dirButton) {
+        await selectDir(dirButton.dataset.path || "", dirButton);
+        return;
+      }
+      const file = currentFiles.find(item => {
+        const name = item.name.toLowerCase();
+        const path = item.path.toLowerCase();
+        return name === query || path === query || name.includes(query) || path.includes(query);
+      });
+      if (file) {
+        const row = Array.from(document.querySelectorAll("#files button"))
+          .find(button => button.dataset.path === file.path);
+        await selectImage(file.path, row);
+        return;
+      }
+      alert("没有找到匹配的目录或文件");
+    }
+
+    function initViewerFocus() {
+      viewerHeader.addEventListener("dblclick", event => {
+        if (event.target.closest("button")) return;
+        appMain.classList.remove("viewer-focus");
+      });
+    }
+
+    function initImageZoom() {
+      canvas.parentElement.addEventListener("wheel", event => {
+        if (!currentImage) return;
+        event.preventDefault();
+        const factor = event.deltaY < 0 ? 1.12 : 1 / 1.12;
+        setImageZoom(imageZoom * factor, event.clientX, event.clientY);
+      }, {passive: false});
+      window.addEventListener("resize", applyImageZoom);
+    }
+
+    function initKeyboardShortcuts() {
+      window.addEventListener("keydown", event => {
+        if (event.target instanceof Element && event.target.closest("input, textarea, select")) return;
+        if (event.key === "Escape") {
+          if (!shortcutPopover.hidden) {
+            shortcutPopover.hidden = true;
+          } else if (currentImage) {
+            resetImageZoom();
+          }
+          return;
+        }
+        if (!event.metaKey && !event.ctrlKey && event.key === "ArrowUp") {
+          event.preventDefault();
+          selectAdjacentTree(-1);
+          return;
+        }
+        if (!event.metaKey && !event.ctrlKey && event.key === "ArrowDown") {
+          event.preventDefault();
+          selectAdjacentTree(1);
+          return;
+        }
+        if (!event.metaKey && !event.ctrlKey && event.key === "ArrowLeft") {
+          event.preventDefault();
+          selectAdjacentImage(-1);
+          return;
+        }
+        if (!event.metaKey && !event.ctrlKey && event.key === "ArrowRight") {
+          event.preventDefault();
+          selectAdjacentImage(1);
+          return;
+        }
+        if (!event.metaKey && !event.ctrlKey && (event.key === "Delete" || event.key === "Backspace")) {
+          if (deleteSelectedBox()) event.preventDefault();
+          return;
+        }
+        if (!(event.metaKey || event.ctrlKey)) return;
+        const key = event.key.toLowerCase();
+        const labelShortcut = labelShortcutIndex(event);
+        if (labelShortcut !== null) {
+          event.preventDefault();
+          selectClassByShortcut(labelShortcut);
+        } else if (key === "d") {
+          event.preventDefault();
+          if (!deleteAnnotation.disabled) deleteAnnotation.click();
+        } else if (key === "m") {
+          event.preventDefault();
+          maskAnnotation.click();
+        } else if (key === "r") {
+          event.preventDefault();
+          if (!resetAnnotation.disabled) resetAnnotation.click();
+        } else if (key === "s") {
+          event.preventDefault();
+          if (!saveAnnotation.disabled) saveAnnotation.click();
+        }
+      });
+    }
+
+    function canvasPoint(event) {
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: Math.min(Math.max((event.clientX - rect.left) / rect.width, 0), 1),
+        y: Math.min(Math.max((event.clientY - rect.top) / rect.height, 0), 1),
+      };
+    }
+
+    function rectContains(rect, point) {
+      return point.x >= rect.left && point.x <= rect.right && point.y >= rect.top && point.y <= rect.bottom;
+    }
+
+    function hitTestBox(point) {
+      for (let areaIndex = boxHitAreas.length - 1; areaIndex >= 0; areaIndex -= 1) {
+        const area = boxHitAreas[areaIndex];
+        for (const anchor of area.anchors) {
+          if (rectContains(anchor, point)) return {type: "anchor", index: area.index, anchor: anchor.name};
+        }
+        if (rectContains(area.label, point)) return {type: "label", index: area.index};
+        if (rectContains(area.box, point)) return {type: "box", index: area.index};
+      }
+      return null;
+    }
+
+    function anchorCursor(anchor) {
+      return {
+        n: "ns-resize",
+        s: "ns-resize",
+        e: "ew-resize",
+        w: "ew-resize",
+        nw: "nwse-resize",
+        se: "nwse-resize",
+        ne: "nesw-resize",
+        sw: "nesw-resize",
+      }[anchor] || "";
+    }
+
+    function selectedAnchorHit(point) {
+      if (selectedBoxIndex < 0) return null;
+      const area = boxHitAreas.find(item => item.index === selectedBoxIndex);
+      if (!area) return null;
+      return area.anchors.find(anchor => rectContains(anchor, point)) || null;
+    }
+
+    function updateCanvasHoverCursor(event) {
+      if (!currentImage || lockedByOther || canvasInteraction) return;
+      const anchor = selectedAnchorHit(canvasPoint(event));
+      canvas.style.cursor = anchor ? anchorCursor(anchor.name) : "";
+    }
+
+    function moveBox(box, dx, dy) {
+      const halfWidth = box.width / 2;
+      const halfHeight = box.height / 2;
+      return {
+        ...box,
+        cx: Math.min(Math.max(box.cx + dx, halfWidth), 1 - halfWidth),
+        cy: Math.min(Math.max(box.cy + dy, halfHeight), 1 - halfHeight),
+      };
+    }
+
+    function resizeBox(box, anchor, point) {
+      const edges = boxEdges(box);
+      const minSize = 0.003;
+      if (anchor.includes("w")) edges.left = Math.min(point.x, edges.right - minSize);
+      if (anchor.includes("e")) edges.right = Math.max(point.x, edges.left + minSize);
+      if (anchor.includes("n")) edges.top = Math.min(point.y, edges.bottom - minSize);
+      if (anchor.includes("s")) edges.bottom = Math.max(point.y, edges.top + minSize);
+      edges.left = Math.max(0, edges.left);
+      edges.right = Math.min(1, edges.right);
+      edges.top = Math.max(0, edges.top);
+      edges.bottom = Math.min(1, edges.bottom);
+      return normalizeBoxEdges(edges, box);
+    }
+
+    function boxFromPoints(start, end) {
+      const left = Math.min(start.x, end.x);
+      const right = Math.max(start.x, end.x);
+      const top = Math.min(start.y, end.y);
+      const bottom = Math.max(start.y, end.y);
+      return {
+        class_id: selectedClassId,
+        label: defaultBoxLabel(),
+        cx: (left + right) / 2,
+        cy: (top + bottom) / 2,
+        width: right - left,
+        height: bottom - top,
+      };
+    }
+
+    function initCanvasAnnotation() {
+      canvas.addEventListener("mousemove", updateCanvasHoverCursor);
+      canvas.addEventListener("mouseleave", () => {
+        if (!canvasInteraction) canvas.style.cursor = "";
+      });
+      canvas.parentElement.addEventListener("contextmenu", showContextMenu);
+      document.addEventListener("click", hideContextMenu);
+      window.addEventListener("blur", hideContextMenu);
+      deleteFileMenuItem.addEventListener("click", deleteCurrentFile);
+      canvas.addEventListener("mousedown", event => {
+        hideContextMenu();
+        if (!currentImage || event.button !== 0 || lockedByOther) return;
+        const point = canvasPoint(event);
+        const hit = hitTestBox(point);
+        if (hit) {
+          selectedBoxIndex = hit.index;
+          draftBox = null;
+          dragStart = null;
+          if (hit.type === "anchor") {
+            canvasInteraction = {
+              type: "resize",
+              index: hit.index,
+              anchor: hit.anchor,
+              startBox: {...currentBoxes[hit.index]},
+            };
+            canvas.style.cursor = anchorCursor(hit.anchor);
+          } else if (hit.type === "label") {
+            canvasInteraction = {
+              type: "move",
+              index: hit.index,
+              startPoint: point,
+              startBox: {...currentBoxes[hit.index]},
+            };
+          } else {
+            canvasInteraction = {type: "select"};
+          }
+          redrawImage();
+          event.preventDefault();
+          return;
+        }
+        selectedBoxIndex = -1;
+        if (annotateMode) {
+          dragStart = point;
+          draftBox = null;
+          canvasInteraction = {type: "create"};
+        } else {
+          const wrapper = canvas.parentElement;
+          canvasInteraction = {
+            type: "pan",
+            startClientX: event.clientX,
+            startClientY: event.clientY,
+            scrollLeft: wrapper.scrollLeft,
+            scrollTop: wrapper.scrollTop,
+          };
+          canvas.classList.add("panning");
+          canvas.style.cursor = "";
+        }
+        redrawImage();
+        event.preventDefault();
+      });
+      window.addEventListener("mousemove", event => {
+        if (!canvasInteraction) return;
+        if (canvasInteraction.type === "pan") {
+          const wrapper = canvas.parentElement;
+          wrapper.scrollLeft = canvasInteraction.scrollLeft - (event.clientX - canvasInteraction.startClientX);
+          wrapper.scrollTop = canvasInteraction.scrollTop - (event.clientY - canvasInteraction.startClientY);
+          return;
+        }
+        const point = canvasPoint(event);
+        if (canvasInteraction.type === "create" && dragStart) {
+          draftBox = boxFromPoints(dragStart, point);
+        } else if (canvasInteraction.type === "move") {
+          const dx = point.x - canvasInteraction.startPoint.x;
+          const dy = point.y - canvasInteraction.startPoint.y;
+          currentBoxes[canvasInteraction.index] = moveBox(canvasInteraction.startBox, dx, dy);
+        } else if (canvasInteraction.type === "resize") {
+          currentBoxes[canvasInteraction.index] = resizeBox(
+            canvasInteraction.startBox,
+            canvasInteraction.anchor,
+            point,
+          );
+        }
+        redrawImage();
+      });
+      window.addEventListener("mouseup", event => {
+        if (!canvasInteraction) return;
+        if (canvasInteraction.type === "create" && dragStart) {
+          const point = canvasPoint(event);
+          const box = boxFromPoints(dragStart, point);
+          if (box.width >= 0.003 && box.height >= 0.003) {
+            currentBoxes.push(box);
+            selectedBoxIndex = currentBoxes.length - 1;
+            setBoxesDirty(true);
+          }
+        } else if (canvasInteraction.type === "move" || canvasInteraction.type === "resize") {
+          setBoxesDirty(true);
+        }
+        canvasInteraction = null;
+        dragStart = null;
+        draftBox = null;
+        canvas.classList.remove("panning");
+        canvas.style.cursor = "";
+        redrawImage();
+      });
+    }
+
+    function initViewerTools() {
+      autoAnnotate.addEventListener("click", () => {
+        if (!selectedAutoModel) return;
+        autoAnnotateEnabled = !autoAnnotateEnabled;
+        updateAutoAnnotateButton();
+        if (autoAnnotateEnabled && currentImage && !currentBoxes.length) runAutoAnnotate();
+      });
+      maskAnnotation.addEventListener("click", () => {
+        maskEnabled = !maskEnabled;
+        maskAnnotation.classList.toggle("active", maskEnabled);
+        redrawImage();
+      });
+      deleteAnnotation.addEventListener("click", () => {
+        if (!currentPath || !currentBoxes.length) return;
+        currentBoxes = [];
+        selectedBoxIndex = -1;
+        setBoxesDirty(true);
+        redrawImage();
+      });
+      resetAnnotation.addEventListener("click", () => {
+        if (!currentPath) return;
+        currentBoxes = cloneBoxes(savedBoxes);
+        draftBox = null;
+        dragStart = null;
+        selectedBoxIndex = -1;
+        canvasInteraction = null;
+        setBoxesDirty(false);
+        redrawImage();
+      });
+      saveAnnotation.addEventListener("click", async () => {
+        if (!currentPath || !boxesDirty) return;
+        const savedPath = currentPath;
+        let annotation;
+        try {
+          annotation = await postJson("/api/annotation", {
+            path: currentPath,
+            client_id: clientId(),
+            username: username || "独立用户",
+            boxes: currentBoxes,
+          });
+        } catch (error) {
+          alert(error.message);
+          await acquireCurrentLock();
+          return;
+        }
+        lockedByOther = null;
+        currentBoxes = cloneBoxes(annotation.boxes);
+        savedBoxes = cloneBoxes(annotation.boxes);
+        setBoxesDirty(false);
+        redrawImage();
+        await loadStatistics();
+        await loadTree();
+        await refreshCurrentFiles();
+        const nextPath = nextAnnotationFilePath(savedPath);
+        if (nextPath) {
+          await selectImage(nextPath, fileRow(nextPath));
+        }
+      });
+    }
+
+    function initSplitter() {
+      let dragging = false;
+      splitter.addEventListener("mousedown", event => {
+        dragging = true;
+        splitter.classList.add("dragging");
+        event.preventDefault();
+      });
+      window.addEventListener("mousemove", event => {
+        if (!dragging || rightPanel.classList.contains("exif-collapsed")) return;
+        const rect = rightPanel.getBoundingClientRect();
+        const minTop = 120;
+        const minExif = 72;
+        const splitterSize = splitter.getBoundingClientRect().height;
+        const topHeight = Math.min(
+          Math.max(event.clientY - rect.top, minTop),
+          rect.height - minExif - splitterSize,
+        );
+        const exifHeight = Math.max(minExif, rect.height - topHeight - splitterSize);
+        topInfoPane.style.flexBasis = `${topHeight}px`;
+        topInfoPane.style.flexGrow = "0";
+        topInfoPane.style.flexShrink = "0";
+        exifPane.style.flexBasis = `${exifHeight}px`;
+        exifPane.style.flexGrow = "0";
+        exifPane.style.flexShrink = "0";
+        redrawHistogram();
+      });
+      window.addEventListener("mouseup", () => {
+        if (!dragging) return;
+        dragging = false;
+        splitter.classList.remove("dragging");
+      });
+    }
+
+    function initHistogramSplitter() {
+      let dragging = false;
+      histogramSplitter.addEventListener("mousedown", event => {
+        dragging = true;
+        histogramSplitter.classList.add("dragging");
+        event.preventDefault();
+      });
+      window.addEventListener("mousemove", event => {
+        if (!dragging || rightPanel.classList.contains("histogram-collapsed")) return;
+        const rect = topInfoPane.getBoundingClientRect();
+        const min = 42;
+        const splitterSize = histogramSplitter.getBoundingClientRect().height;
+        const maxLabels = rect.height - min - splitterSize;
+        const boundedMaxLabels = Math.max(min, maxLabels);
+        const labelsHeight = Math.min(Math.max(event.clientY - rect.top, min), boundedMaxLabels);
+        labelsPane.style.flexBasis = `${labelsHeight}px`;
+        labelsPane.style.flexGrow = "0";
+        histogramPane.style.flexBasis = `${Math.max(min, rect.height - labelsHeight - splitterSize)}px`;
+        histogramPane.style.flexGrow = "1";
+        redrawHistogram();
+      });
+      window.addEventListener("mouseup", () => {
+        if (!dragging) return;
+        dragging = false;
+        histogramSplitter.classList.remove("dragging");
+        redrawHistogram();
+      });
+    }
+
+    function redrawHistogram() {
+      if (!currentImage || rightPanel.classList.contains("histogram-collapsed")) return;
+      requestAnimationFrame(() => drawHistogram(currentImage));
+    }
+
+    function visiblePanelHeight(panel) {
+      return panel && panel.offsetParent !== null ? panel.getBoundingClientRect().height : 0;
+    }
+
+    function setPanelHeight(panel, height) {
+      if (!panel) return;
+      panel.style.flexBasis = `${Math.round(height)}px`;
+      panel.style.flexGrow = "0";
+      panel.style.flexShrink = "0";
+    }
+
+    function initTreePaneSplitters() {
+      const minTree = 90;
+      const minPanel = 72;
+      const headerOnly = 34;
+      modelSplitter?.addEventListener("mousedown", event => {
+        if (treePane.classList.contains("model-collapsed")) return;
+        const startY = event.clientY;
+        const startModel = visiblePanelHeight(modelPane);
+        modelSplitter.classList.add("dragging");
+        const onMove = moveEvent => {
+          const rect = treePane.getBoundingClientRect();
+          const collaborationHeight = treePane.classList.contains("collaboration-collapsed")
+            ? headerOnly
+            : visiblePanelHeight(collaboration);
+          const splitters = modelSplitter.getBoundingClientRect().height + visiblePanelHeight(collaborationSplitter);
+          const maxModel = Math.max(minPanel, rect.height - minTree - collaborationHeight - splitters);
+          setPanelHeight(modelPane, Math.min(Math.max(startModel - (moveEvent.clientY - startY), minPanel), maxModel));
+        };
+        const onUp = () => {
+          modelSplitter.classList.remove("dragging");
+          window.removeEventListener("mousemove", onMove);
+          window.removeEventListener("mouseup", onUp);
+        };
+        window.addEventListener("mousemove", onMove);
+        window.addEventListener("mouseup", onUp);
+        event.preventDefault();
+      });
+      collaborationSplitter?.addEventListener("mousedown", event => {
+        if (treePane.classList.contains("collaboration-collapsed")) return;
+        const startY = event.clientY;
+        const startCollaboration = visiblePanelHeight(collaboration);
+        collaborationSplitter.classList.add("dragging");
+        const onMove = moveEvent => {
+          const rect = treePane.getBoundingClientRect();
+          const modelHeight = treePane.classList.contains("model-collapsed")
+            ? headerOnly
+            : visiblePanelHeight(modelPane);
+          const splitters = visiblePanelHeight(modelSplitter) + collaborationSplitter.getBoundingClientRect().height;
+          const maxCollaboration = Math.max(minPanel, rect.height - minTree - modelHeight - splitters);
+          setPanelHeight(collaboration, Math.min(Math.max(startCollaboration - (moveEvent.clientY - startY), minPanel), maxCollaboration));
+        };
+        const onUp = () => {
+          collaborationSplitter.classList.remove("dragging");
+          window.removeEventListener("mousemove", onMove);
+          window.removeEventListener("mouseup", onUp);
+        };
+        window.addEventListener("mousemove", onMove);
+        window.addEventListener("mouseup", onUp);
+        event.preventDefault();
+      });
+    }
+
+    function initLeftPanel() {
+      let dragging = false;
+      initTreePaneSplitters();
+      reloadTree.addEventListener("click", async () => {
+        await loadTree();
+        await loadStatistics();
+        await selectDir(currentDir);
+      });
+      leftSplitter.addEventListener("mousedown", event => {
+        dragging = true;
+        leftSplitter.classList.add("dragging");
+        event.preventDefault();
+      });
+      window.addEventListener("mousemove", event => {
+        if (!dragging || leftPanel.classList.contains("tree-hidden")) return;
+        const rect = leftPanel.getBoundingClientRect();
+        const minTree = 120;
+        const minFiles = 160;
+        const splitterWidth = leftSplitter.getBoundingClientRect().width;
+        const treeWidth = Math.min(Math.max(event.clientX - rect.left, minTree), rect.width - minFiles - splitterWidth);
+        leftPanel.style.gridTemplateColumns = `${treeWidth}px 1px minmax(${minFiles}px, 1fr)`;
+      });
+      window.addEventListener("mouseup", () => {
+        if (!dragging) return;
+        dragging = false;
+        leftSplitter.classList.remove("dragging");
+      });
+      toggleTree.addEventListener("click", () => {
+        leftPanel.classList.add("tree-hidden");
+        appMain.classList.add("tree-hidden");
+        setMainColumns(280);
+      });
+      showTree.addEventListener("click", () => {
+        leftPanel.classList.remove("tree-hidden");
+        appMain.classList.remove("tree-hidden");
+        if (!leftPanel.style.gridTemplateColumns || leftPanel.style.gridTemplateColumns.startsWith("0px")) {
+          leftPanel.style.gridTemplateColumns = "minmax(120px, 46%) 1px minmax(160px, 1fr)";
+        }
+        setMainColumns(520);
+      });
+      toggleModelPane.addEventListener("click", () => {
+        const collapsed = treePane.classList.toggle("model-collapsed");
+        toggleModelPane.textContent = collapsed ? "▴" : "▾";
+      });
+      toggleCollaboration.addEventListener("click", () => {
+        const collapsed = treePane.classList.toggle("collaboration-collapsed");
+        toggleCollaboration.textContent = collapsed ? "▴" : "▾";
+      });
+    }
+
+    function setMainColumns(leftWidth) {
+      const rightWidth = appMain.classList.contains("right-hidden") ? 0 : 220;
+      appMain.style.gridTemplateColumns = `${leftWidth}px 1px minmax(420px, 1fr) ${rightWidth}px`;
+    }
+
+    function initMainSplitter() {
+      let dragging = false;
+      mainSplitter.addEventListener("mousedown", event => {
+        dragging = true;
+        mainSplitter.classList.add("dragging");
+        event.preventDefault();
+      });
+      window.addEventListener("mousemove", event => {
+        if (!dragging) return;
+        const rect = appMain.getBoundingClientRect();
+        const minLeft = appMain.classList.contains("tree-hidden") ? 220 : 360;
+        const minViewer = 420;
+        const splitterWidth = mainSplitter.getBoundingClientRect().width;
+        const rightWidth = appMain.classList.contains("right-hidden") ? 0 : 220;
+        const maxLeft = rect.width - minViewer - splitterWidth - rightWidth;
+        const boundedMaxLeft = Math.max(minLeft, maxLeft);
+        const leftWidth = Math.min(Math.max(event.clientX - rect.left, minLeft), boundedMaxLeft);
+        setMainColumns(leftWidth);
+      });
+      window.addEventListener("mouseup", () => {
+        if (!dragging) return;
+        dragging = false;
+        mainSplitter.classList.remove("dragging");
+      });
+    }
+
+    function initConsoleSplitter() {
+      let dragging = false;
+      const minHeight = 90;
+      consoleSplitter.addEventListener("mousedown", event => {
+        dragging = true;
+        consoleSplitter.classList.add("dragging");
+        event.preventDefault();
+      });
+      window.addEventListener("mousemove", event => {
+        if (!dragging) return;
+        const maxHeight = Math.max(minHeight, window.innerHeight - 160);
+        const nextHeight = Math.min(Math.max(window.innerHeight - event.clientY - consoleSplitter.offsetHeight, minHeight), maxHeight);
+        document.documentElement.style.setProperty("--console-height", `${nextHeight}px`);
+      });
+      window.addEventListener("mouseup", () => {
+        if (!dragging) return;
+        dragging = false;
+        consoleSplitter.classList.remove("dragging");
+      });
+    }
+
+    function initRightPanel() {
+      function clearInlineFlex(node) {
+        node.style.flexBasis = "";
+        node.style.flexGrow = "";
+        node.style.flexShrink = "";
+      }
+
+      function giveCollapsedSpaceToLabels() {
+        if (!rightPanel.classList.contains("exif-collapsed") || !rightPanel.classList.contains("histogram-collapsed")) return;
+        clearInlineFlex(labelsPane);
+        labelsPane.style.flexGrow = "1";
+        labelsPane.style.flexShrink = "1";
+        topInfoPane.style.flexBasis = "";
+        topInfoPane.style.flexGrow = "1";
+        topInfoPane.style.flexShrink = "1";
+      }
+
+      hideRight.addEventListener("click", () => {
+        appMain.classList.add("right-hidden");
+        const leftWidth = leftPanel.getBoundingClientRect().width;
+        setMainColumns(leftWidth);
+      });
+      showRight.addEventListener("click", () => {
+        appMain.classList.remove("right-hidden");
+        const leftWidth = leftPanel.getBoundingClientRect().width;
+        setMainColumns(leftWidth);
+      });
+      toggleHistogram.addEventListener("click", () => {
+        const isCollapsed = rightPanel.classList.contains("histogram-collapsed");
+        if (isCollapsed) {
+          rightPanel.classList.remove("histogram-collapsed");
+          if (rightPanel.classList.contains("exif-collapsed")) {
+            clearInlineFlex(labelsPane);
+            topInfoPane.style.flexBasis = "";
+            topInfoPane.style.flexGrow = "1";
+            topInfoPane.style.flexShrink = "1";
+          } else if (histogramExpandedTopHeight) {
+            topInfoPane.style.flexBasis = `${histogramExpandedTopHeight}px`;
+            topInfoPane.style.flexGrow = "0";
+          }
+          toggleHistogram.textContent = "▾";
+        } else {
+          if (rightPanel.classList.contains("exif-collapsed")) {
+            clearInlineFlex(labelsPane);
+            topInfoPane.style.flexBasis = "";
+            topInfoPane.style.flexGrow = "1";
+            topInfoPane.style.flexShrink = "1";
+          } else {
+            const topHeight = topInfoPane.getBoundingClientRect().height;
+            const labelsHeight = labelsPane.getBoundingClientRect().height;
+            const histogramHeaderHeight = histogramPane.querySelector(".pane-header").getBoundingClientRect().height;
+            histogramExpandedTopHeight = topHeight;
+            labelsPane.style.flexBasis = `${labelsHeight}px`;
+            labelsPane.style.flexGrow = "0";
+            topInfoPane.style.flexBasis = `${labelsHeight + histogramHeaderHeight}px`;
+            topInfoPane.style.flexGrow = "0";
+          }
+          rightPanel.classList.add("histogram-collapsed");
+          giveCollapsedSpaceToLabels();
+          toggleHistogram.textContent = "▴";
+        }
+        redrawHistogram();
+      });
+      toggleExif.addEventListener("click", () => {
+        const collapsed = rightPanel.classList.toggle("exif-collapsed");
+        if (collapsed) {
+          topInfoPane.style.flexBasis = "";
+          topInfoPane.style.flexGrow = "1";
+          topInfoPane.style.flexShrink = "1";
+          giveCollapsedSpaceToLabels();
+        } else {
+          exifPane.style.flexBasis = "";
+          exifPane.style.flexGrow = "";
+          exifPane.style.flexShrink = "";
+        }
+        toggleExif.textContent = collapsed ? "▴" : "▾";
+        redrawHistogram();
+      });
+    }
+    init().catch(error => {
+      document.body.innerHTML = `<pre>${error.stack || error}</pre>`;
+    });
+  </script>
