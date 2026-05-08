@@ -953,15 +953,16 @@ main.team-main > .team-chat-layout {
 
 .command-card code,
 .sftp-command-grid code {
-  display: block;
-  min-height: 78px;
-  padding: 18px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  padding: 9px 12px;
   overflow-wrap: anywhere;
   border: 1px dashed #9fb4ce;
   border-radius: 8px;
   background: #f8fbff;
   color: #334e68;
-  font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
 .sftp-panel {
@@ -974,16 +975,16 @@ main.team-main > .team-chat-layout {
 }
 
 .sftp-url-card {
-  min-height: 78px;
-  display: grid;
-  align-content: center;
-  padding: 18px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  padding: 9px 12px;
   overflow: hidden;
   border: 1px dashed #9fb4ce;
   border-radius: 8px;
   background: #f8fbff;
   color: #334e68;
-  font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
 .sftp-url-card span {

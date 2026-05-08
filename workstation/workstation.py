@@ -1007,7 +1007,7 @@ class Workstation:
     .pane-title-icon { display: inline-block; width: 16px; margin-right: 6px; color: #52606d; font-size: 15px; line-height: 1; font-weight: 500; text-align: center; }
     .icon-button { flex: 0 0 28px; width: 28px; min-width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; padding: 0; text-align: center; border-radius: 6px; font-size: 16px; line-height: 1; color: #52606d; }
     .icon-button:hover { background: #e6f0ff; color: #243b53; }
-    .collapse-button { font-size: 14px; line-height: 1; padding-bottom: 1px; }
+    .collapse-button { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 15px; line-height: 1; padding: 0; }
     .viewer-tools { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; }
     .tool-button { width: auto; min-width: 34px; height: 28px; padding: 0 8px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid #d9e2ec; border-radius: 6px; background: #fff; color: #334e68; font-size: 12px; line-height: 1; white-space: nowrap; }
     .tool-button:hover { background: #e6f0ff; color: #243b53; }
@@ -1301,7 +1301,7 @@ class Workstation:
           <div class="pane-header">
             <h2><span class="pane-title-icon">◎</span>模型 <strong id="modelCount" class="pane-title-count">-</strong></h2>
             <div class="collaboration-tools">
-              <button id="toggleModelPane" class="icon-button collapse-button" title="折叠/展开模型">⌄</button>
+              <button id="toggleModelPane" class="icon-button collapse-button" title="折叠/展开模型">▾</button>
             </div>
           </div>
           <div id="modelList" class="model-list"></div>
@@ -1311,7 +1311,7 @@ class Workstation:
           <div class="pane-header collaboration-header">
             <h2><span class="pane-title-icon">◌</span>协作 <strong id="onlineCount" class="pane-title-count">-</strong></h2>
             <div class="collaboration-tools">
-              <button id="toggleCollaboration" class="icon-button collapse-button" title="折叠/展开协作">⌄</button>
+              <button id="toggleCollaboration" class="icon-button collapse-button" title="折叠/展开协作">▾</button>
             </div>
           </div>
           <div id="collaborationUsers" class="collaboration-users"></div>
@@ -1359,13 +1359,13 @@ class Workstation:
         </div>
         <div id="histogramSplitter" class="histogram-splitter" title="拖动调整标签和直方图比例"></div>
         <div id="histogramPane" class="histogram-pane">
-          <div class="pane-header"><h2><span class="pane-title-icon">▥</span>直方图</h2><button id="toggleHistogram" class="icon-button collapse-button" title="折叠/展开直方图">⌄</button></div>
+          <div class="pane-header"><h2><span class="pane-title-icon">▥</span>直方图</h2><button id="toggleHistogram" class="icon-button collapse-button" title="折叠/展开直方图">▾</button></div>
           <div id="histogram" class="histogram"><canvas id="histogramCanvas"></canvas></div>
         </div>
       </div>
       <div id="splitter" class="splitter" title="拖动调整标签和 EXIF 面板比例"></div>
       <div id="exifPane" class="right-pane exif-pane">
-        <div class="pane-header"><h2><span class="pane-title-icon">※</span>信息</h2><button id="toggleExif" class="icon-button collapse-button" title="折叠/展开信息">⌄</button></div>
+        <div class="pane-header"><h2><span class="pane-title-icon">※</span>信息</h2><button id="toggleExif" class="icon-button collapse-button" title="折叠/展开信息">▾</button></div>
         <div id="exif" class="exif"><div class="empty">请选择图片</div></div>
       </div>
     </aside>
@@ -3235,11 +3235,11 @@ class Workstation:
       });
       toggleModelPane.addEventListener("click", () => {
         const collapsed = treePane.classList.toggle("model-collapsed");
-        toggleModelPane.textContent = collapsed ? "⌃" : "⌄";
+        toggleModelPane.textContent = collapsed ? "▴" : "▾";
       });
       toggleCollaboration.addEventListener("click", () => {
         const collapsed = treePane.classList.toggle("collaboration-collapsed");
-        toggleCollaboration.textContent = collapsed ? "⌃" : "⌄";
+        toggleCollaboration.textContent = collapsed ? "▴" : "▾";
       });
     }
 
@@ -3314,7 +3314,7 @@ class Workstation:
             topInfoPane.style.flexBasis = `${histogramExpandedTopHeight}px`;
             topInfoPane.style.flexGrow = "0";
           }
-          toggleHistogram.textContent = "⌄";
+          toggleHistogram.textContent = "▾";
         } else {
           const topHeight = topInfoPane.getBoundingClientRect().height;
           const labelsHeight = labelsPane.getBoundingClientRect().height;
@@ -3325,7 +3325,7 @@ class Workstation:
           topInfoPane.style.flexBasis = `${labelsHeight + histogramHeaderHeight}px`;
           topInfoPane.style.flexGrow = "0";
           rightPanel.classList.add("histogram-collapsed");
-          toggleHistogram.textContent = "⌃";
+          toggleHistogram.textContent = "▴";
         }
         redrawHistogram();
       });
@@ -3340,7 +3340,7 @@ class Workstation:
           exifPane.style.flexGrow = "";
           exifPane.style.flexShrink = "";
         }
-        toggleExif.textContent = collapsed ? "⌃" : "⌄";
+        toggleExif.textContent = collapsed ? "▴" : "▾";
         redrawHistogram();
       });
     }
