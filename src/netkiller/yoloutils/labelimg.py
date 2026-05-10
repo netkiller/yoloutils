@@ -59,6 +59,19 @@ class YoloLabelimg(Common):
     def add_report(self, source, target="", reason=""):
         self.report.append((source, target, reason))
 
+    def paired_image(self, label_file):
+        label_root = os.path.splitext(label_file)[0]
+        candidates = sorted(glob.glob(f"{glob.escape(label_root)}.*"))
+        for candidate in candidates:
+            if os.path.abspath(candidate) == os.path.abspath(label_file):
+                continue
+            ext = os.path.splitext(candidate)[1].lower()
+            if ext == ".txt":
+                continue
+            if ext in Common.image_exts:
+                return candidate
+        return None
+
     def input(self):
         if self.args.clean:
             clean_paths = [self.args.target]
@@ -142,11 +155,10 @@ class YoloLabelimg(Common):
                     continue
                 if os.path.getsize(source) == 0:
                     if self.args.nullable:
-                        for ext in Common.image_exts:
-                            if os.path.exists(f"{os.path.splitext(source)[0]}{ext}"):
-                                self.files[source] = f"{os.path.splitext(source)[0]}{ext}"
-                                self.nullable_files.add(source)
-                                break
+                        image = self.paired_image(source)
+                        if image:
+                            self.files[source] = image
+                            self.nullable_files.add(source)
                         else:
                             self.add_report(source, reason="扩展名不支持")
                             self.logger.warning(f"空标注文件缺少配对图片: {source}")
@@ -156,10 +168,9 @@ class YoloLabelimg(Common):
                     self.logger.warning(f"标注文件为空: {source}")
                     progress.update(1)
                     continue
-                for ext in Common.image_exts:
-                    if os.path.exists(f"{os.path.splitext(source)[0]}{ext}"):
-                        self.files[source] = f"{os.path.splitext(source)[0]}{ext}"
-                        break
+                image = self.paired_image(source)
+                if image:
+                    self.files[source] = image
                 else:
                     self.add_report(source, reason="扩展名不支持")
                     self.logger.warning(f"标注文件缺少配对图片: {source}")
