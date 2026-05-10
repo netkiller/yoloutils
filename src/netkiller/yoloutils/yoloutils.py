@@ -185,16 +185,16 @@ class YoloUtils:
 
         self.remove.add_argument('-s', "--source", type=str, default=None, help="图片来源地址")
         # self.remove.add_argument('-t', "--target", type=str, default=None, help="图片目标地址")
+        # self.remove.add_argument(
+        #     "--clean", action="store_true", default=False, help="清理之前的数据"
+        # )
         self.remove.add_argument(
-            "--clean", action="store_true", default=False, help="清理之前的数据"
+            '-i',
+            "--index", nargs="+", default=None, help="标签索引序号", metavar="0 1 2 3"
         )
         self.remove.add_argument(
             '-c',
-            "--classes", nargs="+", default=None, help="标签序号", metavar="1 2 3"
-        )
-        self.remove.add_argument(
-            '-l',
-            "--label", nargs="+", default=None, help="标签名称", metavar="label1 label2"
+            "--classes", nargs="+", default=None, help="classes.txt 标签名称", metavar="label1 label2"
         )
         self.remove.add_argument('--dry-run', action="store_true", default=False, help='模拟执行')
 

@@ -32,15 +32,10 @@ class YoloLabelRemove(Common):
 
     def input(self):
         try:
-            if self.args.clean:
-                if os.path.exists(self.args.target):
-                    shutil.rmtree(self.args.target)
-            if self.args.target:
-                os.makedirs(self.args.target, exist_ok=True)
 
             self.files = glob.glob(f"{self.args.source}/**/*.txt", recursive=True)
 
-            if self.args.label:
+            if self.args.classes:
                 classes = os.path.join(self.args.source, "classes.txt")
                 if not os.path.isfile(classes):
                     print(f"classes.txt 文件不存在: {classes}")
@@ -53,7 +48,7 @@ class YoloLabelRemove(Common):
                             if line.strip() in self.args.label:
                                 self.indexs.append(n)
                             n += 1
-            if self.args.classes:
+            if self.args.index:
                 for index in self.args.classes:
                     self.indexs.append(int(index))
             self.logger.info(f"remove classes len={len(self.indexs)} indexs={self.indexs}")
