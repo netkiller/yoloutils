@@ -763,6 +763,30 @@ yoloutils image --source ./images --imgsz '<1920'
 yoloutils image --source ./images --check --csv ./jpg-check.csv
 ```
 
+按网格切图：
+
+```shell
+# 1 列 2 行，切上下
+yoloutils image --source ./images --target ./grid --grid 1x2
+
+# 2 列 1 行，切左右
+yoloutils image --source ./images --target ./grid --grid 2x1
+
+# 2 列 2 行，切成 4 张
+yoloutils image --source ./images --target ./grid --grid 2x2
+
+# 3 列 3 行，切成 9 张
+yoloutils image --source ./images --target ./grid --grid 3x3
+```
+
+说明：
+
+- `--grid` 格式为 `列x行`。
+- `--grid 1x2` 表示 1 列 2 行，把图片切上下。
+- `--grid 2x1` 表示 2 列 1 行，把图片切左右。
+- 切图输出到 `--target`，并保留 `--source` 下的相对目录结构。
+- 输出文件名格式为：`原文件名_r行_c列.扩展名`。
+
 ### 4.10 `workstation`
 
 启动本地 FastAPI 站点，浏览、检查和手工标注 YOLO 图像。

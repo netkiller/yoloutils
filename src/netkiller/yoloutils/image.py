@@ -140,6 +140,25 @@ class YoloImage:
         self.logger.info(f"type rows saved csv={csv_path}")
         print(f"CSV 已保存: {csv_path}")
 
+    def _parse_grid(self, grid: str):
+        raw = str(grid or "").lower().strip()
+        parts = raw.split("x")
+        if len(parts) != 2:
+            print(f"grid 格式错误: {grid}，格式用法: 2x2")
+            return None
+
+        try:
+            cols, rows = (int(part.strip()) for part in parts)
+        except ValueError:
+            print(f"grid 格式错误: {grid}，格式用法: 2x2")
+            return None
+
+        if cols <= 0 or rows <= 0:
+            print(f"grid 必须大于 0: {grid}")
+            return None
+
+        return cols, rows
+
     def _detect_image_type(self, file: str):
         try:
             with open(file, "rb") as image:
@@ -341,6 +360,53 @@ class YoloImage:
 
         print(f"统计结果, 修复:{len(self.matched)}, 无法识别:{self.invalid}, 合计:{len(self.files)}")
         self._write_type_csv(csv_path)
+
+    def grid(self, source: str, target: str, grid: str):
+        if not source or not os.path.isdir(source):
+            print(f"source 目录不存在: {source}")
+            return
+        if not target:
+            print("target 不能为空")
+            return
+
+        parsed = self._parse_grid(grid)
+        if parsed is None:
+            return
+        cols, rows = parsed
+
+        self._scan_images(source)
+        count = 0
+        self.invalid = 0
+
+        with tqdm(total=len(self.files), ncols=120) as progress:
+            for file in self.files:
+                progress.set_description(self._relative(file, source))
+                try:
+                    with Image.open(file) as original:
+                        image = ImageOps.exif_transpose(original)
+                        width, height = image.size
+                        relpath = self._relative(file, source)
+                        relroot, ext = os.path.splitext(relpath)
+
+                        for row in range(rows):
+                            y1 = row * height // rows
+                            y2 = (row + 1) * height // rows
+                            for col in range(cols):
+                                x1 = col * width // cols
+                                x2 = (col + 1) * width // cols
+                                output = os.path.join(
+                                    target,
+                                    f"{relroot}_r{row + 1}_c{col + 1}{ext}",
+                                )
+                                os.makedirs(os.path.dirname(output), exist_ok=True)
+                                image.crop((x1, y1, x2, y2)).save(output)
+                                count += 1
+                except Exception as e:
+                    self.invalid += 1
+                    self.logger.warning(f"image grid failed source={file} err={repr(e)}")
+                progress.update(1)
+
+        print(f"统计结果, 切图:{count}, 无效:{self.invalid}, 原图:{len(self.files)}, grid:{cols}x{rows}")
 
 
 class YoloImageCrop:

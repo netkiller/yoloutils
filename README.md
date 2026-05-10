@@ -3,6 +3,7 @@
 YOLO 标签工具集 - 用于处理 YOLO 目标检测数据集的标签和图片。
 
 作者: Neo <netkiller@msn.com>
+
 官网: https://www.netkiller.cn
 
 ## 从 PyPI 安装
@@ -227,13 +228,30 @@ yoloutils image --source ./images --check --csv ./jpg-check.csv
 
 `--check` 递归检查 `.jpg/.jpeg` 文件，发现异常时输出并可导出 CSV，列为：`文件, 错误`。
 
+```shell
+# 1 列 2 行，切上下
+yoloutils image --source ./images --target ./grid --grid 1x2
+
+# 2 列 1 行，切左右
+yoloutils image --source ./images --target ./grid --grid 2x1
+
+# 2 列 2 行，切成 4 张
+yoloutils image --source ./images --target ./grid --grid 2x2
+```
+
+`--grid` 格式为 `列x行`，输出文件保留 `--source` 下的相对目录结构，并在文件名后追加 `_r行_c列`。
+
 ## 工作站
 
 ```shell
 python src/netkiller/yoloutils/yoloutils.py workstation -w /Users/neo/tmp/yolo/source
 ```
 
-启动本地 FastAPI 站点，默认地址为 `http://127.0.0.1:8000`。页面包含目录树、文件列表、图像预览和右侧信息栏；文件列表中有效标注显示绿色，空 `.txt`、无效 `.txt` 或损坏图片显示红色；图像存在同名 `.txt` 时会按 YOLO 标注绘制 box 框。图像栏头部提供自动标注激活、删除、重置和保存按钮。目录树和文件列表、文件列表和图像区域都可左右拖动调整比例，目录栏可隐藏，隐藏后图像栏填充释放空间。右侧信息栏可隐藏；标签下方展示当前图片 RGB 直方图，标签和直方图可上下拖动分配比例，直方图可折叠；标签/直方图区域和 EXIF 可上下拖动调整比例，EXIF 可折叠到底部。底部 footer 左侧展示 `--workspace` 位置，右侧展示图像数量、`.txt` 数量、损坏图像和无效 `.txt` 数量。
+启动本地 FastAPI 站点，默认地址为 `http://127.0.0.1:8000`。页面包含目录树、文件列表、图像预览和右侧信息栏；文件列表中有效标注显示绿色，空
+`.txt`、无效 `.txt` 或损坏图片显示红色；图像存在同名 `.txt` 时会按 YOLO 标注绘制 box
+框。图像栏头部提供自动标注激活、删除、重置和保存按钮。目录树和文件列表、文件列表和图像区域都可左右拖动调整比例，目录栏可隐藏，隐藏后图像栏填充释放空间。右侧信息栏可隐藏；标签下方展示当前图片
+RGB 直方图，标签和直方图可上下拖动分配比例，直方图可折叠；标签/直方图区域和 EXIF 可上下拖动调整比例，EXIF 可折叠到底部。底部
+footer 左侧展示 `--workspace` 位置，右侧展示图像数量、`.txt` 数量、损坏图像和无效 `.txt` 数量。
 
 后台运行：
 

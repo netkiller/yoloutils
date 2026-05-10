@@ -279,6 +279,7 @@ class YoloUtils:
             formatter_class=nowrap_formatter,
         )
         self.image.add_argument('-s', "--source", type=str, default=None, help="图片来源地址")
+        self.image.add_argument('-t', "--target", type=str, default=None, help="图片目标地址")
         self.image.add_argument("-c", "--csv", type=str, default=None, help="导出查询结果", metavar="result.csv")
         self.image.add_argument(
             "--check",
@@ -288,6 +289,15 @@ class YoloUtils:
         )
         self.image.add_argument(
             "--type", action="store_true", default=False, help="文件类型检查与修复，解决扩展名与文件内容不匹配问题"
+        )
+        self.image.add_argument(
+            "-g",
+            "-grid",
+            "--grid",
+            type=str,
+            default=None,
+            help="按网格切图，格式 列x行，例如 2x2",
+            metavar="2x2",
         )
         self.image.add_argument('-i', '--imgsz', type=str, default=None, help="查找长边图像，格式用法 '>1920' 或 '<1920'", metavar="'>1920'")
 
@@ -455,6 +465,8 @@ class YoloUtils:
                     run.check(args.source, args.csv)
                 elif args.source and args.type:
                     run.type(args.source, args.csv)
+                elif args.source and args.target and args.grid:
+                    run.grid(args.source, args.target, args.grid)
                 else:
                     self.image.print_help()
             except SystemExit as e:
