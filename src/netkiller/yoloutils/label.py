@@ -18,22 +18,8 @@ except ImportError:
 class YoloLabelRemove(Common):
     total = {"change": 0, "remove": 0, "skip": 0, "error": 0}
 
-    def __init__(self, parser, args):
-        parser.add_argument('-s', "--source", type=str, default=None, help="图片来源地址")
-        parser.add_argument('-t', "--target", type=str, default=None, help="图片目标地址")
-        parser.add_argument(
-            "--clean", action="store_true", default=False, help="清理之前的数据"
-        )
-        parser.add_argument(
-            '-c',
-            "--classes", nargs="+", default=None, help="标签序号", metavar="1 2 3"
-        )
-        parser.add_argument(
-            '-l',
-            "--label", nargs="+", default=None, help="标签名称", metavar="label1 label2"
-        )
-        self.parser = parser
-        self.args = args
+    def __init__(self):
+
         self.logger = logging.getLogger("remove")
         self.indexs = []
 
@@ -128,14 +114,12 @@ class YoloLabelRemove(Common):
         table.add_rows(tables)
         print(table.draw())
 
-    def main(self):
+    def main(self, args):
+        self.args = args
         if self.args.source and (self.args.classes or self.args.label):
             self.input()
             self.process()
             self.output()
-        else:
-            self.parser.print_help()
-            exit()
 
 
 class YoloLabelMerge(Common):

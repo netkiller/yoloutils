@@ -182,14 +182,28 @@ class YoloUtils:
 
         self.copy = self.subparsers.add_parser("copy", help="从指定标签复制图片文件")
         self.remove = self.subparsers.add_parser("remove", help="从YOLO TXT文件中删除指定标签")
+
+        self.remove.add_argument('-s', "--source", type=str, default=None, help="图片来源地址")
+        # self.remove.add_argument('-t', "--target", type=str, default=None, help="图片目标地址")
+        self.remove.add_argument(
+            "--clean", action="store_true", default=False, help="清理之前的数据"
+        )
+        self.remove.add_argument(
+            '-c',
+            "--classes", nargs="+", default=None, help="标签序号", metavar="1 2 3"
+        )
+        self.remove.add_argument(
+            '-l',
+            "--label", nargs="+", default=None, help="标签名称", metavar="label1 label2"
+        )
+        self.remove.add_argument('--dry-run', action="store_true", default=False, help='模拟执行')
+
         # self.parser = argparse.ArgumentParser(description='YOLO标签删除工具')
         # self.remove.add_argument('--clean', action="store_true", default=False, help='清理输出目录')
         # self.remove.add_argument('--show', action='store_true', help='查看 classes.txt 文件')
 
         self.change = self.subparsers.add_parser("change", help="修改标签索引")
         self.crop = self.subparsers.add_parser("crop", help="图片裁剪")
-
-        # self.change.add_argument('--classes', action="store_true", default=False, help='查看 classes.txt 文件')
         # parser_b.add_argument('--baz', choices=('X', 'Y', 'Z'), help='baz help')
         #
         # # parse some argument lists
@@ -344,7 +358,12 @@ class YoloUtils:
         elif root_args.subcommand == "copy":
             run = YoloLabelCopy(self.copy, root_args)
         elif root_args.subcommand == "remove":
-            run = YoloLabelRemove(self.remove, root_args)
+            if root_args.source and (root_args.classes or root_args.label):
+                run = YoloLabelRemove()
+                run.main(root_args)
+            else:
+                self.remove.print_help()
+            exit()
         elif root_args.subcommand == "change":
             run = YoloLabelChange(self.change, root_args)
         elif root_args.subcommand == "merge":
