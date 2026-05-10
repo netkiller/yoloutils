@@ -221,7 +221,13 @@ class YoloUtils:
             '-c', "--classes", type=str, default=None, help="classes.txt 文件"
         )
         self.labelimg.add_argument(
-            '-v', "--val", type=int, default=10, help="验证集占比（百分比 10 ~ 80）", metavar=10
+            '-v', "--val", type=int, default=10, help="验证集占比（百分比 5 ~ 50）", metavar=10
+        )
+        self.labelimg.add_argument(
+            "--test", type=int, default=5, help="测试集占比（百分比 5 ~ 50）", metavar=5
+        )
+        self.labelimg.add_argument(
+            "--nullable", action="store_true", default=False, help="允许空 .txt 标注文件进入数据集"
         )
         # self.labelimg.add_argument('--clean', action="store_true", default=False, help='清理之前的数据')
 

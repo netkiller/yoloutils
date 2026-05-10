@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import base64
 import os
 import subprocess
 import sys
@@ -25,6 +26,7 @@ def build_parser():
     parser.add_argument("--mDNS", dest="mdns", type=str, default=None, help=".local 分享域名")
     parser.add_argument("--reload", action="store_true", default=False, help="启用 uvicorn reload")
     parser.add_argument("--demo", action="store_true", default=False, help="演示模式")
+    parser.add_argument("--auth", dest="auth", type=str, default=None, help="user:password")
     return parser
 
 
@@ -47,6 +49,10 @@ def apply_environment(args):
     workspace = Path(args.workspace).expanduser().resolve() if args.workspace else Path.cwd()
     if not workspace.is_dir():
         raise SystemExit(f"workspace 目录不存在: {workspace}")
+    if args.auth:
+        username, separator, password = args.auth.partition(":")
+        if not separator or not username or not password:
+            raise SystemExit("--auth 格式应为 user:password")
 
     os.environ["YOLOUTILS_WORKSPACE"] = str(workspace)
     os.environ["YOLOUTILS_HOST"] = str(args.host)
@@ -57,6 +63,10 @@ def apply_environment(args):
         os.environ.pop("YOLOUTILS_MDNS", None)
     os.environ["YOLOUTILS_TEAM"] = "1" if args.team else "0"
     os.environ["YOLOUTILS_DEMO"] = "1" if args.demo else "0"
+    if args.auth:
+        os.environ["YOLOUTILS_AUTH"] = args.auth
+    else:
+        os.environ.pop("YOLOUTILS_AUTH", None)
 
     optional_paths = {
         "YOLOUTILS_DATASET": args.datasets,
@@ -101,7 +111,14 @@ def open_app_window(url: str):
             continue
 
 
-def start_browser_opener(url: str):
+def basic_auth_header(auth: str | None):
+    if not auth:
+        return {}
+    token = base64.b64encode(auth.encode("utf-8")).decode("ascii")
+    return {"Authorization": f"Basic {token}"}
+
+
+def start_browser_opener(url: str, auth: str | None = None):
     def open_and_keep_alive():
         time.sleep(1)
         open_app_window(url)
@@ -109,7 +126,10 @@ def start_browser_opener(url: str):
             try:
                 request = urllib.request.Request(
                     url,
-                    headers={"User-Agent": "Yolo-Workstation-Headless/1.0"},
+                    headers={
+                        "User-Agent": "Yolo-Workstation-Headless/1.0",
+                        **basic_auth_header(auth),
+                    },
                 )
                 with urllib.request.urlopen(request, timeout=5) as response:
                     response.read(2048)
@@ -126,12 +146,19 @@ def start_browser_opener(url: str):
 
 def daemon_command(args):
     command = [sys.executable, str(Path(__file__).resolve())]
-    for option in ("host", "port", "workspace", "dataset", "run", "mdns"):
-        value = getattr(args, option)
+    for option, attr in (
+        ("host", "host"),
+        ("port", "port"),
+        ("workspace", "workspace"),
+        ("datasets", "datasets"),
+        ("runs", "runs"),
+        ("mDNS", "mdns"),
+        ("auth", "auth"),
+    ):
+        value = getattr(args, attr)
         if value is None:
             continue
-        flag = "--mDNS" if option == "mdns" else f"--{option}"
-        command.extend([flag, str(value)])
+        command.extend([f"--{option}", str(value)])
     if args.open:
         command.append("--open")
     if args.team:
@@ -210,7 +237,7 @@ def main():
     if args.demo:
         print("Demo: enabled")
     if args.open:
-        start_browser_opener(url)
+        start_browser_opener(url, args.auth)
         print("Browser: opening")
 
     import uvicorn

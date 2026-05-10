@@ -295,6 +295,7 @@
     let currentDir = "";
     let currentPath = "";
     let currentImage = null;
+    let currentLabelFile = "";
     let imageZoom = 1;
     let currentBoxes = [];
     let savedBoxes = [];
@@ -556,6 +557,7 @@
       if (!firstFile) {
         currentPath = "";
         currentImage = null;
+        currentLabelFile = "";
         currentBoxes = [];
         savedBoxes = [];
         draftBox = null;
@@ -583,9 +585,11 @@
       lockBanner.textContent = "";
       currentPath = path;
       currentImage = null;
+      currentLabelFile = "";
       lockedByOther = null;
       renderStatistics();
       const annotation = await getJson(`/api/annotation?path=${encodeURIComponent(path)}`);
+      currentLabelFile = annotation.label_file || "";
       currentBoxes = cloneBoxes(annotation.boxes);
       savedBoxes = cloneBoxes(annotation.boxes);
       draftBox = null;
@@ -1009,7 +1013,7 @@
       editModeToggle.title = annotateMode ? "当前为打标状态" : "当前为只读状态";
       canvas.classList.toggle("annotating", annotateMode);
       const locked = Boolean(lockedByOther);
-      saveAnnotation.disabled = locked || !boxesDirty;
+      saveAnnotation.disabled = locked || !currentPath || (!boxesDirty && Boolean(currentLabelFile));
       resetAnnotation.disabled = locked || !boxesDirty;
       deleteAnnotation.disabled = locked || !currentBoxes.length;
       editModeToggle.disabled = locked;
@@ -1487,6 +1491,7 @@
       }
       currentPath = "";
       currentImage = null;
+      currentLabelFile = "";
       currentBoxes = [];
       savedBoxes = [];
       selectedBoxIndex = -1;
@@ -1849,7 +1854,7 @@
         redrawImage();
       });
       saveAnnotation.addEventListener("click", async () => {
-        if (!currentPath || !boxesDirty) return;
+        if (!currentPath || (!boxesDirty && currentLabelFile)) return;
         const savedPath = currentPath;
         let annotation;
         try {
@@ -1865,6 +1870,7 @@
           return;
         }
         lockedByOther = null;
+        currentLabelFile = annotation.label_file || "";
         currentBoxes = cloneBoxes(annotation.boxes);
         savedBoxes = cloneBoxes(annotation.boxes);
         setBoxesDirty(false);

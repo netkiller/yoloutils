@@ -33,6 +33,7 @@ class YoloLabelimg(Common):
         self.classes = []
         self.lables = {}
         self.files = {}
+        self.nullable_files = set()
         self.report = []
         self.logger = logging.getLogger(__class__.__name__)
 
@@ -67,9 +68,13 @@ class YoloLabelimg(Common):
                 exit()
             for path in clean_paths:
                 self.remove_clean_path(path)
-        if self.args.val < 10 or self.args.val > 80:
-            print(f"--val 超出范围: {self.args.val}，必须在 10~80% 之间")
+        if self.args.val < 5 or self.args.val > 50:
+            print(f"--val 超出范围: {self.args.val}，必须在 5~50% 之间")
             self.logger.error(f"--val out of range: {self.args.val}")
+            exit()
+        if self.args.test < 5 or self.args.test > 50:
+            print(f"--test 超出范围: {self.args.test}，必须在 5~50% 之间")
+            self.logger.error(f"--test out of range: {self.args.test}")
             exit()
 
         self.mkdirs(os.path.join(self.args.target))
@@ -136,6 +141,17 @@ class YoloLabelimg(Common):
                     progress.update(1)
                     continue
                 if os.path.getsize(source) == 0:
+                    if self.args.nullable:
+                        for ext in Common.image_exts:
+                            if os.path.exists(f"{os.path.splitext(source)[0]}{ext}"):
+                                self.files[source] = f"{os.path.splitext(source)[0]}{ext}"
+                                self.nullable_files.add(source)
+                                break
+                        else:
+                            self.add_report(source, reason="扩展名不支持")
+                            self.logger.warning(f"空标注文件缺少配对图片: {source}")
+                        progress.update(1)
+                        continue
                     self.add_report(source, reason=".txt 空")
                     self.logger.warning(f"标注文件为空: {source}")
                     progress.update(1)
@@ -235,7 +251,7 @@ class YoloLabelimg(Common):
                         labels.append(self.classes[index])
                         valid_lines.append(stripped)
 
-                if not valid_lines:
+                if not valid_lines and source not in self.nullable_files:
                     self.add_report(source, label_target, "没有合法标签")
                     self.logger.warning(f"标注文件没有合法标签: {source}")
                     train.update(1)
@@ -243,7 +259,8 @@ class YoloLabelimg(Common):
                     continue
 
                 with open(label_target, "w", encoding="utf-8") as file:
-                    file.write("\n".join(valid_lines) + "\n")
+                    if valid_lines:
+                        file.write("\n".join(valid_lines) + "\n")
 
                 self.add_report(source, label_target)
                 self.logger.debug(
@@ -275,58 +292,73 @@ class YoloLabelimg(Common):
                     self.lables[label].append(image_target)
                 self.logger.info(f"file={image_target} labels={labels}")
 
-        val_files = set()
+        val_files = self.split_files(self.args.val)
+        self.move_split_files("val", val_files)
+
+        test_files = self.split_files(self.args.test)
+        self.move_split_files("test", test_files)
+
+    def split_files(self, percent):
+        split_files = set()
+        if percent <= 0:
+            return split_files
+
         for label, files in self.lables.items():
             if len(files) == 0:
                 continue
-            files = list(dict.fromkeys(files))
-            valnumber = int(len(files) * self.args.val / 100)
-            if self.args.val > 0 and valnumber == 0:
-                valnumber = 1
-            if valnumber > len(files):
-                valnumber = len(files)
-            if valnumber == 0:
+            files = [
+                file for file in dict.fromkeys(files)
+                if os.path.exists(file)
+            ]
+            split_number = int(len(files) * percent / 100)
+            if percent > 0 and split_number == 0:
+                split_number = 1
+            if split_number > len(files):
+                split_number = len(files)
+            if split_number == 0:
                 continue
 
-            val_files.update(random.sample(files, valnumber))
-            # print(f"label={label} files={len(files)} val={len(vals)}")
+            split_files.update(random.sample(files, split_number))
 
+        return split_files
+
+    def move_split_files(self, split, split_files):
         with tqdm(
-            total=len(val_files),
+            total=len(split_files),
             ncols=self.progress_ncols,
             bar_format=self.progress_bar_format,
         ) as progress:
-            for file in sorted(val_files):
-                progress.set_description("val")
+            for file in sorted(split_files):
+                progress.set_description(split)
                 name, extension = os.path.splitext(os.path.basename(file))
                 try:
                     source = os.path.join(
                         self.args.target, "train/labels", f"{name}.txt"
                     )
                     target = os.path.join(
-                        self.args.target, "val/labels", f"{name}.txt"
+                        self.args.target, f"{split}/labels", f"{name}.txt"
                     )
                     if os.path.exists(source):
                         shutil.move(source, target)
                         self.logger.info(
-                            f"val/labels move source={source} target={target}"
+                            f"{split}/labels move source={source} target={target}"
                         )
                     else:
-                        self.logger.warning(f"val/labels missing train label name={name}")
+                        self.logger.warning(f"{split}/labels missing train label name={name}")
 
                     source = file
                     target = os.path.join(
-                        self.args.target, "val/images", os.path.basename(file)
+                        self.args.target, f"{split}/images", os.path.basename(file)
                     )
                     if os.path.exists(source):
                         shutil.move(source, target)
                         self.logger.info(
-                            f"val/images move source={source} target={target}"
+                            f"{split}/images move source={source} target={target}"
                         )
                     else:
-                        self.logger.warning(f"val/images missing train image name={name}")
+                        self.logger.warning(f"{split}/images missing train image name={name}")
                 except Exception as e:
-                    self.logger.error(f"val {repr(e)} name={name}")
+                    self.logger.error(f"{split} {repr(e)} name={name}")
                 progress.update(1)
 
     def output(self):

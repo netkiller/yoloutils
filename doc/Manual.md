@@ -545,6 +545,7 @@ yoloutils labelimg \
     --source ./labelimg_data \
     --target ./yolo_data \
     --val 10 \
+    --test 5 \
     --uuid \
     --clean
 ```
@@ -552,7 +553,9 @@ yoloutils labelimg \
 帮助信息（当前源码）：
 
 ```shell
-usage: yoloutils.py labelimg [-h] [--source SOURCE] [--target TARGET] [--clean] [--classes CLASSES] [--val 10] [--uuid] [--check]
+usage: yoloutils.py labelimg [-h] [--source SOURCE] [--target TARGET] [--clean]
+                             [--classes CLASSES] [--val 10] [--test 5]
+                             [--nullable] [--uuid] [--report REPORT]
 
 options:
   -h, --help         show this help message and exit
@@ -560,9 +563,11 @@ options:
   --target TARGET    图片目标地址
   --clean            清理之前的数据
   --classes CLASSES  classes.txt 文件
-  --val 10           检验数量
+  --val 10           验证集占比（百分比 5 ~ 50）
+  --test 5           测试集占比（百分比 5 ~ 50）
+  --nullable         允许空 .txt 标注文件进入数据集
   --uuid             输出文件名使用UUID
-  --check            图片检查 corrupt JPEG restored and saved
+  --report REPORT    输出 csv 报告
 ```
 
 详细使用说明（推荐流程）：
@@ -570,7 +575,7 @@ options:
 1. 准备 `source/classes.txt` 与成对 `图片+txt`。
 2. 先在小样本目录验证，再全量执行。
 3. 首次建议加 `--clean`，保证输出目录可复现。
-4. 运行后核对 `data.yaml`、`train/val` 目录结构和标签文件数量。
+4. 运行后核对 `data.yaml`、`train/val/test` 目录结构和标签文件数量。
 
 输出目录结构：
 
@@ -591,11 +596,13 @@ yolo_data/
 实现说明：
 
 - 实际读取 `source/classes.txt`。
-- `--val` 表示每个标签抽样进入 `val` 的数量，不是百分比。
-- 所有样本先复制到 `train`，再按标签抽样复制到 `val`。
-- `test` 目录会创建，但当前不会自动填充。
+- `--val` 表示每个标签抽样进入 `val` 的百分比，范围为 `5~50`。
+- `--test` 表示每个标签抽样进入 `test` 的百分比，范围为 `5~50`，默认 `5`。
+- 所有样本先复制到 `train`，再按标签抽样移动到 `val`，随后从剩余 `train` 中抽样移动到 `test`。
+- `--nullable` 允许 0 字节空 `.txt` 进入数据集：如果存在同名图片，会复制图片并生成空 label 文件；未加该参数时空 `.txt` 会作为问题文件写入报告并跳过。
 - `--uuid` 会把输出的图片和标签文件名改为 UUID。
-- `--classes` 和 `--check` 参数在当前实现中尚未生效。
+- `--report` 会输出 CSV 报告，记录被忽略、缺失配对图片、空 `.txt` 或非法标签等问题文件。
+- `--classes` 可指定 `classes.txt` 路径；未指定时默认读取 `source/classes.txt`。
 - 图片配对按 `Common.image_exts` 遍历同名扩展名（`.jpg/.jpeg/.png/.bmp/.webp/.tif/.tiff`）。
 
 常用示例：
@@ -604,8 +611,11 @@ yolo_data/
 # 基本整理
 yoloutils labelimg --source ./labelimg_data --target ./yolo_data
 
-# 每个标签抽取 20 个样本到验证集
-yoloutils labelimg --source ./labelimg_data --target ./yolo_data --val 20
+# 每个标签抽取 20% 到验证集，5% 到测试集
+yoloutils labelimg --source ./labelimg_data --target ./yolo_data --val 20 --test 5
+
+# 允许空 .txt 标注文件进入数据集
+yoloutils labelimg --source ./labelimg_data --target ./yolo_data --nullable
 
 # 生成 UUID 文件名
 yoloutils labelimg --source ./labelimg_data --target ./yolo_data --uuid
@@ -1081,7 +1091,7 @@ yoloutils diff --source ./images -m ./best1.pt ./best2.pt -o ./predict_diff
 
 ### Q3: 为什么 `labelimg` 没有生成 `test` 数据
 
-当前实现只会创建 `test` 目录，不会自动填充测试样本。
+确认是否设置了有效的 `--test` 参数。当前 `--test` 是测试集百分比，范围为 `5~50`；样本会在完成 `val` 抽样后，从剩余 `train` 中移动到 `test`。
 
 ### Q4: 为什么某些图片没有被处理
 

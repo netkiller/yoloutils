@@ -156,12 +156,14 @@ options:
 
 ```shell
 (.venv) neo@Neo-Mac-mini-M4 yoloutils % yoloutils labelimg -h
-usage: yoloutils labelimg [-h] [--source SOURCE] [--target TARGET] [--clean] [--classes CLASSES] [--val 10] [--uuid] [--check]
+usage: yoloutils labelimg [-h] [--source SOURCE] [--target TARGET] [--clean] [--classes CLASSES] [--val 10] [--test 5] [--nullable] [--uuid] [--check]
 
 options:
   -h, --help         show this help message and exit
   --classes CLASSES  classes.txt 文件
-  --val 10           检验数量
+  --val 10           验证集占比（百分比 5 ~ 50）
+  --test 5           测试集占比（百分比 5 ~ 50）
+  --nullable         允许空 .txt 标注文件进入数据集
   --uuid             输出文件名使用UUID
   --check            图片检查 corrupt JPEG restored and saved
 
