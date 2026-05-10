@@ -1,4 +1,5 @@
 import glob
+import csv
 import logging
 import os
 import shutil
@@ -16,12 +17,12 @@ except ImportError:
 
 
 class YoloLabelRemove(Common):
-    total = {"change": 0, "remove": 0, "skip": 0, "error": 0}
-
     def __init__(self):
 
         self.logger = logging.getLogger("remove")
-        self.indexs = []
+        self.indexs = set()
+        self.changes = []
+        self.total = {"change": 0, "classes.txt": 0, "error": 0}
 
     def scandir(self, path):
         files = []
@@ -32,8 +33,12 @@ class YoloLabelRemove(Common):
 
     def input(self):
         try:
+            if not os.path.isdir(self.args.source):
+                print(f"source 目录不存在: {self.args.source}")
+                self.logger.error(f"source 目录不存在: {self.args.source}")
+                exit()
 
-            self.files = glob.glob(f"{self.args.source}/**/*.txt", recursive=True)
+            self.files = sorted(glob.glob(f"{self.args.source}/**/*.txt", recursive=True))
 
             if self.args.classes:
                 classes = os.path.join(self.args.source, "classes.txt")
@@ -43,18 +48,37 @@ class YoloLabelRemove(Common):
                     exit()
                 else:
                     with open(classes) as file:
-                        n = 0
-                        for line in file.readlines():
-                            if line.strip() in self.args.label:
-                                self.indexs.append(n)
-                            n += 1
+                        labels = {
+                            line.strip(): index
+                            for index, line in enumerate(file)
+                            if line.strip()
+                        }
+                    for label in self.args.classes:
+                        if label in labels:
+                            self.indexs.add(labels[label])
+                        else:
+                            print(f"classes.txt 中未找到标签: {label}")
+                            self.logger.warning(f"label not found: {label}")
             if self.args.index:
-                for index in self.args.classes:
-                    self.indexs.append(int(index))
-            self.logger.info(f"remove classes len={len(self.indexs)} indexs={self.indexs}")
+                for index in self.args.index:
+                    self.indexs.add(int(index))
+            if not self.indexs:
+                print("没有可删除的标签索引")
+                self.logger.error("empty remove indexs")
+                exit()
+            self.logger.info(f"remove classes len={len(self.indexs)} indexs={sorted(self.indexs)}")
         except Exception as e:
-            self.logger.error("input: ", repr(e))
+            self.logger.error(f"input: {repr(e)}")
             exit()
+
+    def add_change(self, action, file, removed_lines):
+        self.changes.append(
+            {
+                "action": action,
+                "file": os.path.relpath(file, self.args.source),
+                "lines": removed_lines,
+            }
+        )
 
     def process(self):
         with tqdm(total=len(self.files), ncols=150) as progress:
@@ -64,35 +88,42 @@ class YoloLabelRemove(Common):
                 try:
                     if filename.lower() == "classes.txt":
                         progress.update(1)
-                        self.total["skip"] += 1
+                        self.total["classes.txt"] += 1
                         self.logger.info(f"skip file={file}")
                         continue
                     else:
-                        if self.args.target:
-                            target = os.path.join(self.args.target, filename)
-                        else:
-                            target = file
+
                         lines = []
-                        isChange = False
+                        removed_lines = []
                         with open(file, "r") as original:
-                            for line in original.readlines():
-                                index = int(line.strip().split(" ")[0])
+                            for line_number, line in enumerate(original.readlines(), start=1):
+                                stripped = line.strip()
+                                if not stripped:
+                                    lines.append(line)
+                                    continue
+                                try:
+                                    index = int(stripped.split()[0])
+                                except (ValueError, IndexError):
+                                    lines.append(line)
+                                    self.total["error"] += 1
+                                    self.logger.error(f"invalid label line file={file} line={line_number} text={stripped}")
+                                    continue
                                 if index in self.indexs:
-                                    self.logger.info(f"index={index} indexs={self.indexs}")
-                                    isChange = True
+                                    self.logger.info(f"index={index} indexs={sorted(self.indexs)}")
+                                    removed_lines.append(f"{line_number}:{stripped}")
                                     continue
                                 lines.append(line)
-                        if len(lines) > 0:
-                            if isChange:
-                                with open(target, "w") as newfile:
-                                    newfile.writelines(lines)
-                                self.total["change"] += 1
-                                self.logger.info(f"change target={target}")
-                        else:
-                            os.remove(target)
-                            os.remove(target.replace(".txt", ".jpg"))
-                            self.total["remove"] += 1
-                            self.logger.info(f"remove target={target}")
+
+                        if not removed_lines:
+                            progress.update(1)
+                            continue
+
+                        self.add_change("change", file, removed_lines)
+                        if not self.args.dry_run:
+                            with open(file, "w") as newfile:
+                                newfile.writelines(lines)
+                        self.total["change"] += 1
+                        self.logger.info(f"change target={file}")
 
                 except FileNotFoundError as e:
                     self.logger.error(str(e))
@@ -101,6 +132,39 @@ class YoloLabelRemove(Common):
                 progress.update(1)
 
     def output(self):
+        if self.args.csv:
+            report_dir = os.path.dirname(self.args.csv)
+            if report_dir:
+                os.makedirs(report_dir, exist_ok=True)
+            with open(self.args.csv, "w", encoding="utf-8-sig", newline="") as file:
+                writer = csv.writer(file)
+                writer.writerow(("操作", "TXT 文件", "删除行"))
+                for change in self.changes:
+                    writer.writerow(
+                        (
+                            change["action"],
+                            change["file"],
+                            "; ".join(change["lines"]),
+                        )
+                    )
+
+        if self.args.dry_run:
+            print("DRY-RUN: 以下 .txt 文件将被修改，实际文件未变更。")
+            tables = [["操作", "TXT 文件", "删除行"]]
+            for change in self.changes:
+                tables.append(
+                    [
+                        change["action"],
+                        change["file"],
+                        "\n".join(change["lines"]),
+                    ]
+                )
+            if len(tables) == 1:
+                tables.append(["无", "", ""])
+            table = Texttable(max_width=160)
+            table.add_rows(tables)
+            print(table.draw())
+
         tables = [["操作", "处理"]]
         tables.append(["count", len(self.files)])
         for k, v in self.total.items():
@@ -111,7 +175,7 @@ class YoloLabelRemove(Common):
 
     def main(self, args):
         self.args = args
-        if self.args.source and (self.args.classes or self.args.label):
+        if self.args.source and (self.args.classes or self.args.index):
             self.input()
             self.process()
             self.output()

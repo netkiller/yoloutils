@@ -184,10 +184,6 @@ class YoloUtils:
         self.remove = self.subparsers.add_parser("remove", help="从YOLO TXT文件中删除指定标签")
 
         self.remove.add_argument('-s', "--source", type=str, default=None, help="图片来源地址")
-        # self.remove.add_argument('-t', "--target", type=str, default=None, help="图片目标地址")
-        # self.remove.add_argument(
-        #     "--clean", action="store_true", default=False, help="清理之前的数据"
-        # )
         self.remove.add_argument(
             '-i',
             "--index", nargs="+", default=None, help="标签索引序号", metavar="0 1 2 3"
@@ -197,10 +193,7 @@ class YoloUtils:
             "--classes", nargs="+", default=None, help="classes.txt 标签名称", metavar="label1 label2"
         )
         self.remove.add_argument('--dry-run', action="store_true", default=False, help='模拟执行')
-
-        # self.parser = argparse.ArgumentParser(description='YOLO标签删除工具')
-        # self.remove.add_argument('--clean', action="store_true", default=False, help='清理输出目录')
-        # self.remove.add_argument('--show', action='store_true', help='查看 classes.txt 文件')
+        self.remove.add_argument('--csv', type=str, default=None, help='输出 csv 报告', metavar="report.csv")
 
         self.change = self.subparsers.add_parser("change", help="修改标签索引")
         self.crop = self.subparsers.add_parser("crop", help="图片裁剪")
@@ -358,9 +351,16 @@ class YoloUtils:
         elif root_args.subcommand == "copy":
             run = YoloLabelCopy(self.copy, root_args)
         elif root_args.subcommand == "remove":
-            if root_args.source and (root_args.classes or root_args.label):
+            try:
+                sub_args = self.remove.parse_args(argv[1:])
+            except SystemExit as e:
+                if e.code != 0:
+                    self.remove.print_help(sys.stderr)
+                raise
+
+            if sub_args.source and (sub_args.classes or sub_args.index):
                 run = YoloLabelRemove()
-                run.main(root_args)
+                run.main(sub_args)
             else:
                 self.remove.print_help()
             exit()

@@ -330,9 +330,8 @@ yoloutils copy --source ./dataset --target ./picked --label dog --uuid
 ```shell
 yoloutils remove \
     --source ./dataset \
-    --target ./cleaned \
-    --classes 0 3 5 \
-    --clean
+    --index 0 3 5 \
+    --dry-run
 ```
 
 或：
@@ -340,57 +339,64 @@ yoloutils remove \
 ```shell
 yoloutils remove \
     --source ./dataset \
-    --label cat dog
+    --classes cat dog
 ```
 
 帮助信息：
 
 ```shell
-usage: yoloutils.py remove [-h] [--source SOURCE] [--target TARGET] [--clean]
-                           [--classes 1 2 3 [1 2 3 ...]]
-                           [--label label1 label2 [label1 label2 ...]]
+usage: yoloutils.py remove [-h] [-s SOURCE] [-i 0 1 2 3 [0 1 2 3 ...]]
+                           [-c label1 label2 [label1 label2 ...]] [--dry-run]
+                           [--csv report.csv]
 
 options:
   -h, --help            show this help message and exit
-  --classes 1 2 3 [1 2 3 ...]
-                        标签序号
-  --label label1 label2 [label1 label2 ...]
-                        标签名称
-
-通用参数:
-  --source SOURCE       图片来源地址
-  --target TARGET       图片目标地址
-  --clean               清理之前的数据
+  -s, --source SOURCE   图片来源地址
+  -i, --index 0 1 2 3 [0 1 2 3 ...]
+                        标签索引序号
+  -c, --classes label1 label2 [label1 label2 ...]
+                        classes.txt 标签名称
+  --dry-run             模拟执行，只显示即将改变的文件
+  --csv report.csv      输出 csv 报告
 ```
 
 详细使用说明（推荐流程）：
 
 1. 明确删除方式：
-   - 已知索引用 `--classes 0 3 5`；
-   - 已知标签名用 `--label cat dog`（会自动从 `classes.txt` 映射索引）。
-2. 先做安全试跑：优先指定 `--target` 输出新目录，不建议第一次就原地修改。
-3. 确认结果目录：有变更的标签文件会写入目标目录；删除后为空的文件会连同对应图片一起移除。
-4. 核验：执行后用 `yoloutils label --source <target> --index` 复查删除是否生效。
+   - 已知索引用 `--index 0 3 5`；
+   - 已知标签名用 `--classes cat dog`（会自动从 `classes.txt` 映射索引）。
+2. 先做安全试跑：加 `--dry-run`，只查看即将修改或删除的文件。
+3. 正式执行：确认 dry-run 输出无误后，去掉 `--dry-run` 原地修改。
+4. 核验：执行后用 `yoloutils label --source <source> --index` 复查删除是否生效。
 
 实现说明：
 
-- `--classes` 接收标签索引列表。
-- `--label` 先读取 `source/classes.txt`，再转换成索引列表。
-- 如果指定了 `--target`，会把结果写入目标目录；如果不指定，则直接原地修改源文件。
-- 某个标注文件在删除后若没有任何标注行，程序会删除对应的 `.txt` 和同名 `.jpg`。
-- 当前实现写入 `--target` 时只保留文件名，不保留原始子目录结构；若不同子目录存在同名文件，可能发生覆盖。
+- `--index` 接收标签索引列表。
+- `--classes` 先读取 `source/classes.txt`，再把标签名称转换成索引列表。
+- `--dry-run` 不写文件，只输出即将变更的 `.txt` 和将删除的行。
+- `--csv` 输出 CSV 报告，字段为 `操作, TXT 文件, 删除行`；dry-run 和正式执行都可使用。
+- 当前实现直接原地修改源文件。
+- 某个标注文件在删除后若没有任何标注行，程序会保留该 `.txt`，内容写成 0 字节空文件。
+- 该命令只处理 `.txt` 文件，不会修改或删除图片文件。
+- 程序会递归处理 `--source` 下所有 `.txt`，并跳过 `classes.txt`。
 
 常用示例：
 
 ```shell
 # 删除索引 0 和 1
-yoloutils remove --source ./dataset --target ./cleaned --classes 0 1
+yoloutils remove --source ./dataset --index 0 1
+
+# 先预览删除索引 0 和 1 会影响哪些文件
+yoloutils remove --source ./dataset --index 0 1 --dry-run
+
+# 预览并输出 CSV 报告
+yoloutils remove --source ./dataset --index 0 1 --dry-run --csv ./remove-report.csv
 
 # 删除标签名称 cat、dog
-yoloutils remove --source ./dataset --target ./cleaned --label cat dog
+yoloutils remove --source ./dataset --classes cat dog
 
 # 直接原地删除
-yoloutils remove --source ./dataset --classes 7
+yoloutils remove --source ./dataset --index 7
 ```
 
 ### 4.5 `change`
@@ -1067,7 +1073,7 @@ yoloutils diff --source ./images -m ./best1.pt ./best2.pt -o ./predict_diff
 
 ## 6. 使用建议
 
-1. 批量操作前先备份原始数据，尤其是 `change` 和未指定 `--target` 的 `remove`。
+1. 批量操作前先备份原始数据，尤其是 `change` 和 `remove`；执行 `remove` 前建议先加 `--dry-run` 预览。
 2. 图片扩展名建议统一管理；当前支持 `.jpg/.jpeg/.png/.bmp/.webp/.tif/.tiff`。
 3. 使用 `--clean` 时确认目标目录没有需要保留的旧文件。
 4. `labelimg`、`classify`、`test` 涉及随机抽样或推理，建议先在小目录上试跑一轮。

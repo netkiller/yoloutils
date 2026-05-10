@@ -100,20 +100,18 @@ options:
 
 ```shell
 (.venv) neo@Neo-Mac-mini-M4 yoloutils % yoloutils remove -h
-usage: yoloutils remove [-h] [--source SOURCE] [--target TARGET] [--clean] [--classes 1 2 3 [1 2 3 ...]]
-                        [--label label1 label2 [label1 label2 ...]]
+usage: yoloutils remove [-h] [-s SOURCE] [-i 0 1 2 3 [0 1 2 3 ...]]
+                        [-c label1 label2 [label1 label2 ...]] [--dry-run] [--csv report.csv]
 
 options:
   -h, --help            show this help message and exit
-  --classes 1 2 3 [1 2 3 ...]
-                        标签序号
-  --label label1 label2 [label1 label2 ...]
-                        标签名称
-
-通用参数:
-  --source SOURCE       图片来源地址
-  --target TARGET       图片目标地址
-  --clean               清理之前的数据
+  -s, --source SOURCE   图片来源地址
+  -i, --index 0 1 2 3 [0 1 2 3 ...]
+                        标签索引序号
+  -c, --classes label1 label2 [label1 label2 ...]
+                        classes.txt 标签名称
+  --dry-run             模拟执行，只显示即将改变的 .txt 文件
+  --csv report.csv      输出 csv 报告
 
 ```
 
