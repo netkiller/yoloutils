@@ -430,8 +430,6 @@ class YoloLabelimg(Common):
 
 
 class YoloLabelimgAutomatic(Common):
-    image_exts = (".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff")
-
     def __init__(self):
         self.basedir = BASE_DIR
         self.logger = logging.getLogger(__class__.__name__)
@@ -444,6 +442,12 @@ class YoloLabelimgAutomatic(Common):
             "未标注": 0,
             "标注框总数": 0
         }
+
+    def is_supported_image(self, file):
+        ext = os.path.splitext(file)[1].lower()
+        if ext == ".txt":
+            return False
+        return ext in Common.image_exts
 
     def input(self):
         if not os.path.isdir(self.args.source):
@@ -490,7 +494,7 @@ class YoloLabelimgAutomatic(Common):
             [
                 f
                 for f in files
-                if os.path.isfile(f) and os.path.splitext(f)[1].lower() in self.image_exts
+                if os.path.isfile(f) and self.is_supported_image(f)
             ]
         )
         self.auto_stats["图片总数"] = len(self.files)

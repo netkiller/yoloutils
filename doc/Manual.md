@@ -517,7 +517,7 @@ options:
 
 实现说明：
 
-- 输入扫描：递归读取 `source/**/*`，并按 `Common.image_exts` 过滤（`.jpg/.jpeg/.png/.bmp/.webp/.tif/.tiff`）。
+- 输入扫描：递归读取 `source/**/*`，并按支持的图片扩展名过滤（`.jpg/.jpeg/.png/.bmp/.webp/.tif/.tiff/.heic/.heif/.avif`）。
 - `--target` 保留原始相对目录结构。
 - 模型模式：`--model` 必填；`--output` 会额外保存带框图和 `output/crop/`。
 - TXT 模式：
@@ -609,7 +609,7 @@ yolo_data/
 - `--uuid` 会把输出的图片和标签文件名改为 UUID。
 - `--report` 会输出 CSV 报告，记录被忽略、缺失配对图片、空 `.txt` 或非法标签等问题文件。
 - `--classes` 可指定 `classes.txt` 路径；未指定时默认读取 `source/classes.txt`。
-- 图片配对按 `Common.image_exts` 遍历同名扩展名（`.jpg/.jpeg/.png/.bmp/.webp/.tif/.tiff`）。
+- 图片配对会扫描同名文件，并按支持的图片扩展名过滤（`.jpg/.jpeg/.png/.bmp/.webp/.tif/.tiff/.heic/.heif/.avif`，不区分大小写）。
 
 常用示例：
 
@@ -664,7 +664,7 @@ options:
 
 - 必填参数：`--source --target --model`。
 - `--clean` 会先提示并确认，再删除 `target/output`。
-- 按 `Common.image_exts` 递归扫描输入图片。
+- 按支持的图片扩展名递归扫描输入图片（`.jpg/.jpeg/.png/.bmp/.webp/.tif/.tiff/.heic/.heif/.avif`，不区分大小写）。
 - 每张图片会复制到 `target` 对应相对路径，并生成同名 `.txt`：
   - 有检测框时写入 YOLO 标准标注；
   - 无检测框时生成空 `txt`。
@@ -722,7 +722,7 @@ options:
 
 实现说明：
 
-- 递归扫描 `source/**/*`，并按 `Common.image_exts` 过滤图片。
+- 递归扫描 `source/**/*`，并按支持的图片扩展名过滤图片（`.jpg/.jpeg/.png/.bmp/.webp/.tif/.tiff/.heic/.heif/.avif`，不区分大小写）。
 - 输出目录保留原始相对路径。
 - 长边大于 `--imgsz` 时才会缩放，否则直接复制原图。
 - 输出统计表中的“未处理”表示未缩放、直接复制的文件数。
@@ -999,7 +999,7 @@ options:
 
 实现说明：
 
-- 输入扫描：递归读取 `source/**/*`，并按 `Common.image_exts` 过滤（`.jpg/.jpeg/.png/.bmp/.webp/.tif/.tiff`，不区分大小写）。
+- 输入扫描：递归读取 `source/**/*`，并按支持的图片扩展名过滤（`.jpg/.jpeg/.png/.bmp/.webp/.tif/.tiff/.heic/.heif/.avif`，不区分大小写）。
 - 必填 `--model`。
 - 每张图片仅记录首个检测框的 `标签/置信度`。
 - 表格列为：`文件, 标签, 置信度`。

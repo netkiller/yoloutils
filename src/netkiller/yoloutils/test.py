@@ -17,6 +17,13 @@ except ImportError:
 logging.getLogger("ultralytics").setLevel(logging.ERROR)
 
 
+def is_supported_image(file):
+    ext = os.path.splitext(file)[1].lower()
+    if ext == ".txt":
+        return False
+    return ext in Common.image_exts
+
+
 class YoloTest:
     path = None
     model = None
@@ -52,7 +59,7 @@ class YoloTest:
         self.files = [
             f
             for f in files
-            if os.path.isfile(f) and f.lower().endswith(Common.image_exts)
+            if os.path.isfile(f) and is_supported_image(f)
         ]
         self.total = len(self.files)
 
@@ -221,7 +228,7 @@ class YoloTestDiff:
         self.files = [
             f
             for f in files
-            if os.path.isfile(f) and f.lower().endswith(Common.image_exts)
+            if os.path.isfile(f) and is_supported_image(f)
         ]
         self.total = len(self.files)
 
