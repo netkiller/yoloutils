@@ -1,5 +1,5 @@
-import glob
 import csv
+import glob
 import logging
 import os
 import shutil
@@ -81,9 +81,9 @@ class YoloLabelRemove(Common):
         )
 
     def process(self):
-        with tqdm(total=len(self.files), ncols=150) as progress:
+        with tqdm(total=len(self.files), ncols=120) as progress:
             for file in self.files:
-                progress.set_description(file)
+                progress.set_description(os.path.relpath(file, self.args.source))
                 filename = os.path.basename(file)
                 try:
                     if filename.lower() == "classes.txt":
