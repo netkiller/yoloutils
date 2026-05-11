@@ -21,7 +21,9 @@
     {% endif %}
   </div>
   <nav aria-label="主导航">
+    {% if is_team_mode %}
     <a{% if active_page == "team" %} class="active"{% endif %} href="/team{% if current_project %}/{{ current_project }}{% endif %}"><span class="nav-icon">◌</span><span>团队</span></a>
+    {% endif %}
     <a{% if active_page == "project" %} class="active"{% endif %} href="{% if current_project %}/project/{{ current_project }}{% else %}/project{% endif %}"><span class="nav-icon">▤</span><span>项目</span></a>
     <a{% if active_page == "resources" %} class="active"{% endif %} href="{% if current_project %}/resources/{{ current_project }}{% else %}/resources{% endif %}"><span class="nav-icon">▥</span><span>算力</span></a>
     {% if current_project %}
