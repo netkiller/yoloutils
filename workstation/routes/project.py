@@ -846,7 +846,39 @@ def team(request: Request):
     if team_mode_enabled() and not username:
         return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
     requested_project = request.query_params.get("project") or request.cookies.get("current_project", "")
-    current_project = requested_project if project_dir(workspace, requested_project) else ""
+    if requested_project and project_dir(workspace, requested_project):
+        return RedirectResponse(url=f"/team/{requested_project}", status_code=status.HTTP_303_SEE_OTHER)
+    current_project = ""
+    projects = project_items(workspace)
+    project_names = {project["directory"]: project["name"] for project in projects}
+    online_users = read_online_users(workspace)
+    response = templates.TemplateResponse(
+        request=request,
+        name="team/index.html",
+        context={
+            "request": request,
+            "workspace": workspace,
+            "error": request.query_params.get("error"),
+            "active_page": "team",
+            **header_context(request, workspace),
+            "username": username,
+            "username_initial": username[:1],
+            "username_color": user_color(username) if username else "",
+            "online_users": user_items(online_users, read_user_projects(workspace), project_names),
+            "chat_messages": read_team_chat(workspace),
+            "current_project": current_project,
+        },
+    )
+    return response
+
+
+@router.get("/team/{directory}")
+def team_with_project(directory: str, request: Request):
+    workspace = workspace_path()
+    username = current_username(request, workspace)
+    if team_mode_enabled() and not username:
+        return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
+    current_project = directory if project_dir(workspace, directory) else ""
     projects = project_items(workspace)
     project_names = {project["directory"]: project["name"] for project in projects}
     online_users = read_online_users(workspace)

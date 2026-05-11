@@ -553,9 +553,20 @@ async def form_fields(request: Request):
 
 
 @router.get("/train")
-def train(request: Request, project: str = "", tab: str = "models", queue: str = "active"):
+def train(request: Request, tab: str = "models", queue: str = "active"):
+    project = request.query_params.get("project", "")
+    if project:
+        url = f"/train/{project}"
+        params = []
+        if tab != "models":
+            params.append(f"tab={tab}")
+        if queue != "active":
+            params.append(f"queue={queue}")
+        if params:
+            url += "?" + "&".join(params)
+        return RedirectResponse(url=url, status_code=status.HTTP_303_SEE_OTHER)
     workspace = workspace_path()
-    current_project = project or request.cookies.get("current_project", "")
+    current_project = request.cookies.get("current_project", "")
     with queue_lock:
         tasks = list(reversed(load_tasks()))
     if current_project:
@@ -653,10 +664,42 @@ def train_model_file(task_id: str, file_path: str):
 
 
 @router.get("/train/new")
-def new_train(request: Request, project: str = "", dataset: str = ""):
+def new_train(request: Request, dataset: str = ""):
+    project = request.query_params.get("project", "")
+    if project:
+        url = f"/train/new/{project}"
+        if dataset:
+            url += f"?dataset={dataset}"
+        return RedirectResponse(url=url, status_code=status.HTTP_303_SEE_OTHER)
     workspace = workspace_path()
     current_project = request.cookies.get("current_project", "")
-    project = project or current_project
+    dataset_item = selected_dataset(current_project, dataset)
+    response = templates.TemplateResponse(
+        request=request,
+        name="train/new.html",
+        context={
+            "request": request,
+            "workspace": workspace,
+            "dataset": dataset_item,
+            "datasets": dataset_dirs(current_project),
+            "model_versions": MODEL_VERSIONS,
+            "model_sizes": MODEL_SIZES,
+            "default_model_version": "YOLO26",
+            "default_model_size": "N",
+            "demo_mode": demo_mode_enabled(),
+            "active_page": "train",
+            "current_project": current_project,
+            **header_context(request, workspace),
+        },
+    )
+    if current_project:
+        response.set_cookie("current_project", current_project, httponly=True, samesite="lax")
+    return response
+
+
+@router.get("/train/new/{project}")
+def new_train_with_project(request: Request, project: str, dataset: str = ""):
+    workspace = workspace_path()
     current_project = project
     dataset_item = selected_dataset(project, dataset)
     response = templates.TemplateResponse(
@@ -677,8 +720,7 @@ def new_train(request: Request, project: str = "", dataset: str = ""):
             **header_context(request, workspace),
         },
     )
-    if project:
-        response.set_cookie("current_project", project, httponly=True, samesite="lax")
+    response.set_cookie("current_project", current_project, httponly=True, samesite="lax")
     return response
 
 
@@ -773,3 +815,35 @@ def cancel_task(task_id: str):
     update_task(task_id, status="取消", finished_at=datetime.now().isoformat(timespec="seconds"))
     append_log(task_id, "\n任务已取消。\n")
     return RedirectResponse(url="/train", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.get("/train/{project}")
+def train_with_project(request: Request, project: str, tab: str = "models", queue: str = "active"):
+    workspace = workspace_path()
+    current_project = project
+    with queue_lock:
+        tasks = list(reversed(load_tasks()))
+    if current_project:
+        tasks = [task for task in tasks if task.get("project") == current_project]
+    active_tab = tab if tab in {"models", "queue"} else "models"
+    queue_filter = queue if queue in {"active", "completed", "all"} else "active"
+    response = templates.TemplateResponse(
+        request=request,
+            name="train/index.html",
+        context={
+            "request": request,
+            "workspace": workspace,
+            "tasks": tasks,
+            "queue_tasks": filtered_queue_tasks(tasks, queue_filter),
+            "models": model_items(tasks, current_project),
+            "active_tab": active_tab,
+            "queue_filter": queue_filter,
+            "active_page": "train",
+            "current_project": current_project,
+            "current_project_name": display_project_name(workspace, current_project),
+            "demo_mode": demo_mode_enabled(),
+            **header_context(request, workspace),
+        },
+    )
+    response.set_cookie("current_project", current_project, httponly=True, samesite="lax")
+    return response

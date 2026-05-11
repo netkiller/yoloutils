@@ -112,7 +112,7 @@
             </div>
             <a
               class="action-link{% if not project.has_images %} disabled{% endif %}"
-              href="/annotate/?project={{ project.directory }}"
+              href="/annotate/{{ project.directory }}"
               title="{% if project.has_images %}进入标注{% else %}请先上传图片{% endif %}"
               data-image-action
               data-images-ready="{{ '1' if project.has_images else '0' }}"
@@ -149,7 +149,7 @@
                 <button type="button" data-directory-button>选择目录</button>
               </span>
             </div>
-            <a class="action-link{% if not project.has_models %} disabled{% endif %}" href="/train?project={{ project.directory }}" data-model-action>去推理</a>
+            <a class="action-link{% if not project.has_models %} disabled{% endif %}" href="/train/{{ project.directory }}" data-model-action>去推理</a>
           </article>
         </section>
 

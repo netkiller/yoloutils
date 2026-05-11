@@ -200,7 +200,7 @@ def workstation_html(workstation: Workstation, active_mode: str = "annotate", pr
     online_users = user_items(read_online_users())
     project_url = f"/project/{quote(project, safe='')}" if project else "/project"
     project_query = f"?project={quote(project, safe='')}" if project else ""
-    team_url = f"/team{project_query}" if project else "/team"
+    team_url = f"/team/{quote(project, safe='')}" if project else "/team"
     close_project_button = (
         '<button class="enterprise-link close-current-project" type="button" title="关闭当前项目" onclick="location.href=\'/project\'">'
         '<span class="header-icon">×</span><span>关闭项目</span></button>'
@@ -256,31 +256,31 @@ def workstation_html(workstation: Workstation, active_mode: str = "annotate", pr
         )
         .replace(
             'id="annotateModeButton" class="header-button active"',
-            f'id="annotateModeButton" class="header-button" onclick="location.href=\'/annotate/{project_query}\'"',
+            f'id="annotateModeButton" class="header-button" onclick="location.href=\'/annotate/{quote(project, safe="")}\'"',
         )
         .replace(
             'id="datasetButton" class="header-button"',
-            f'id="datasetButton" class="header-button" onclick="location.href=\'/dataset{project_query}\'"',
+            f'id="datasetButton" class="header-button" onclick="location.href=\'/dataset/{quote(project, safe="")}\'"',
         )
         .replace(
             'id="trainButton" class="header-button"',
-            f'id="trainButton" class="header-button" onclick="location.href=\'/train{project_query}\'"',
+            f'id="trainButton" class="header-button" onclick="location.href=\'/train/{quote(project, safe="")}\'"',
         )
         .replace(
             'id="validateButton" class="header-button"',
-            f'id="validateButton" class="header-button" onclick="location.href=\'/validate{project_query}\'"',
+            f'id="validateButton" class="header-button" onclick="location.href=\'/validate/{quote(project, safe="")}\'"',
         )
         .replace(
             'id="predictButton" class="header-button"',
-            f'id="predictButton" class="header-button" onclick="location.href=\'/predict{project_query}\'"',
+            f'id="predictButton" class="header-button" onclick="location.href=\'/predict/{quote(project, safe="")}\'"',
         )
         .replace(
             'datasetButton.addEventListener("click", showEnterpriseNotice);',
-            f'datasetButton.addEventListener("click", () => {{ location.href = "/dataset{project_query}"; }});',
+            f'datasetButton.addEventListener("click", () => {{ location.href = "/dataset/{quote(project, safe="")}"; }});',
         )
         .replace(
             'trainButton.addEventListener("click", showEnterpriseNotice);',
-            f'trainButton.addEventListener("click", () => {{ location.href = "/train{project_query}"; }});',
+            f'trainButton.addEventListener("click", () => {{ location.href = "/train/{quote(project, safe="")}"; }});',
         )
     )
     active_button = {
@@ -442,7 +442,7 @@ def create_annotate_app():
 
     @app.middleware("http")
     async def project_workspace_middleware(request: Request, call_next):
-        project = request.query_params.get("project") or request.cookies.get("current_project", "")
+        project = request.query_params.get("project") or request.path_params.get("project") or request.cookies.get("current_project", "")
         async with app.state.project_workspace_lock:
             if project:
                 apply_project_workspace(workstation, project)
@@ -466,6 +466,25 @@ def create_annotate_app():
             response = HTMLResponse(workstation_html(workstation, "annotate", project, username))
             if project:
                 response.set_cookie("current_project", project, httponly=True, samesite="lax")
+            return response
+        except Exception as error:
+            write_error_log(workstation, error)
+            return PlainTextResponse(
+                "Annotate page error. See .yoloutils-annotate-error.log",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @app.get("/{project}")
+    def index_project(request: Request, project: str):
+        try:
+            username = current_username(request)
+            if team_mode_enabled() and not username:
+                return RedirectResponse(url="/team", status_code=status.HTTP_303_SEE_OTHER)
+            if team_mode_enabled():
+                write_user_project(username, project)
+            apply_project_workspace(workstation, project)
+            response = HTMLResponse(workstation_html(workstation, "annotate", project, username))
+            response.set_cookie("current_project", project, httponly=True, samesite="lax")
             return response
         except Exception as error:
             write_error_log(workstation, error)

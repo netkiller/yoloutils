@@ -17,8 +17,7 @@
     </section>
 
     <section class="validate-tools" aria-label="预测操作">
-      <form class="tool-panel" method="get" action="/annotate/">
-        <input type="hidden" name="project" value="{{ current_project }}">
+      <form class="tool-panel" method="get" action="/annotate/{{ current_project }}/">
         <div>
           <h2>预测</h2>
           <p>选择模型后进入标注页执行自动识别。</p>

@@ -15,12 +15,12 @@
           <p class="demo-note">当前为演示模式，不会启动训练。</p>
         {% endif %}
       </div>
-      <a class="primary-link" href="/train/new{% if current_project %}?project={{ current_project }}{% endif %}">新建训练</a>
+      <a class="primary-link" href="/train/new{% if current_project %}/{{ current_project }}{% endif %}">新建训练</a>
     </section>
 
     <section class="train-tabs" aria-label="训练视图">
-      <a class="train-tab{% if active_tab == 'models' %} active{% endif %}" href="/train{% if current_project %}?project={{ current_project }}{% endif %}">模型</a>
-      <a class="train-tab{% if active_tab == 'queue' %} active{% endif %}" href="/train?tab=queue{% if current_project %}&project={{ current_project }}{% endif %}">训练队列</a>
+      <a class="train-tab{% if active_tab == 'models' %} active{% endif %}" href="/train{% if current_project %}/{{ current_project }}{% endif %}">模型</a>
+      <a class="train-tab{% if active_tab == 'queue' %} active{% endif %}" href="/train{% if current_project %}/{{ current_project }}{% endif %}?tab=queue">训练队列</a>
     </section>
 
     <section class="train-tab-content">
@@ -76,9 +76,9 @@
       {% endif %}
     {% else %}
       <section class="queue-filter" aria-label="训练队列筛选">
-        <a class="{% if queue_filter == 'active' %}active{% endif %}" href="/train?tab=queue&queue=active{% if current_project %}&project={{ current_project }}{% endif %}">未完成</a>
-        <a class="{% if queue_filter == 'completed' %}active{% endif %}" href="/train?tab=queue&queue=completed{% if current_project %}&project={{ current_project }}{% endif %}">已完成</a>
-        <a class="{% if queue_filter == 'all' %}active{% endif %}" href="/train?tab=queue&queue=all{% if current_project %}&project={{ current_project }}{% endif %}">全部</a>
+        <a class="{% if queue_filter == 'active' %}active{% endif %}" href="/train{% if current_project %}/{{ current_project }}{% endif %}?tab=queue&queue=active">未完成</a>
+        <a class="{% if queue_filter == 'completed' %}active{% endif %}" href="/train{% if current_project %}/{{ current_project }}{% endif %}?tab=queue&queue=completed">已完成</a>
+        <a class="{% if queue_filter == 'all' %}active{% endif %}" href="/train{% if current_project %}/{{ current_project }}{% endif %}?tab=queue&queue=all">全部</a>
       </section>
 
       {% if queue_tasks %}

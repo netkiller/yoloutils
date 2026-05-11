@@ -313,22 +313,42 @@ def dataset_summary(path: Path, project: str, name: str):
 def dataset(request: Request, project: str = ""):
     workspace = workspace_path()
     current_project = current_project_from_request(request, project)
-    current_project_path = project_dir(workspace, current_project) if current_project else None
+    if current_project:
+        return RedirectResponse(url=f"/dataset/{current_project}", status_code=status.HTTP_303_SEE_OTHER)
     response = templates.TemplateResponse(
         request=request,
         name="dataset/index.html",
         context={
             "request": request,
             "workspace": workspace,
-            "datasets": dataset_items(workspace, current_project),
+            "datasets": dataset_items(workspace, ""),
             "active_page": "dataset",
-            "current_project": current_project,
-            "current_project_name": project_name(current_project_path) if current_project_path and current_project_path.is_dir() else current_project,
+            "current_project": "",
+            "current_project_name": "",
             **header_context(request, workspace),
         },
     )
-    if current_project:
-        response.set_cookie("current_project", current_project, httponly=True, samesite="lax")
+    return response
+
+
+@router.get("/dataset/{project}")
+def dataset_with_project(request: Request, project: str):
+    workspace = workspace_path()
+    current_project_path = project_dir(workspace, project)
+    response = templates.TemplateResponse(
+        request=request,
+        name="dataset/index.html",
+        context={
+            "request": request,
+            "workspace": workspace,
+            "datasets": dataset_items(workspace, project),
+            "active_page": "dataset",
+            "current_project": project,
+            "current_project_name": project_name(current_project_path) if current_project_path and current_project_path.is_dir() else project,
+            **header_context(request, workspace),
+        },
+    )
+    response.set_cookie("current_project", project, httponly=True, samesite="lax")
     return response
 
 

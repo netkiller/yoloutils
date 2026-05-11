@@ -86,8 +86,10 @@ def index(request: Request):
 
 @app.get("/annotate", include_in_schema=False)
 def annotate(request: Request):
-    query = f"?{request.url.query}" if request.url.query else ""
-    return RedirectResponse(url=f"/annotate/{query}")
+    project = request.query_params.get("project")
+    if project:
+        return RedirectResponse(url=f"/annotate/{project}")
+    return RedirectResponse(url="/annotate/")
 
 
 app.mount("/annotate", create_annotate_app())
