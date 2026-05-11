@@ -43,14 +43,32 @@
           <strong>{{ metrics.load.percent }}%</strong>
         </div>
         <div class="metric-bar"><span style="{{ metrics.load.style }}"></span></div>
-        <div class="load-bars" aria-label="1、5、15 分钟 CPU 负载">
-          {% for load in metrics.load["items"] %}
-            <div class="load-bar-row">
-              <span>{{ load.label }}</span>
-              <div class="metric-bar"><span style="width: {{ load.percent }}%"></span></div>
-              <strong>{{ load.value }}</strong>
+        <div class="cpu-load-layout">
+          <div class="cpu-load-left">
+            <div class="load-bars" aria-label="1、5、15 分钟 CPU 负载">
+              {% for load in metrics.load["items"] %}
+                <div class="load-bar-row">
+                  <span>{{ load.label }}</span>
+                  <div class="metric-bar"><span style="width: {{ load.percent }}%"></span></div>
+                  <strong>{{ load.value }}</strong>
+                </div>
+              {% endfor %}
             </div>
-          {% endfor %}
+          </div>
+          <div class="cpu-load-right">
+            <svg class="line-chart load-line-chart" viewBox="0 0 320 120" preserveAspectRatio="none" aria-label="CPU 负载变化折线图">
+              <polyline data-line-load-1m points=""></polyline>
+              <polyline data-line-load-5m points=""></polyline>
+              <polyline data-line-load-15m points=""></polyline>
+              <polyline data-line-load-total points=""></polyline>
+            </svg>
+            <div class="chart-legend load-chart-legend">
+              <span><i style="background:#2563eb"></i>1 分钟</span>
+              <span><i style="background:#16a34a"></i>5 分钟</span>
+              <span><i style="background:#f59e0b"></i>15 分钟</span>
+              <span><i style="background:#dc2626"></i>总负载</span>
+            </div>
+          </div>
         </div>
         <p class="resource-scroll-hint">CPU 使用率</p>
         <div class="cpu-bars-scroll" aria-label="每个 CPU 使用率横向滚动区域">
@@ -191,8 +209,12 @@
         memoryCache: [],
         memoryAvailable: [],
         disk: [],
+        load1m: [],
+        load5m: [],
+        load15m: [],
+        loadTotal: [],
       };
-      const maxPoints = 30;
+      const maxPoints = 60;
 
       function formatRate(value) {
         let rate = Math.max(0, Number(value) || 0);
@@ -244,6 +266,10 @@
         document.querySelector("[data-line-memory-cache]")?.setAttribute("points", percentPoints(history.memoryCache));
         document.querySelector("[data-line-memory-available]")?.setAttribute("points", percentPoints(history.memoryAvailable));
         document.querySelector("[data-line-disk]")?.setAttribute("points", percentPoints(history.disk));
+        document.querySelector("[data-line-load-1m]")?.setAttribute("points", percentPoints(history.load1m));
+        document.querySelector("[data-line-load-5m]")?.setAttribute("points", percentPoints(history.load5m));
+        document.querySelector("[data-line-load-15m]")?.setAttribute("points", percentPoints(history.load15m));
+        document.querySelector("[data-line-load-total]")?.setAttribute("points", percentPoints(history.loadTotal));
       }
 
       function updateCpu(current, last) {
@@ -275,11 +301,16 @@
         const memoryPercent = Number(current.memory?.percent || 0);
         const diskPercent = Number(current.disk?.percent || 0);
         const memoryItems = current.memory?.items || [];
+        const loadItems = current.load?.items || [];
         pushHistory("memoryUsed", Number(memoryItems[0]?.percent || 0));
         pushHistory("memoryShared", Number(memoryItems[1]?.percent || 0));
         pushHistory("memoryCache", Number(memoryItems[2]?.percent || 0));
         pushHistory("memoryAvailable", Number(memoryItems[3]?.percent || 0));
         pushHistory("disk", diskPercent);
+        pushHistory("load1m", Number(loadItems[0]?.percent || 0));
+        pushHistory("load5m", Number(loadItems[1]?.percent || 0));
+        pushHistory("load15m", Number(loadItems[2]?.percent || 0));
+        pushHistory("loadTotal", Number(current.load?.percent || 0));
         setText("[data-memory-percent]", `${memoryPercent}%`);
         setText("[data-disk-percent]", `${diskPercent}%`);
         const memoryPie = document.querySelector("[data-memory-pie]");

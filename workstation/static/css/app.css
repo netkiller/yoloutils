@@ -969,6 +969,48 @@ main {
   gap: 14px;
 }
 
+.cpu-load-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+.cpu-load-left {
+  display: grid;
+  gap: 10px;
+}
+
+.cpu-load-right {
+  display: grid;
+  gap: 8px;
+}
+
+.cpu-load-right .load-line-chart {
+  height: 64px;
+}
+
+.load-chart-legend {
+  gap: 8px 12px;
+  font-size: 11px;
+}
+
+.line-chart [data-line-load-1m] {
+  stroke: #2563eb;
+}
+
+.line-chart [data-line-load-5m] {
+  stroke: #16a34a;
+}
+
+.line-chart [data-line-load-15m] {
+  stroke: #f59e0b;
+}
+
+.line-chart [data-line-load-total] {
+  stroke: #dc2626;
+}
+
 .metric-head {
   min-width: 0;
   display: flex;
@@ -1447,7 +1489,8 @@ button:hover {
 
   .resource-form-row,
   .metric-pie-row,
-  .gpu-grid {
+  .gpu-grid,
+  .cpu-load-layout {
     grid-template-columns: 1fr;
   }
 
