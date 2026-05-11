@@ -1,10 +1,12 @@
 import hashlib
 import json
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import parse_qs
 from pathlib import Path
 
 from fastapi import APIRouter, Request, status
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from routes.project import header_context, project_dir, require_team_login, workspace_path
@@ -74,6 +76,34 @@ def find_resource(workspace: Path, resource_id: str):
         if item["id"] == resource_id:
             return item
     return None
+
+
+def resource_list_items(workspace: Path):
+    items = read_resources(workspace)
+    if not items:
+        return []
+
+    summaries = {}
+    with ThreadPoolExecutor(max_workers=min(4, len(items))) as executor:
+        futures = {executor.submit(resource_summary, item): item["id"] for item in items}
+        for future in as_completed(futures):
+            resource_id = futures[future]
+            try:
+                summaries[resource_id] = future.result()
+            except Exception as error:
+                summaries[resource_id] = {
+                    "ok": False,
+                    "error": str(error),
+                    "hostname": "未知",
+                    "system": "未知",
+                    "os_family": "linux",
+                    "cpu_count": "未知",
+                    "memory_total": "未知",
+                    "disk_total": "未知",
+                    "gpu_count": 0,
+                    "gpu_memory_total": "0 B",
+                }
+    return [{**item, "summary": summaries.get(item["id"], {})} for item in items]
 
 
 def resource_form_data(form: dict):
@@ -151,13 +181,17 @@ def run_ssh_commands(resource: dict):
         )
         commands = {
             "hostname": "hostname",
+            "os_release": "awk -F= '/^PRETTY_NAME=/ {gsub(/\"/, \"\", $2); print $2}' /etc/os-release 2>/dev/null || true",
             "kernel": "uname -srmo",
             "cpu_count": "nproc 2>/dev/null || getconf _NPROCESSORS_ONLN",
+            "cpu_counters": "grep '^cpu[0-9]' /proc/stat 2>/dev/null",
             "cpu_usage": "grep '^cpu[0-9]' /proc/stat 2>/dev/null | awk '{idle=$5+$6; total=0; for(i=2;i<=NF;i++) total+=$i; usage=(total-idle)*100/total; printf \"CPU %d %.1f\\n\", NR, usage}'",
             "loadavg": "cat /proc/loadavg 2>/dev/null || uptime",
             "uptime": "cat /proc/uptime 2>/dev/null | awk '{print int($1)}'",
             "memory": "free -b | awk '/Mem:/ {print $2\" \"$3\" \"$7}'",
             "disk": "df -B1 / | awk 'NR==2 {print $2\" \"$3\" \"$4\" \"$5}'",
+            "disk_io": "awk '$3 !~ /^(loop|ram|sr)/ {r+=$6*512; w+=$10*512} END {print r+0\" \"w+0}' /proc/diskstats 2>/dev/null",
+            "network": "awk -F'[: ]+' 'NR>2 && $2 != \"lo\" {rx+=$3; tx+=$11} END {print rx+0\" \"tx+0}' /proc/net/dev 2>/dev/null",
             "gpu": "command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi --query-gpu=name,memory.total,memory.used,utilization.gpu,temperature.gpu --format=csv,noheader,nounits || true",
         }
         output = {}
@@ -201,9 +235,22 @@ def remote_metrics(resource: dict):
             percent = round(max(0, min(float(parts[-1]), 100)), 1)
         except ValueError:
             continue
-        cpu_items.append({"label": f"CPU {index}", "percent": percent, "style": f"width: {percent}%"})
+        cpu_items.append({"label": f"CPU {index}", "percent": percent})
     if not cpu_items and cpu_count:
-        cpu_items = [{"label": f"CPU {index}", "percent": 0.0, "style": "width: 0%"} for index in range(1, cpu_count + 1)]
+        cpu_items = [{"label": f"CPU {index}", "percent": 0.0} for index in range(1, cpu_count + 1)]
+
+    cpu_counters = []
+    for index, line in enumerate((commands.get("cpu_counters") or "").splitlines(), start=1):
+        parts = line.split()
+        if len(parts) < 8:
+            continue
+        try:
+            values = [int(value) for value in parts[1:]]
+        except ValueError:
+            continue
+        idle = values[3] + (values[4] if len(values) > 4 else 0)
+        total = sum(values)
+        cpu_counters.append({"label": f"CPU {index}", "idle": idle, "total": total})
 
     memory_parts = (commands.get("memory") or "").split()
     try:
@@ -217,7 +264,20 @@ def remote_metrics(resource: dict):
     except (ValueError, IndexError):
         disk_total, disk_used = 0, 0
 
+    disk_io_parts = (commands.get("disk_io") or "").split()
+    try:
+        disk_read_bytes, disk_write_bytes = int(disk_io_parts[0]), int(disk_io_parts[1])
+    except (ValueError, IndexError):
+        disk_read_bytes, disk_write_bytes = 0, 0
+
+    network_parts = (commands.get("network") or "").split()
+    try:
+        network_rx_bytes, network_tx_bytes = int(network_parts[0]), int(network_parts[1])
+    except (ValueError, IndexError):
+        network_rx_bytes, network_tx_bytes = 0, 0
+
     gpu_items = []
+    gpu_memory_total = 0
     for line in (commands.get("gpu") or "").splitlines():
         parts = [part.strip() for part in line.split(",")]
         if len(parts) < 5:
@@ -229,6 +289,7 @@ def remote_metrics(resource: dict):
             temperature = round(float(parts[4]), 1)
         except ValueError:
             continue
+        gpu_memory_total += total
         gpu_items.append({
             "name": parts[0],
             "memory": capacity_metric(total, used, "#7c3aed"),
@@ -239,10 +300,13 @@ def remote_metrics(resource: dict):
     return {
         "ok": result["ok"],
         "error": result["error"],
+        "timestamp": time.time(),
         "hostname": commands.get("hostname", ""),
+        "os_release": commands.get("os_release", ""),
         "kernel": commands.get("kernel", ""),
         "cpu_count": cpu_count,
         "cpu_items": cpu_items,
+        "cpu_counters": cpu_counters,
         "load": {
             "values": load_values,
             "percent": load_percent,
@@ -251,8 +315,54 @@ def remote_metrics(resource: dict):
         "uptime": commands.get("uptime", ""),
         "memory": capacity_metric(memory_total, memory_used, "#16a34a"),
         "disk": capacity_metric(disk_total, disk_used, "#f97316"),
+        "disk_io": {
+            "read_bytes": disk_read_bytes,
+            "write_bytes": disk_write_bytes,
+            "read_total": format_bytes(disk_read_bytes),
+            "write_total": format_bytes(disk_write_bytes),
+        },
+        "network": {
+            "rx_bytes": network_rx_bytes,
+            "tx_bytes": network_tx_bytes,
+            "rx_total": format_bytes(network_rx_bytes),
+            "tx_total": format_bytes(network_tx_bytes),
+        },
+        "gpu_count": len(gpu_items),
+        "gpu_memory_total": format_bytes(gpu_memory_total),
         "gpus": gpu_items,
         "raw": commands,
+    }
+
+
+def resource_summary(resource: dict):
+    metrics = remote_metrics(resource)
+    system = metrics["os_release"] or metrics["kernel"] or "未知"
+    system_lower = system.lower()
+    if "ubuntu" in system_lower:
+        os_family = "ubuntu"
+    elif "debian" in system_lower:
+        os_family = "debian"
+    elif "centos" in system_lower:
+        os_family = "centos"
+    elif "rocky" in system_lower:
+        os_family = "rocky"
+    elif "windows" in system_lower:
+        os_family = "windows"
+    elif "darwin" in system_lower or "macos" in system_lower:
+        os_family = "macos"
+    else:
+        os_family = "linux"
+    return {
+        "ok": metrics["ok"],
+        "error": metrics["error"],
+        "hostname": metrics["hostname"] or "未知",
+        "system": system,
+        "os_family": os_family,
+        "cpu_count": metrics["cpu_count"] or 0,
+        "memory_total": metrics["memory"]["total"],
+        "disk_total": metrics["disk"]["total"],
+        "gpu_count": metrics["gpu_count"],
+        "gpu_memory_total": metrics["gpu_memory_total"],
     }
 
 
@@ -276,7 +386,7 @@ def resources(request: Request, project: str = ""):
             "active_page": "resources",
             "current_project": current_project,
             "resources_base": resources_base(current_project),
-            "resources": read_resources(workspace),
+            "resources": resource_list_items(workspace),
             **header_context(request, workspace),
         },
     )
@@ -313,6 +423,19 @@ def resource_detail(resource_id: str, request: Request, project: str = ""):
     if current_project:
         response.set_cookie("current_project", current_project, httponly=True, samesite="lax")
     return response
+
+
+@router.get("/resources/server/{resource_id}/metrics")
+@router.get("/resources/{project}/server/{resource_id}/metrics")
+def resource_metrics(resource_id: str, request: Request, project: str = ""):
+    workspace = workspace_path()
+    login_response = require_team_login(request, workspace)
+    if login_response:
+        return login_response
+    resource = find_resource(workspace, resource_id)
+    if resource is None:
+        return JSONResponse({"ok": False, "error": "服务器不存在"}, status_code=404)
+    return JSONResponse(remote_metrics(resource))
 
 
 @router.get("/resources/server/{resource_id}/edit")

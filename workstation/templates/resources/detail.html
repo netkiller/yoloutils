@@ -3,7 +3,7 @@
 {% block title %}算力 {{ resource.name }}{% endblock %}
 
 {% block content %}
-  <main class="resources-main">
+  <main class="resources-main" data-resource-detail data-metrics-url="{{ resources_base }}/server/{{ resource.id }}/metrics">
     <section class="toolbar" aria-labelledby="resource-detail-title">
       <div>
         <h1 id="resource-detail-title">{{ resource.name }}</h1>
@@ -39,13 +39,12 @@
           <h2>CPU 负载</h2>
           <strong>{{ metrics.load.percent }}%</strong>
         </div>
-        <div class="metric-bar"><span style="{{ metrics.load.style }}"></span></div>
         <p class="resource-copy">1 / 5 / 15 分钟：{{ metrics.load.values[0] }} / {{ metrics.load.values[1] }} / {{ metrics.load.values[2] }}</p>
-        <div class="cpu-core-list" aria-label="每个 CPU 使用率">
+        <div class="cpu-vertical-bars" data-cpu-bars aria-label="每个 CPU 使用率">
           {% for cpu in metrics.cpu_items %}
-            <div class="cpu-core-row">
+            <div class="cpu-vertical-item">
+              <div class="cpu-vertical-track"><span style="height: {{ cpu.percent }}%"></span></div>
               <span>{{ cpu.label }}</span>
-              <div class="metric-bar"><span style="{{ cpu.style }}"></span></div>
               <strong>{{ cpu.percent }}%</strong>
             </div>
           {% endfor %}
@@ -81,6 +80,36 @@
             <dt>已用</dt><dd>{{ metrics.disk.used }}</dd>
             <dt>可用</dt><dd>{{ metrics.disk.available }}</dd>
           </dl>
+        </div>
+      </article>
+
+      <article class="resource-card metric-card line-chart-card">
+        <div class="metric-head">
+          <h2>磁盘 IO</h2>
+          <strong data-disk-io-current>0 B/s</strong>
+        </div>
+        <svg class="line-chart" viewBox="0 0 320 120" preserveAspectRatio="none" aria-label="磁盘读写折线图">
+          <polyline data-line-read points=""></polyline>
+          <polyline data-line-write points=""></polyline>
+        </svg>
+        <div class="chart-legend">
+          <span><i class="read-line"></i>读 <strong data-disk-read-rate>0 B/s</strong></span>
+          <span><i class="write-line"></i>写 <strong data-disk-write-rate>0 B/s</strong></span>
+        </div>
+      </article>
+
+      <article class="resource-card metric-card line-chart-card">
+        <div class="metric-head">
+          <h2>网络</h2>
+          <strong data-network-current>0 B/s</strong>
+        </div>
+        <svg class="line-chart" viewBox="0 0 320 120" preserveAspectRatio="none" aria-label="网络收发折线图">
+          <polyline data-line-rx points=""></polyline>
+          <polyline data-line-tx points=""></polyline>
+        </svg>
+        <div class="chart-legend">
+          <span><i class="read-line"></i>收 <strong data-network-rx-rate>0 B/s</strong></span>
+          <span><i class="write-line"></i>发 <strong data-network-tx-rate>0 B/s</strong></span>
         </div>
       </article>
     </section>
@@ -120,4 +149,113 @@
   {% set footer_id = "stats" %}
   {% set footer_left = workspace %}
   {% include "partials/footer.html" %}
+  <script type="application/json" id="resourceMetricsInitial">{{ metrics | tojson }}</script>
+  <script>
+    (() => {
+      const root = document.querySelector("[data-resource-detail]");
+      const initialNode = document.getElementById("resourceMetricsInitial");
+      if (!root || !initialNode) return;
+      let previous = JSON.parse(initialNode.textContent || "{}");
+      const history = {diskRead: [], diskWrite: [], networkRx: [], networkTx: []};
+      const maxPoints = 30;
+
+      function formatRate(value) {
+        let rate = Math.max(0, Number(value) || 0);
+        for (const unit of ["B/s", "KB/s", "MB/s", "GB/s", "TB/s"]) {
+          if (rate < 1024 || unit === "TB/s") return unit === "B/s" ? `${Math.round(rate)} ${unit}` : `${rate.toFixed(1)} ${unit}`;
+          rate /= 1024;
+        }
+        return "0 B/s";
+      }
+
+      function pushHistory(key, value) {
+        history[key].push(Math.max(0, Number(value) || 0));
+        if (history[key].length > maxPoints) history[key].shift();
+      }
+
+      function points(values) {
+        const width = 320;
+        const height = 120;
+        const max = Math.max(1, ...values);
+        return values.map((value, index) => {
+          const x = values.length <= 1 ? 0 : (index / (values.length - 1)) * width;
+          const y = height - (value / max) * (height - 12) - 6;
+          return `${x.toFixed(1)},${y.toFixed(1)}`;
+        }).join(" ");
+      }
+
+      function setText(selector, value) {
+        const node = document.querySelector(selector);
+        if (node) node.textContent = value;
+      }
+
+      function updateLines() {
+        document.querySelector("[data-line-read]")?.setAttribute("points", points(history.diskRead));
+        document.querySelector("[data-line-write]")?.setAttribute("points", points(history.diskWrite));
+        document.querySelector("[data-line-rx]")?.setAttribute("points", points(history.networkRx));
+        document.querySelector("[data-line-tx]")?.setAttribute("points", points(history.networkTx));
+      }
+
+      function updateCpu(current, last) {
+        const counters = current.cpu_counters || [];
+        const lastCounters = last?.cpu_counters || [];
+        const items = counters.map((cpu, index) => {
+          const prev = lastCounters[index];
+          let percent = Number((current.cpu_items || [])[index]?.percent || 0);
+          if (prev && cpu.total > prev.total) {
+            const totalDelta = cpu.total - prev.total;
+            const idleDelta = cpu.idle - prev.idle;
+            percent = Math.max(0, Math.min(((totalDelta - idleDelta) * 100) / totalDelta, 100));
+          }
+          percent = Math.round(percent * 10) / 10;
+          return {label: cpu.label || `CPU ${index + 1}`, percent};
+        });
+        const target = document.querySelector("[data-cpu-bars]");
+        if (!target || !items.length) return;
+        target.innerHTML = items.map(cpu => `
+          <div class="cpu-vertical-item">
+            <div class="cpu-vertical-track"><span style="height: ${cpu.percent}%"></span></div>
+            <span>${cpu.label}</span>
+            <strong>${cpu.percent}%</strong>
+          </div>
+        `).join("");
+      }
+
+      function updateRates(current, last) {
+        if (!last?.timestamp || !current.timestamp) return;
+        const seconds = Math.max(1, current.timestamp - last.timestamp);
+        const diskRead = ((current.disk_io?.read_bytes || 0) - (last.disk_io?.read_bytes || 0)) / seconds;
+        const diskWrite = ((current.disk_io?.write_bytes || 0) - (last.disk_io?.write_bytes || 0)) / seconds;
+        const networkRx = ((current.network?.rx_bytes || 0) - (last.network?.rx_bytes || 0)) / seconds;
+        const networkTx = ((current.network?.tx_bytes || 0) - (last.network?.tx_bytes || 0)) / seconds;
+        pushHistory("diskRead", diskRead);
+        pushHistory("diskWrite", diskWrite);
+        pushHistory("networkRx", networkRx);
+        pushHistory("networkTx", networkTx);
+        setText("[data-disk-read-rate]", formatRate(diskRead));
+        setText("[data-disk-write-rate]", formatRate(diskWrite));
+        setText("[data-disk-io-current]", formatRate(diskRead + diskWrite));
+        setText("[data-network-rx-rate]", formatRate(networkRx));
+        setText("[data-network-tx-rate]", formatRate(networkTx));
+        setText("[data-network-current]", formatRate(networkRx + networkTx));
+        updateLines();
+      }
+
+      async function refreshMetrics() {
+        try {
+          const response = await fetch(root.dataset.metricsUrl, {cache: "no-store"});
+          const current = await response.json();
+          if (!response.ok || current.ok === false) return;
+          updateCpu(current, previous);
+          updateRates(current, previous);
+          previous = current;
+        } catch (error) {
+          // Next interval retries.
+        }
+      }
+
+      refreshMetrics();
+      setInterval(refreshMetrics, 5000);
+    })();
+  </script>
 {% endblock %}

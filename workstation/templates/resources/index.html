@@ -26,17 +26,49 @@
         <div class="resource-list">
           {% if resources %}
             {% for item in resources %}
-              <article class="resource-server" ondblclick="location.href='{{ resources_base }}/server/{{ item.id }}'" tabindex="0" title="双击进入服务器详情">
-                <div>
+              <article class="resource-server" data-href="{{ resources_base }}/server/{{ item.id }}" tabindex="0" role="link" title="点击进入服务器详情">
+                <div class="resource-server-logo os-{{ item.summary.os_family or 'linux' }}" aria-label="{{ item.summary.system or 'Linux' }}">
+                  <span></span>
+                </div>
+                <div class="resource-server-title">
                   <strong>{{ item.name }}</strong>
                   <span>{{ item.address }}</span>
                 </div>
                 <div class="resource-server-actions">
-                  <a href="{{ resources_base }}/server/{{ item.id }}" aria-label="进入 {{ item.name }} 详情">详情</a>
-                  <a href="{{ resources_base }}/server/{{ item.id }}/edit" aria-label="编辑 {{ item.name }}">编辑</a>
+                  <a href="{{ resources_base }}/server/{{ item.id }}" data-resource-action aria-label="进入 {{ item.name }} 详情">详情</a>
+                  <a href="{{ resources_base }}/server/{{ item.id }}/edit" data-resource-action aria-label="编辑 {{ item.name }}">编辑</a>
                 </div>
+                <dl class="resource-server-specs">
+                  <div>
+                    <dt>Hostname</dt>
+                    <dd>{{ item.summary.hostname or "未知" }}</dd>
+                  </div>
+                  <div>
+                    <dt>系统</dt>
+                    <dd>{{ item.summary.system or "未知" }}</dd>
+                  </div>
+                  <div>
+                    <dt>处理器</dt>
+                    <dd>{{ item.summary.cpu_count }} 核</dd>
+                  </div>
+                  <div>
+                    <dt>内存</dt>
+                    <dd>{{ item.summary.memory_total or "未知" }}</dd>
+                  </div>
+                  <div>
+                    <dt>磁盘</dt>
+                    <dd>{{ item.summary.disk_total or "未知" }}</dd>
+                  </div>
+                  <div>
+                    <dt>显卡</dt>
+                    <dd>{{ item.summary.gpu_count }} 张 / {{ item.summary.gpu_memory_total }}</dd>
+                  </div>
+                </dl>
                 {% if item.note %}
                   <p>{{ item.note }}</p>
+                {% endif %}
+                {% if item.summary and not item.summary.ok %}
+                  <p class="resource-server-warning">{{ item.summary.error }}</p>
                 {% endif %}
               </article>
             {% endfor %}
@@ -126,6 +158,17 @@
       document.querySelector("[data-close-resource-dialog]")?.addEventListener("click", () => dialog?.close());
       dialog?.addEventListener("click", event => {
         if (event.target === dialog) dialog.close();
+      });
+      document.querySelectorAll("[data-href]").forEach(card => {
+        card.addEventListener("click", event => {
+          if (event.target.closest("[data-resource-action]")) return;
+          location.href = card.dataset.href;
+        });
+        card.addEventListener("keydown", event => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          location.href = card.dataset.href;
+        });
       });
     })();
   </script>

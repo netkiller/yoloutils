@@ -574,6 +574,10 @@ main {
 }
 
 .resources-main {
+  width: calc(100vw - 32px);
+  max-width: none;
+  height: calc(100dvh - 84px);
+  overflow: auto;
   padding: 28px 40px;
 }
 
@@ -704,7 +708,7 @@ main {
 .resource-server {
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
   gap: 6px 12px;
   align-items: center;
   padding: 12px;
@@ -714,9 +718,83 @@ main {
   cursor: pointer;
 }
 
+.resource-server-logo {
+  width: 42px;
+  height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: #0f172a;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.resource-server-logo span::before {
+  content: "LIN";
+}
+
+.resource-server-logo.os-ubuntu {
+  background: #e95420;
+}
+
+.resource-server-logo.os-ubuntu span::before {
+  content: "UBU";
+}
+
+.resource-server-logo.os-debian {
+  background: #a80030;
+}
+
+.resource-server-logo.os-debian span::before {
+  content: "DEB";
+}
+
+.resource-server-logo.os-centos {
+  background: #262577;
+}
+
+.resource-server-logo.os-centos span::before {
+  content: "COS";
+}
+
+.resource-server-logo.os-rocky {
+  background: #10b981;
+}
+
+.resource-server-logo.os-rocky span::before {
+  content: "RCK";
+}
+
+.resource-server-logo.os-windows {
+  background: #0078d4;
+}
+
+.resource-server-logo.os-windows span::before {
+  content: "WIN";
+}
+
+.resource-server-logo.os-macos {
+  background: #111827;
+}
+
+.resource-server-logo.os-macos span::before {
+  content: "MAC";
+}
+
 .resource-server:hover {
   border-color: var(--accent);
   background: #f8fbff;
+}
+
+.resource-server-title {
+  min-width: 0;
+}
+
+.resource-server-title span {
+  display: block;
 }
 
 .resource-server strong,
@@ -736,11 +814,57 @@ main {
 
 .resource-server span,
 .resource-server p {
-  grid-column: 1 / -1;
   margin: 0;
   color: var(--muted);
   font-size: 13px;
   white-space: nowrap;
+}
+
+.resource-server > p {
+  grid-column: 1 / -1;
+}
+
+.resource-server-specs {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 4px 0 0;
+}
+
+.resource-server-specs div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  padding: 8px;
+  border: 1px solid #e6edf5;
+  border-radius: 6px;
+  background: #ffffff;
+}
+
+.resource-server-specs dt,
+.resource-server-specs dd {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resource-server-specs dt {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.resource-server-specs dd {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.resource-server-warning {
+  color: #b45309 !important;
 }
 
 .resource-server a,
@@ -856,35 +980,125 @@ main {
   background: var(--accent);
 }
 
-.cpu-core-list {
-  max-height: 260px;
+.cpu-vertical-bars {
+  width: max-content;
+  min-width: 100%;
+  min-height: 220px;
   display: grid;
-  gap: 8px;
-  overflow: auto;
-  padding-right: 4px;
+  grid-auto-flow: column;
+  grid-auto-columns: 48px;
+  align-items: end;
+  gap: 12px;
+  overflow: visible;
+  padding: 8px 2px 10px;
+  border: 1px solid #e6edf5;
+  border-radius: 8px;
+  background:
+    linear-gradient(to bottom, transparent 24%, #e6edf5 25%, transparent 26%, transparent 49%, #e6edf5 50%, transparent 51%, transparent 74%, #e6edf5 75%, transparent 76%),
+    #f8fafc;
 }
 
-.cpu-core-row {
-  min-width: 0;
+.cpu-vertical-item {
+  min-width: 48px;
   display: grid;
-  grid-template-columns: 64px minmax(0, 1fr) 52px;
-  gap: 10px;
-  align-items: center;
+  grid-template-rows: 150px auto auto;
+  gap: 6px;
+  justify-items: center;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11px;
 }
 
-.cpu-core-row > span,
-.cpu-core-row > strong {
+.cpu-vertical-track {
+  width: 24px;
+  height: 150px;
+  display: flex;
+  align-items: end;
+  overflow: hidden;
+  border-radius: 5px 5px 3px 3px;
+  background: #e2e8f0;
+}
+
+.cpu-vertical-track span {
+  width: 100%;
+  display: block;
+  border-radius: inherit;
+  background: var(--accent);
+}
+
+.cpu-vertical-item > span,
+.cpu-vertical-item > strong {
   min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.cpu-core-row > strong {
+.cpu-vertical-item > strong {
   color: var(--text);
-  text-align: right;
+}
+
+.line-chart-card {
+  gap: 12px;
+}
+
+.line-chart {
+  width: 100%;
+  height: 150px;
+  overflow: visible;
+  border: 1px solid #e6edf5;
+  border-radius: 8px;
+  background:
+    linear-gradient(to bottom, transparent 24%, #e6edf5 25%, transparent 26%, transparent 49%, #e6edf5 50%, transparent 51%, transparent 74%, #e6edf5 75%, transparent 76%),
+    #f8fafc;
+}
+
+.line-chart polyline {
+  fill: none;
+  stroke-width: 2.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.line-chart [data-line-read],
+.line-chart [data-line-rx] {
+  stroke: #2563eb;
+}
+
+.line-chart [data-line-write],
+.line-chart [data-line-tx] {
+  stroke: #f97316;
+}
+
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.chart-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.chart-legend i {
+  width: 12px;
+  height: 3px;
+  border-radius: 999px;
+}
+
+.chart-legend .read-line {
+  background: #2563eb;
+}
+
+.chart-legend .write-line {
+  background: #f97316;
+}
+
+.chart-legend strong {
+  color: var(--text);
 }
 
 .metric-pie-row {
@@ -1057,8 +1271,7 @@ button:hover {
   }
 
   .resource-form-row,
-  .metric-pie-row,
-  .cpu-core-row {
+  .metric-pie-row {
     grid-template-columns: 1fr;
   }
 
