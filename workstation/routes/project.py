@@ -3,6 +3,7 @@ import os
 import re
 import shutil
 import socket
+import subprocess
 import time
 import traceback
 import getpass
@@ -17,6 +18,11 @@ from fastapi import APIRouter, Request, status
 from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+try:
+    import psutil
+except ImportError:
+    psutil = None
+
 
 router = APIRouter()
 templates = Jinja2Templates(directory=Path(__file__).resolve().parent.parent / "templates")
@@ -24,12 +30,151 @@ PROJECT_DIR_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff", ".heic", ".heif"}
 MODEL_EXTS = {".pt", ".onnx", ".engine", ".torchscript", ".tflite", ".mlmodel"}
 USER_HEARTBEAT_TIMEOUT = 45
-PROJECT_UPLOAD_LOG = ".yoloutils-upload.log"
+PROJECT_UPLOAD_LOG = ".project.log"
+WORKSPACE_LOG = ".workstation/workspace.log"
 
 
 def workspace_path():
     workspace = os.environ.get("YOLOUTILS_WORKSPACE")
     return Path(workspace).expanduser().resolve() if workspace else Path.cwd().resolve()
+
+
+def format_bytes(size: int):
+    units = ["B", "KB", "MB", "GB", "TB"]
+    value = float(max(0, size))
+    for unit in units:
+        if value < 1024 or unit == units[-1]:
+            return f"{value:.1f} {unit}" if unit != "B" else f"{int(value)} {unit}"
+        value /= 1024
+    return f"{int(size)} B"
+
+
+def total_memory_bytes():
+    try:
+        pages = os.sysconf("SC_PHYS_PAGES")
+        page_size = os.sysconf("SC_PAGE_SIZE")
+        return int(pages) * int(page_size)
+    except (AttributeError, OSError, ValueError):
+        return 0
+
+
+def available_memory_bytes():
+    if hasattr(os, "sysconf"):
+        try:
+            pages = os.sysconf("SC_AVPHYS_PAGES")
+            page_size = os.sysconf("SC_PAGE_SIZE")
+            available = int(pages) * int(page_size)
+            if available > 0:
+                return available
+        except (AttributeError, OSError, ValueError):
+            pass
+    try:
+        result = subprocess.run(
+            ["vm_stat"],
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=2,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return 0
+    if result.returncode != 0:
+        return 0
+    page_size_match = re.search(r"page size of (\d+) bytes", result.stdout)
+    page_size = int(page_size_match.group(1)) if page_size_match else 4096
+    available_pages = 0
+    for name in ("Pages free", "Pages inactive", "Pages speculative"):
+        match = re.search(rf"{re.escape(name)}:\s+(\d+)\.", result.stdout)
+        if match:
+            available_pages += int(match.group(1))
+    if available_pages:
+        return available_pages * page_size
+    return 0
+
+
+def capacity_chart(total: int, available: int):
+    total = max(0, int(total or 0))
+    available = max(0, min(int(available or 0), total))
+    used = max(0, total - available)
+    used_percent = round(used / total * 100, 1) if total else 0
+    free_percent = round(available / total * 100, 1) if total else 0
+    return {
+        "total": format_bytes(total) if total else "未知",
+        "available": format_bytes(available) if total else "未知",
+        "used": format_bytes(used) if total else "未知",
+        "used_percent": used_percent,
+        "free_percent": free_percent,
+        "style": f"conic-gradient(#16a34a 0 {free_percent}%, #e2e8f0 {free_percent}% 100%)" if total else "#e2e8f0",
+    }
+
+
+def gpu_summary():
+    try:
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=memory.total,memory.free", "--format=csv,noheader,nounits"],
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=2,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return {"count": 0, "total": 0, "available": 0}
+    if result.returncode != 0:
+        return {"count": 0, "total": 0, "available": 0}
+    totals = []
+    available = []
+    for line in result.stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        parts = [part.strip() for part in line.split(",")]
+        if len(parts) < 2:
+            continue
+        try:
+            totals.append(int(float(parts[0])))
+            available.append(int(float(parts[1])))
+        except ValueError:
+            continue
+    if not totals:
+        return {"count": 0, "total": 0, "available": 0}
+    return {
+        "count": len(totals),
+        "total": sum(totals) * 1024 * 1024,
+        "available": sum(available) * 1024 * 1024,
+    }
+
+
+def cpu_usage_items():
+    count = os.cpu_count() or 0
+    if psutil is not None:
+        try:
+            values = psutil.cpu_percent(interval=0.1, percpu=True)
+        except Exception:
+            values = []
+    else:
+        values = []
+    if not values:
+        values = [0] * count
+    return [
+        {"label": f"CPU {index + 1}", "percent": round(max(0, min(float(value), 100)), 1)}
+        for index, value in enumerate(values)
+    ]
+
+
+def compute_config(workspace: Path):
+    gpu = gpu_summary()
+    memory = total_memory_bytes()
+    cpu_items = cpu_usage_items()
+    disk = shutil.disk_usage(workspace)
+    return {
+        "server": socket.gethostname(),
+        "cpu_count": len(cpu_items) or os.cpu_count() or 0,
+        "cpu_items": cpu_items,
+        "memory": capacity_chart(memory, available_memory_bytes()),
+        "gpu_count": gpu["count"],
+        "gpu_memory": capacity_chart(gpu["total"], gpu["available"]),
+        "disk": capacity_chart(disk.total, disk.free),
+    }
 
 
 def users_file(workspace: Path):
@@ -444,13 +589,23 @@ def project_items(workspace: Path):
     return projects
 
 
-def write_error_log(workspace: Path, filename: str):
-    log_file = workspace / filename
+def workspace_log_file(workspace: Path):
+    return workspace / WORKSPACE_LOG
+
+
+def write_error_log(workspace: Path, source: str):
+    log_file = workspace_log_file(workspace)
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    entry = f"[{timestamp}] {source}\n{traceback.format_exc()}\n"
     try:
-        log_file.write_text(traceback.format_exc(), encoding="utf-8")
+        log_file.parent.mkdir(parents=True, exist_ok=True)
+        with log_file.open("a", encoding="utf-8") as handle:
+            handle.write(entry)
     except OSError:
-        fallback = Path(__file__).resolve().parent.parent / filename
-        fallback.write_text(traceback.format_exc(), encoding="utf-8")
+        fallback = Path(__file__).resolve().parent.parent / WORKSPACE_LOG
+        fallback.parent.mkdir(parents=True, exist_ok=True)
+        with fallback.open("a", encoding="utf-8") as handle:
+            handle.write(entry)
 
 
 def read_team_chat(workspace: Path, limit: int = 200):
@@ -649,9 +804,9 @@ def project(request: Request):
         response.delete_cookie("current_project")
         return response
     except Exception:
-        write_error_log(workspace, ".yoloutils-project-error.log")
+        write_error_log(workspace, "project page error")
         return PlainTextResponse(
-            "Project page error. See .yoloutils-project-error.log",
+            f"Project page error. See {WORKSPACE_LOG}",
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
@@ -906,6 +1061,7 @@ def project_detail(directory: str, request: Request):
                 "show_create_project": False,
                 "current_project": directory,
                 "project_users": project_users,
+                "compute_config": compute_config(workspace),
                 "footer_console_url": f"/project/{directory}/logs",
                 "project_ready": project_ready,
                 **header_context(request, workspace),
@@ -914,9 +1070,9 @@ def project_detail(directory: str, request: Request):
         response.set_cookie("current_project", directory, httponly=True, samesite="lax")
         return response
     except Exception:
-        write_error_log(workspace, ".yoloutils-project-detail-error.log")
+        write_error_log(workspace, "project detail error")
         return PlainTextResponse(
-            "Project detail error. See .yoloutils-project-detail-error.log",
+            f"Project detail error. See {WORKSPACE_LOG}",
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 

@@ -393,16 +393,22 @@ def apply_project_workspace(workstation: Workstation, project: str):
     workstation.model_root = project_root if project_root is not None else workstation.workspace
     workstation.log_root = project_root if project_root is not None else workstation.workspace
     if project_root is not None and images_dir is not None:
-        old_log = images_dir / ".yoloutils-workstation.log"
-        new_log = project_root / ".yoloutils-workstation.log"
-        if old_log.is_file():
+        new_log = project_root / ".project.log"
+        old_logs = [
+            images_dir / ".yoloutils-workstation.log",
+            project_root / ".yoloutils-workstation.log",
+            project_root / ".yoloutils-upload.log",
+        ]
+        for old_log in old_logs:
+            if not old_log.is_file() or old_log == new_log:
+                continue
             try:
-                if new_log.exists():
-                    with open(new_log, "a", encoding="utf-8") as target:
-                        target.write(old_log.read_text(encoding="utf-8", errors="replace"))
-                    old_log.unlink()
-                else:
-                    old_log.replace(new_log)
+                with open(new_log, "a", encoding="utf-8") as target:
+                    if new_log.stat().st_size:
+                        target.write("\n")
+                    target.write(f"[migrated] {old_log.name}\n")
+                    target.write(old_log.read_text(encoding="utf-8", errors="replace"))
+                old_log.unlink()
             except OSError:
                 pass
     workstation.root_label = project_display_name(project) if images_dir is not None else "根目录"

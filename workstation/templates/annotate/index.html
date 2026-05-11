@@ -118,7 +118,7 @@
           <div class="pane-header">
             <h2><span class="pane-title-icon">◎</span><span class="pane-title-text">模型</span> <strong id="modelCount" class="pane-title-count">-</strong></h2>
             <div class="collaboration-tools">
-              <button id="toggleModelPane" class="icon-button collapse-button" title="折叠/展开模型">▾</button>
+              <button id="toggleModelPane" class="icon-button collapse-button" title="折叠/展开模型">⌄</button>
             </div>
           </div>
           <div id="modelList" class="model-list"></div>
@@ -128,7 +128,7 @@
           <div class="pane-header collaboration-header">
             <h2><span class="pane-title-icon">◌</span><span class="pane-title-text">协作</span> <strong id="onlineCount" class="pane-title-count">-</strong></h2>
             <div class="collaboration-tools">
-              <button id="toggleCollaboration" class="icon-button collapse-button" title="折叠/展开协作">▾</button>
+              <button id="toggleCollaboration" class="icon-button collapse-button" title="折叠/展开协作">⌄</button>
             </div>
           </div>
           <div id="collaborationUsers" class="collaboration-users"></div>
@@ -182,13 +182,13 @@
         </div>
         <div id="histogramSplitter" class="histogram-splitter" title="拖动调整标签和直方图比例"></div>
         <div id="histogramPane" class="histogram-pane">
-          <div class="pane-header"><h2><span class="pane-title-icon">▥</span>直方图</h2><button id="toggleHistogram" class="icon-button collapse-button" title="折叠/展开直方图">▾</button></div>
+          <div class="pane-header"><h2><span class="pane-title-icon">▥</span>直方图</h2><button id="toggleHistogram" class="icon-button collapse-button" title="折叠/展开直方图">⌄</button></div>
           <div id="histogram" class="histogram"><canvas id="histogramCanvas"></canvas></div>
         </div>
       </div>
       <div id="splitter" class="splitter" title="拖动调整标签和 EXIF 面板比例"></div>
       <div id="exifPane" class="right-pane exif-pane">
-        <div class="pane-header"><h2><span class="pane-title-icon">※</span>信息</h2><button id="toggleExif" class="icon-button collapse-button" title="折叠/展开信息">▾</button></div>
+        <div class="pane-header"><h2><span class="pane-title-icon">※</span>信息</h2><button id="toggleExif" class="icon-button collapse-button" title="折叠/展开信息">⌄</button></div>
         <div id="exif" class="exif"><div class="empty">请选择图片</div></div>
       </div>
     </aside>
@@ -431,7 +431,7 @@
         const toggle = document.createElement("button");
         toggle.type = "button";
         toggle.className = "tree-toggle";
-        toggle.textContent = isCollapsed ? "▸" : "▾";
+        toggle.textContent = isCollapsed ? "▸" : "⌄";
         toggle.title = isCollapsed ? "展开目录" : "折叠目录";
         toggle.onclick = event => {
           event.stopPropagation();
@@ -680,7 +680,7 @@
         canvas.width = image.naturalWidth;
         canvas.height = image.naturalHeight;
         resetImageZoom();
-        drawHistogram(image);
+        redrawHistogram();
         redrawImage();
         runAutoAnnotate();
       };
@@ -803,6 +803,7 @@
       Object.entries(data.exif).forEach(([key, value]) => rows.push([key, value]));
       if (!rows.length) {
         exifEl.innerHTML = '<div class="empty">没有 EXIF 信息</div>';
+        scheduleRightPanelGoldenLayout();
         return;
       }
       exifEl.innerHTML = "";
@@ -814,6 +815,7 @@
         row.children[1].textContent = Array.isArray(value) ? value.join(", ") : String(value);
         exifEl.appendChild(row);
       });
+      scheduleRightPanelGoldenLayout();
     }
 
     function boxEdges(box) {
@@ -2267,7 +2269,46 @@
 
     function redrawHistogram() {
       if (!currentImage || rightPanel.classList.contains("histogram-collapsed")) return;
-      requestAnimationFrame(() => drawHistogram(currentImage));
+      requestAnimationFrame(() => {
+        applyRightPanelGoldenLayout();
+        requestAnimationFrame(() => drawHistogram(currentImage));
+      });
+    }
+
+    function applyRightPanelGoldenLayout() {
+      if (appMain.classList.contains("right-hidden")) return;
+      if (rightPanel.classList.contains("histogram-collapsed")) return;
+      if (rightPanel.classList.contains("exif-collapsed")) return;
+      const panelHeight = rightPanel.getBoundingClientRect().height;
+      if (!panelHeight) return;
+      const splitterHeight = splitter.getBoundingClientRect().height || 0;
+      const histogramSplitterHeight = histogramSplitter.getBoundingClientRect().height || 0;
+      const availableHeight = Math.max(1, panelHeight - splitterHeight - histogramSplitterHeight);
+      const labelsHeight = Math.max(42, Math.round(availableHeight * 0.25));
+      const combinedHeight = Math.max(80, availableHeight - labelsHeight);
+      const histogramHeight = Math.max(42, histogramPane.getBoundingClientRect().height || 0);
+      const exifHeight = Math.max(34, combinedHeight - histogramHeight);
+      labelsPane.style.flexBasis = `${labelsHeight}px`;
+      labelsPane.style.flexGrow = "0";
+      labelsPane.style.flexShrink = "0";
+      histogramPane.style.flexBasis = "";
+      histogramPane.style.flexGrow = "";
+      histogramPane.style.flexShrink = "";
+      topInfoPane.style.flexBasis = `${labelsHeight + histogramSplitterHeight + histogramHeight}px`;
+      topInfoPane.style.flexGrow = "0";
+      topInfoPane.style.flexShrink = "0";
+      exifPane.style.flexBasis = `${exifHeight}px`;
+      exifPane.style.flexGrow = "0";
+      exifPane.style.flexShrink = "0";
+    }
+
+    let rightPanelGoldenLayoutFrame = 0;
+    function scheduleRightPanelGoldenLayout() {
+      cancelAnimationFrame(rightPanelGoldenLayoutFrame);
+      rightPanelGoldenLayoutFrame = requestAnimationFrame(() => {
+        applyRightPanelGoldenLayout();
+        redrawHistogram();
+      });
     }
 
     function visiblePanelHeight(panel) {
@@ -2389,8 +2430,8 @@
           treePane.classList.remove("model-collapsed", "collaboration-collapsed");
           clearPanelHeight(modelPane);
           clearPanelHeight(collaboration);
-          toggleModelPane.textContent = "▾";
-          toggleCollaboration.textContent = "▾";
+          toggleModelPane.textContent = "⌄";
+          toggleCollaboration.textContent = "⌄";
           leftPanel.style.gridTemplateColumns = `32px 1px ${nextFilesWidth}px`;
           setMainColumns(33 + nextFilesWidth);
         } else {
@@ -2457,11 +2498,11 @@
           expandedModelPaneHeight = Math.max(72, visiblePanelHeight(modelPane) || expandedModelPaneHeight);
           clearPanelHeight(modelPane);
           treePane.classList.add("model-collapsed");
-          toggleModelPane.textContent = "▴";
+          toggleModelPane.textContent = "⌃";
         } else {
           treePane.classList.remove("model-collapsed");
           setPanelHeight(modelPane, expandedModelPaneHeight);
-          toggleModelPane.textContent = "▾";
+          toggleModelPane.textContent = "⌄";
         }
       });
       toggleCollaboration.addEventListener("click", () => {
@@ -2470,11 +2511,11 @@
           expandedCollaborationHeight = Math.max(72, visiblePanelHeight(collaboration) || expandedCollaborationHeight);
           clearPanelHeight(collaboration);
           treePane.classList.add("collaboration-collapsed");
-          toggleCollaboration.textContent = "▴";
+          toggleCollaboration.textContent = "⌃";
         } else {
           treePane.classList.remove("collaboration-collapsed");
           setPanelHeight(collaboration, expandedCollaborationHeight);
-          toggleCollaboration.textContent = "▾";
+          toggleCollaboration.textContent = "⌄";
         }
       });
     }
@@ -2563,7 +2604,9 @@
         appMain.classList.remove("right-hidden");
         const leftWidth = leftPanel.getBoundingClientRect().width;
         setMainColumns(leftWidth);
+        scheduleRightPanelGoldenLayout();
       });
+      window.addEventListener("resize", scheduleRightPanelGoldenLayout);
       toggleHistogram.addEventListener("click", () => {
         const isCollapsed = rightPanel.classList.contains("histogram-collapsed");
         if (isCollapsed) {
@@ -2581,7 +2624,7 @@
             topInfoPane.style.flexBasis = `${histogramExpandedTopHeight}px`;
             topInfoPane.style.flexGrow = "0";
           }
-          toggleHistogram.textContent = "▾";
+          toggleHistogram.textContent = "⌄";
         } else {
           if (rightPanel.classList.contains("exif-collapsed")) {
             histogramExpandedLabelsHeight = labelsPane.getBoundingClientRect().height;
@@ -2602,23 +2645,29 @@
           }
           rightPanel.classList.add("histogram-collapsed");
           giveCollapsedSpaceToLabels();
-          toggleHistogram.textContent = "▴";
+          toggleHistogram.textContent = "⌃";
         }
         redrawHistogram();
       });
       toggleExif.addEventListener("click", () => {
         const collapsed = rightPanel.classList.toggle("exif-collapsed");
         if (collapsed) {
+          clearInlineFlex(labelsPane);
+          clearInlineFlex(histogramPane);
           topInfoPane.style.flexBasis = "";
           topInfoPane.style.flexGrow = "1";
           topInfoPane.style.flexShrink = "1";
+          exifPane.style.flexBasis = "34px";
+          exifPane.style.flexGrow = "0";
+          exifPane.style.flexShrink = "0";
           giveCollapsedSpaceToLabels();
         } else {
           exifPane.style.flexBasis = "";
           exifPane.style.flexGrow = "";
           exifPane.style.flexShrink = "";
+          scheduleRightPanelGoldenLayout();
         }
-        toggleExif.textContent = collapsed ? "▴" : "▾";
+        toggleExif.textContent = collapsed ? "⌃" : "⌄";
         redrawHistogram();
       });
     }

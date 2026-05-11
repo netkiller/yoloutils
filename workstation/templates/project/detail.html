@@ -1,30 +1,26 @@
 {% extends "base.html" %}
 
-{% block title %}项目 {{ project.name }}{% endblock %}
+{% block title %}当前项目 {{ project.name }}{% endblock %}
 
 {% block styles %}
-  <link rel="stylesheet" href="/static/css/project.css?v=20260511-project-dashboard">
+  <link rel="stylesheet" href="/static/css/project.css?v=20260511-current-project-cpu-bars">
 {% endblock %}
 
 {% block content %}
-  <main>
-    <section class="detail-head" aria-labelledby="project-title">
-      <div>
-        <h1 id="project-title">项目 {{ project.name }}</h1>
-        {% if project.description %}
-          <p class="project-description">{{ project.description }}</p>
-        {% else %}
-          <p class="project-description muted">暂无描述</p>
-        {% endif %}
-      </div>
-      <a class="close-project-link" href="/project">关闭项目</a>
-    </section>
+  <main class="project-detail-page">
+    <div class="project-detail-shell">
+      <section class="detail-head" aria-labelledby="project-title">
+        <div>
+          <h1 id="project-title">当前项目 {{ project.name }}</h1>
+          {% if project.description %}
+            <p class="project-description">{{ project.description }}</p>
+          {% else %}
+            <p class="project-description muted">暂无描述</p>
+          {% endif %}
+        </div>
+        <a class="close-project-link" href="/project">关闭项目</a>
+      </section>
 
-    {% if error %}
-      <p class="error">{{ error }}</p>
-    {% endif %}
-
-    {% if is_team_mode %}
       <aside class="team-users-panel project-users-panel" aria-labelledby="project-users-title">
         <div class="list-head">
           <h2 id="project-users-title">用户列表</h2>
@@ -42,133 +38,211 @@
               </article>
             {% endfor %}
           {% else %}
-            <div class="empty compact" data-team-empty>暂无在线用户打开该项目</div>
+            <div class="empty compact" data-team-empty>{% if is_team_mode %}暂无在线用户打开该项目{% else %}未启用团队模式{% endif %}</div>
           {% endif %}
         </div>
       </aside>
-    {% endif %}
 
-    <section class="dashboard-card" aria-labelledby="dashboard-title">
-      <div class="dashboard-head">
-        <div>
-          <h2 id="dashboard-title">Dashboard</h2>
-          <p>当前项目标注概览</p>
-        </div>
-        <span class="dashboard-progress">{{ dashboard.progress_percent }}%</span>
+      <div class="project-detail-main">
+        {% if error %}
+          <p class="error">{{ error }}</p>
+        {% endif %}
+
+        <section class="dashboard-card" aria-labelledby="dashboard-title">
+          <div class="dashboard-head">
+            <div>
+              <h2 id="dashboard-title">Dashboard</h2>
+              <p>当前项目标注概览</p>
+            </div>
+            <span class="dashboard-progress">{{ dashboard.progress_percent }}%</span>
+          </div>
+          <div class="dashboard-body">
+            <div class="annotation-progress" aria-label="标注进度">
+              <div class="progress-row">
+                <span>图片</span>
+                <strong>{{ dashboard.image_count }}</strong>
+              </div>
+              <div class="progress-row">
+                <span>已有 .txt 标注</span>
+                <strong>{{ dashboard.label_count }}</strong>
+              </div>
+              <div class="progress-row muted-row">
+                <span>未标注</span>
+                <strong>{{ dashboard.remaining_count }}</strong>
+              </div>
+              <div class="progress-track" aria-hidden="true">
+                <span style="width: {{ dashboard.progress_percent }}%"></span>
+              </div>
+            </div>
+            <div class="class-dashboard" aria-label="classes.txt 标签比例">
+              <span class="dashboard-pie" style="background: {{ dashboard.chart_style }}"></span>
+              <div class="dashboard-legend">
+                {% if dashboard.legend %}
+                  {% for item in dashboard.legend %}
+                    <div class="dashboard-legend-row">
+                      <span class="legend-swatch" style="background: {{ item.color }}" aria-hidden="true"></span>
+                      <span class="legend-label">{{ item.label }}</span>
+                      <strong>{{ item.count }}</strong>
+                      <span>{{ item.percent }}</span>
+                    </div>
+                  {% endfor %}
+                {% else %}
+                  <p class="empty compact">暂无标签统计</p>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="upload-layout" data-project="{{ project.directory }}">
+          <article class="upload-panel">
+            <div class="panel-head">
+              <h2>上传图片</h2>
+              <span class="count" data-image-count>{{ project.image_count }} 个文件</span>
+            </div>
+            <div class="drop-zone" data-upload-zone data-upload-kind="images" role="button" tabindex="0">
+              <input type="file" name="files" accept="image/*,.txt" multiple hidden data-file-input>
+              <input type="file" name="files" accept="image/*,.txt" multiple webkitdirectory directory hidden data-directory-input>
+              <span class="upload-icon" aria-hidden="true"><span class="upload-symbol">⇧</span></span>
+              <span>点击上传图片，或拖拽到这里</span>
+              <span class="upload-options">
+                <span>选择文件</span>
+                <button type="button" data-directory-button>选择目录</button>
+              </span>
+            </div>
+            <a
+              class="action-link{% if not project.has_images %} disabled{% endif %}"
+              href="/annotate/?project={{ project.directory }}"
+              title="{% if project.has_images %}进入标注{% else %}请先上传图片{% endif %}"
+              data-image-action
+              data-images-ready="{{ '1' if project.has_images else '0' }}"
+            >去标注</a>
+          </article>
+
+          <article class="upload-panel classes-panel">
+            <div class="panel-head">
+              <h2>classes.txt</h2>
+              <span class="count" data-classes-status>{% if project.has_classes %}已上传{% else %}未上传{% endif %}</span>
+            </div>
+            <div class="classes-upload-card" data-upload-zone data-upload-kind="classes" role="button" tabindex="0">
+              <input type="file" name="files" accept=".txt,text/plain" hidden>
+              <span class="upload-icon" aria-hidden="true"><span class="upload-symbol">⇧</span></span>
+              <span data-upload-label>上传 classes.txt</span>
+            </div>
+            <button class="secondary-button" type="button" id="editClassesButton" data-classes-edit-label>
+              {% if project.has_classes %}编辑{% else %}创建 classes.txt{% endif %}
+            </button>
+          </article>
+
+          <article class="upload-panel">
+            <div class="panel-head">
+              <h2>上传模型</h2>
+              <span class="count" data-model-count>{{ project.model_count }} 个文件</span>
+            </div>
+            <div class="drop-zone" data-upload-zone data-upload-kind="model" role="button" tabindex="0">
+              <input type="file" name="files" accept=".pt,.onnx,.engine,.torchscript,.tflite,.mlmodel" multiple hidden data-file-input>
+              <input type="file" name="files" accept=".pt,.onnx,.engine,.torchscript,.tflite,.mlmodel" multiple webkitdirectory directory hidden data-directory-input>
+              <span class="upload-icon" aria-hidden="true"><span class="upload-symbol">⇧</span></span>
+              <span>点击上传模型，或拖拽到这里</span>
+              <span class="upload-options">
+                <span>选择文件</span>
+                <button type="button" data-directory-button>选择目录</button>
+              </span>
+            </div>
+            <a class="action-link{% if not project.has_models %} disabled{% endif %}" href="/train?project={{ project.directory }}" data-model-action>去推理</a>
+          </article>
+        </section>
+
+        <section class="sftp-panel" data-sftp-path="{{ project.path }}/images" data-remote-user="{{ remote_user }}">
+          <div class="panel-head">
+            <h2>使用 SFTP 上传</h2>
+            <button class="copy-icon-button" type="button" data-copy-sftp title="复制 SFTP URL" aria-label="复制 SFTP URL">⎘</button>
+          </div>
+          <div class="sftp-url-card">
+            <span data-sftp-url>sftp://{{ remote_user }}@{{ project.path }}/images</span>
+          </div>
+          <div class="sftp-command-grid">
+            <div class="panel-head">
+              <h2>使用 Rsync 上传</h2>
+              <button class="copy-icon-button" type="button" data-copy-rsync title="复制 rsync 命令" aria-label="复制 rsync 命令">⎘</button>
+            </div>
+            <code data-rsync-source="./images/" data-rsync-path="{{ project.path }}/images/" data-rsync-command></code>
+          </div>
+        </section>
       </div>
-      <div class="dashboard-body">
-        <div class="annotation-progress" aria-label="标注进度">
-          <div class="progress-row">
-            <span>图片</span>
-            <strong>{{ dashboard.image_count }}</strong>
-          </div>
-          <div class="progress-row">
-            <span>已有 .txt 标注</span>
-            <strong>{{ dashboard.label_count }}</strong>
-          </div>
-          <div class="progress-row muted-row">
-            <span>未标注</span>
-            <strong>{{ dashboard.remaining_count }}</strong>
-          </div>
-          <div class="progress-track" aria-hidden="true">
-            <span style="width: {{ dashboard.progress_percent }}%"></span>
-          </div>
+
+      <aside class="compute-panel" aria-labelledby="compute-title">
+        <div class="list-head">
+          <h2 id="compute-title">算力配置</h2>
         </div>
-        <div class="class-dashboard" aria-label="classes.txt 标签比例">
-          <span class="dashboard-pie" style="background: {{ dashboard.chart_style }}"></span>
-          <div class="dashboard-legend">
-            {% if dashboard.legend %}
-              {% for item in dashboard.legend %}
-                <div class="dashboard-legend-row">
-                  <span class="legend-swatch" style="background: {{ item.color }}" aria-hidden="true"></span>
-                  <span class="legend-label">{{ item.label }}</span>
-                  <strong>{{ item.count }}</strong>
-                  <span>{{ item.percent }}</span>
+        <div class="compute-list">
+          <div class="compute-row">
+            <span>服务器</span>
+            <strong>{{ compute_config.server }}</strong>
+          </div>
+          <div class="compute-row compute-cpu-row">
+            <div class="compute-resource-head">
+              <span>CPU数量</span>
+              <strong>{{ compute_config.cpu_count }}</strong>
+            </div>
+            <div class="cpu-bars" aria-label="CPU 使用率">
+              {% for cpu in compute_config.cpu_items %}
+                <div class="cpu-bar-row">
+                  <span>{{ cpu.label }}</span>
+                  <div class="cpu-bar-track" aria-hidden="true">
+                    <i style="width: {{ cpu.percent }}%"></i>
+                  </div>
+                  <strong>{{ cpu.percent }}%</strong>
                 </div>
               {% endfor %}
-            {% else %}
-              <p class="empty compact">暂无标签统计</p>
-            {% endif %}
+            </div>
+          </div>
+          <div class="compute-row">
+            <span>显卡数量</span>
+            <strong>{{ compute_config.gpu_count }}</strong>
+          </div>
+          <div class="compute-resource-row">
+            <div class="compute-resource-head">
+              <span>内存数量</span>
+              <strong>{{ compute_config.memory.total }}</strong>
+            </div>
+            <div class="compute-resource-body">
+              <span class="compute-pie" style="background: {{ compute_config.memory.style }}" aria-hidden="true"></span>
+              <div class="compute-resource-meta">
+                <span>可用 {{ compute_config.memory.available }}</span>
+                <span>已用 {{ compute_config.memory.used }}</span>
+              </div>
+            </div>
+          </div>
+          <div class="compute-resource-row">
+            <div class="compute-resource-head">
+              <span>显存大小</span>
+              <strong>{{ compute_config.gpu_memory.total }}</strong>
+            </div>
+            <div class="compute-resource-body">
+              <span class="compute-pie" style="background: {{ compute_config.gpu_memory.style }}" aria-hidden="true"></span>
+              <div class="compute-resource-meta">
+                <span>可用 {{ compute_config.gpu_memory.available }}</span>
+                <span>已用 {{ compute_config.gpu_memory.used }}</span>
+              </div>
+            </div>
+          </div>
+          <div class="compute-resource-row">
+            <div class="compute-resource-head">
+              <span>磁盘空间</span>
+              <strong>{{ compute_config.disk.total }}</strong>
+            </div>
+            <div class="compute-resource-body">
+              <span class="compute-pie" style="background: {{ compute_config.disk.style }}" aria-hidden="true"></span>
+              <div class="compute-resource-meta">
+                <span>可用 {{ compute_config.disk.available }}</span>
+                <span>已用 {{ compute_config.disk.used }}</span>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
-    </section>
-
-    <section class="upload-layout" data-project="{{ project.directory }}">
-      <article class="upload-panel">
-        <div class="panel-head">
-          <h2>上传图片</h2>
-          <span class="count" data-image-count>{{ project.image_count }} 个文件</span>
-        </div>
-        <div class="drop-zone" data-upload-zone data-upload-kind="images" role="button" tabindex="0">
-          <input type="file" name="files" accept="image/*,.txt" multiple hidden data-file-input>
-          <input type="file" name="files" accept="image/*,.txt" multiple webkitdirectory directory hidden data-directory-input>
-          <span class="upload-icon" aria-hidden="true"><span class="upload-symbol">⇧</span></span>
-          <span>点击上传图片，或拖拽到这里</span>
-          <span class="upload-options">
-            <span>选择文件</span>
-            <button type="button" data-directory-button>选择目录</button>
-          </span>
-        </div>
-        <a
-          class="action-link{% if not project.has_images %} disabled{% endif %}"
-          href="/annotate/?project={{ project.directory }}"
-          title="{% if project.has_images %}进入标注{% else %}请先上传图片{% endif %}"
-          data-image-action
-          data-images-ready="{{ '1' if project.has_images else '0' }}"
-        >去标注</a>
-      </article>
-
-      <article class="upload-panel classes-panel">
-        <div class="panel-head">
-          <h2>classes.txt</h2>
-          <span class="count" data-classes-status>{% if project.has_classes %}已上传{% else %}未上传{% endif %}</span>
-        </div>
-        <div class="classes-upload-card" data-upload-zone data-upload-kind="classes" role="button" tabindex="0">
-          <input type="file" name="files" accept=".txt,text/plain" hidden>
-          <span class="upload-icon" aria-hidden="true"><span class="upload-symbol">⇧</span></span>
-          <span data-upload-label>上传 classes.txt</span>
-        </div>
-        <button class="secondary-button" type="button" id="editClassesButton" data-classes-edit-label>
-          {% if project.has_classes %}编辑{% else %}创建 classes.txt{% endif %}
-        </button>
-      </article>
-
-      <article class="upload-panel">
-        <div class="panel-head">
-          <h2>上传模型</h2>
-          <span class="count" data-model-count>{{ project.model_count }} 个文件</span>
-        </div>
-        <div class="drop-zone" data-upload-zone data-upload-kind="model" role="button" tabindex="0">
-          <input type="file" name="files" accept=".pt,.onnx,.engine,.torchscript,.tflite,.mlmodel" multiple hidden data-file-input>
-          <input type="file" name="files" accept=".pt,.onnx,.engine,.torchscript,.tflite,.mlmodel" multiple webkitdirectory directory hidden data-directory-input>
-          <span class="upload-icon" aria-hidden="true"><span class="upload-symbol">⇧</span></span>
-          <span>点击上传模型，或拖拽到这里</span>
-          <span class="upload-options">
-            <span>选择文件</span>
-            <button type="button" data-directory-button>选择目录</button>
-          </span>
-        </div>
-        <a class="action-link{% if not project.has_models %} disabled{% endif %}" href="/train?project={{ project.directory }}" data-model-action>去推理</a>
-      </article>
-    </section>
-
-    <section class="sftp-panel" data-sftp-path="{{ project.path }}/images" data-remote-user="{{ remote_user }}">
-      <div class="panel-head">
-        <h2>使用 SFTP 上传</h2>
-        <button class="copy-icon-button" type="button" data-copy-sftp title="复制 SFTP URL" aria-label="复制 SFTP URL">⎘</button>
-      </div>
-      <div class="sftp-url-card">
-        <span data-sftp-url>sftp://{{ remote_user }}@{{ project.path }}/images</span>
-      </div>
-      <div class="sftp-command-grid">
-        <div class="panel-head">
-          <h2>使用 Rsync 上传</h2>
-          <button class="copy-icon-button" type="button" data-copy-rsync title="复制 rsync 命令" aria-label="复制 rsync 命令">⎘</button>
-        </div>
-        <code data-rsync-source="./images/" data-rsync-path="{{ project.path }}/images/" data-rsync-command></code>
-      </div>
-    </section>
+      </aside>
+    </div>
   </main>
 
   <dialog id="classesDialog" class="project-dialog classes-dialog">

@@ -172,7 +172,7 @@ def daemon_command(args):
 
 def start_daemon(args, workspace: Path):
     pid_file = workspace / ".yoloutils-workstation.pid"
-    log_file = workspace / ".yoloutils-workstation.log"
+    log_file = workspace / ".project.log"
     if pid_file.exists():
         try:
             pid = int(pid_file.read_text(encoding="utf-8").strip())

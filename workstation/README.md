@@ -61,7 +61,7 @@ python3 start.py -w /Users/neo/tmp/yolo/source --reload
 python3 start.py -w /Users/neo/tmp/yolo/source -d
 ```
 
-后台模式会在工作目录写入 `.yoloutils-workstation.pid` 和 `.yoloutils-workstation.log`。
+后台模式会在工作目录写入 `.yoloutils-workstation.pid` 和 `.project.log`。
 
 ## 服务器运行
 

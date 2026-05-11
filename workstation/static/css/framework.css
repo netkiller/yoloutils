@@ -230,15 +230,16 @@ main.right-hidden .right-panel { display: none; }
 .top-info-pane { flex: 1 1 auto; min-height: 180px; display: flex; flex-direction: column; overflow: hidden; }
 .labels-pane { flex: 1 1 55%; min-height: 42px; overflow: hidden; display: flex; flex-direction: column; }
 .labels { flex: 1 1 auto; min-height: 0; overflow: auto; }
-.histogram-pane { flex: 1 1 45%; min-height: 42px; overflow: hidden; display: flex; flex-direction: column; }
+.histogram-pane { flex: 0 0 auto; min-height: 42px; overflow: hidden; display: flex; flex-direction: column; }
 .right-panel.histogram-collapsed .labels-pane { flex-grow: 0; }
-.right-panel.histogram-collapsed .histogram-pane { flex: 0 0 34px; border-top: 1px solid #d9e2ec; }
+.right-panel.histogram-collapsed .histogram-pane { flex: 0 0 34px; min-height: 34px; max-height: 34px; border-top: 1px solid #d9e2ec; }
 .right-panel.histogram-collapsed .histogram-splitter { display: none; }
 .right-panel.histogram-collapsed .histogram { display: none; }
-.right-pane.exif-pane { flex: 0 0 36%; }
+.right-pane.exif-pane { flex: 0 0 auto; max-height: 36%; display: flex; flex-direction: column; overflow: hidden; }
+.exif { flex: 1 1 auto; min-height: 0; overflow: auto; }
 .right-panel.exif-collapsed .top-info-pane { flex: 1 1 auto; }
 .right-panel.exif-collapsed .labels-pane { flex: 1 1 auto; }
-.right-panel.exif-collapsed .histogram-pane { flex: 1 1 45%; }
+.right-panel.exif-collapsed .histogram-pane { flex: 0 0 auto; }
 .right-panel.exif-collapsed .splitter { display: none; }
 .right-panel.exif-collapsed .exif-pane { flex: 0 0 34px; min-height: 34px; overflow: hidden; }
 .right-panel.exif-collapsed .exif { display: none; }
@@ -247,8 +248,8 @@ main.right-hidden .right-panel { display: none; }
 .right-panel.exif-collapsed.histogram-collapsed .top-info-pane { flex: 1 1 auto !important; min-height: 0; }
 .right-panel.exif-collapsed.histogram-collapsed .labels-pane { flex: 1 1 auto !important; min-height: 0; }
 .right-panel.exif-collapsed.histogram-collapsed .histogram-pane { flex: 0 0 34px !important; }
-.right-panel.exif-collapsed.histogram-collapsed .exif-pane { flex: 0 0 34px !important; }
-.histogram { flex: 1 1 auto; min-height: 0; padding: 8px; }
+.right-panel.exif-collapsed.histogram-collapsed .exif-pane { flex: 0 0 34px !important; border-top: 1px solid #d9e2ec; }
+.histogram { flex: 0 0 auto; min-height: 0; padding: 8px; aspect-ratio: 3 / 2; }
 #histogramCanvas { width: 100%; height: 100%; display: block; background: #fff; border: 1px solid #e4e7eb; border-radius: 4px; }
 .splitter { flex: 0 0 1px; cursor: row-resize; background: #d9e2ec; }
 .splitter:hover, .splitter.dragging { background: #bcccdc; }

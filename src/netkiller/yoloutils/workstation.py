@@ -182,7 +182,7 @@ class Workstation:
         return self.workspace / ".yoloutils-workstation.pid"
 
     def _log_file(self):
-        return self.workspace / ".yoloutils-workstation.log"
+        return self.workspace / ".project.log"
 
     def _is_process_running(self, pid: int):
         try:
@@ -673,7 +673,7 @@ class Workstation:
                 "file": str(log_file),
                 "lines": [
                     "当前会话没有后台日志文件。",
-                    "使用 -d/--daemon 后，日志会写入 .yoloutils-workstation.log。",
+                    "使用 -d/--daemon 后，日志会写入 .project.log。",
                 ],
             }
         try:
