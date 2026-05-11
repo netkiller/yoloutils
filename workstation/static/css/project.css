@@ -874,16 +874,16 @@ main.team-main > .team-chat-layout {
 
 .online-user {
   min-width: 0;
-  height: 40px;
-  display: flex;
+  min-height: 48px;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
   align-items: center;
   gap: 8px;
-  padding: 4px 8px;
+  padding: 7px 8px;
   border: 1px solid #e6edf5;
   border-radius: 8px;
   background: #f8fafc;
   overflow: hidden;
-  white-space: nowrap;
 }
 
 .online-user .online-user-dot {
@@ -911,10 +911,28 @@ main.team-main > .team-chat-layout {
 }
 
 .online-user-name {
+  display: block;
   min-width: 0;
   overflow: hidden;
   color: #52606d;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.online-user-text {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.online-user-project {
+  min-width: 0;
+  overflow: hidden;
+  color: #829ab1;
+  font-size: 12px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .current-user-card {

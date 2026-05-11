@@ -51,11 +51,13 @@ function renderOnlineUsers(users) {
   const teamList = document.querySelector("[data-team-user-list]");
   const loginList = document.querySelector("[data-login-user-list]");
   const renderDot = (user) => `<span class="online-user-dot" style="--user-color: ${escapeHtml(user.color)}" aria-hidden="true">${escapeHtml(user.initial)}</span>`;
+  let onlineCount = users.length;
   if (teamList) {
     const currentProject = teamList.dataset.currentProject || "";
     const visibleUsers = currentProject
       ? users.filter((user) => user.project === currentProject)
       : users;
+    onlineCount = visibleUsers.length;
     teamList.innerHTML = visibleUsers.length
       ? visibleUsers.map((user) => `
         <article class="team-user" title="${escapeHtml(user.name)}">
@@ -67,24 +69,22 @@ function renderOnlineUsers(users) {
         </article>
       `).join("")
       : `<div class="empty compact" data-team-empty>${currentProject ? "暂无在线用户打开该项目" : "暂无在线用户"}</div>`;
-    if (currentProject) {
-      document.querySelectorAll("[data-online-count]").forEach((item) => {
-        item.textContent = `${visibleUsers.length}`;
-      });
-    }
   }
   if (loginList) {
     loginList.innerHTML = users.length
       ? users.map((user) => `
         <div class="online-user" title="${escapeHtml(user.name)}">
           ${renderDot(user)}
-          <span class="online-user-name">${escapeHtml(user.name)}</span>
+          <span class="online-user-text">
+            <span class="online-user-name">${escapeHtml(user.name)}</span>
+            <span class="online-user-project">${user.project ? `打开项目：${escapeHtml(user.project_name || user.project)}` : "未打开项目"}</span>
+          </span>
         </div>
       `).join("")
       : '<p data-login-empty>暂无在线用户</p>';
   }
   document.querySelectorAll("[data-online-count]").forEach((item) => {
-    item.textContent = `${users.length}`;
+    item.textContent = `${onlineCount}`;
   });
 }
 

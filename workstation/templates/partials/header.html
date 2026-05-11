@@ -1,5 +1,12 @@
 <header>
   <div class="brand-title">
+    <a class="header-home-link" href="https://saas.netkiller.cn" target="_blank" rel="noopener noreferrer" title="Home" aria-label="Home">
+      <svg class="header-home-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M3 11.5 12 4l9 7.5"></path>
+        <path d="M5.5 10.5V20h13v-9.5"></path>
+        <path d="M9.5 20v-6h5v6"></path>
+      </svg>
+    </a>
     {% if username %}
       <span class="user-avatar" style="--user-color: {{ username_color | default('#3b82f6') }}" aria-hidden="true">{{ username_initial | default(username[:1]) }}</span>
       <span class="username-badge">{{ username }}</span>
@@ -16,6 +23,7 @@
   <nav aria-label="主导航">
     <a{% if active_page == "team" %} class="active"{% endif %} href="/team{% if current_project %}?project={{ current_project }}{% endif %}"><span class="nav-icon">◌</span><span>团队</span></a>
     <a{% if active_page == "project" %} class="active"{% endif %} href="{% if current_project %}/project/{{ current_project }}{% else %}/project{% endif %}"><span class="nav-icon">▤</span><span>项目</span></a>
+    <a{% if active_page == "resources" %} class="active"{% endif %} href="{% if current_project %}/resources/{{ current_project }}{% else %}/resources{% endif %}"><span class="nav-icon">▥</span><span>算力</span></a>
     {% if current_project %}
       <a{% if active_page == "annotate" %} class="active"{% endif %} href="/annotate/?project={{ current_project }}"><span class="nav-icon">▧</span><span>标注</span></a>
       <a{% if active_page == "dataset" %} class="active"{% endif %} href="/dataset?project={{ current_project }}"><span class="nav-icon">▦</span><span>数据集</span></a>

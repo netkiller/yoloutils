@@ -8,6 +8,7 @@
     {% if footer_right %}{{ footer_right }}{% endif %}
     <button class="footer-button" type="button" data-public-shortcuts title="查看快捷键"><span class="footer-button-icon">⌘</span>快捷键</button>
     <button class="footer-button" type="button" data-footer-console-toggle><span class="footer-button-icon">▤</span>控制台</button>
+    <a class="footer-button" href="/help" data-public-help title="帮助（⌘H）"><span class="footer-button-icon">?</span>帮助</a>
   </div>
 </footer>
 <div class="public-shortcut-popover" data-public-shortcut-popover hidden>
@@ -31,13 +32,20 @@
     const shortcuts = document.querySelector("[data-public-shortcuts]");
     const popover = document.querySelector("[data-public-shortcut-popover]");
     const close = document.querySelector("[data-close-public-shortcuts]");
-    shortcuts?.addEventListener("click", () => {
-      if (popover) popover.hidden = !popover.hidden;
-    });
+    function toggleShortcuts(forceOpen) {
+      if (!popover) return;
+      popover.hidden = typeof forceOpen === "boolean" ? !forceOpen : !popover.hidden;
+    }
+    shortcuts?.addEventListener("click", () => toggleShortcuts());
     close?.addEventListener("click", () => {
       if (popover) popover.hidden = true;
     });
     window.addEventListener("keydown", (event) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "h") {
+        event.preventDefault();
+        window.location.assign("/help");
+        return;
+      }
       if (event.key === "Escape" && popover && !popover.hidden) popover.hidden = true;
     });
   })();

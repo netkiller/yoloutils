@@ -211,6 +211,12 @@ def workstation_html(workstation: Workstation, active_mode: str = "annotate", pr
         f'title="项目" onclick="location.href=\'{project_url}\'">'
         '<span class="header-icon">▤</span><span>项目</span></button>'
     )
+    resources_url = f"/resources/{quote(project, safe='')}" if project else "/resources"
+    resources_button = (
+        '<button id="resourcesButton" class="header-button" title="算力" '
+        f'onclick="location.href=\'{resources_url}\'">'
+        '<span class="header-icon">▥</span><span>算力</span></button>'
+    )
     team_button = (
         '<button id="teamButton" class="header-button" title="团队" '
         f'onclick="location.href=\'{team_url}\'">'
@@ -245,7 +251,7 @@ def workstation_html(workstation: Workstation, active_mode: str = "annotate", pr
         )
         .replace(
             '<button id="annotateModeButton"',
-            f'{team_button}{project_button}<button id="annotateModeButton"',
+            f'{team_button}{project_button}{resources_button}<button id="annotateModeButton"',
             1,
         )
         .replace(

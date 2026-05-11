@@ -201,9 +201,9 @@
       <span class="stat"><span class="stat-icon">▯</span>.txt <strong>-</strong></span>
       <span class="stat"><span class="stat-icon">⌑</span>classes.txt <strong>-</strong></span>
       <span class="stat bad"><span class="stat-icon">✕</span>损坏图像 <strong>-</strong></span>
-      <span class="stat bad"><span class="stat-icon">!</span>无效 .txt <strong>-</strong></span>
       <button id="shortcutButton" class="footer-button" type="button"><span class="stat-icon">⌘</span>快捷键</button>
       <button id="consoleToggle" class="footer-button" type="button"><span class="stat-icon">▤</span>控制台</button>
+      <button id="helpButton" class="footer-button" type="button"><span class="stat-icon">?</span>帮助</button>
     </div>
   </footer>
   <div id="consoleSplitter" class="console-splitter" title="拖动调整控制台高度"></div>
@@ -300,6 +300,7 @@
     const downloadImage = document.getElementById("downloadImage");
     const queryButton = document.getElementById("queryButton");
     const shortcutButton = document.getElementById("shortcutButton");
+    const helpButton = document.getElementById("helpButton");
     const shortcutPopover = document.getElementById("shortcutPopover");
     const closeShortcuts = document.getElementById("closeShortcuts");
     const annotateModeButton = document.getElementById("annotateModeButton");
@@ -1395,9 +1396,9 @@
           <span class="stat"><span class="stat-icon">▯</span>.txt <strong>${data.txt_total}</strong></span>
           <span class="stat"><span class="stat-icon">⌑</span>classes.txt <strong>${data.classes_files}</strong></span>
           <span class="stat bad"><span class="stat-icon">✕</span>损坏图像 <strong>${data.images_damaged}</strong></span>
-          <span class="stat bad"><span class="stat-icon">!</span>无效 .txt <strong>${data.txt_invalid_total}</strong></span>
           <button id="shortcutButton" class="footer-button" type="button"><span class="stat-icon">⌘</span>快捷键</button>
           <button id="consoleToggle" class="footer-button" type="button"><span class="stat-icon">▤</span>控制台</button>
+          <button id="helpButton" class="footer-button" type="button"><span class="stat-icon">?</span>帮助</button>
         </div>
       `;
       statsEl.querySelector(".stats-left").appendChild(renderBreadcrumb());
@@ -1405,6 +1406,7 @@
       button.classList.toggle("active", document.body.classList.contains("console-open"));
       button.addEventListener("click", toggleConsole);
       statsEl.querySelector("#shortcutButton")?.addEventListener("click", toggleShortcuts);
+      statsEl.querySelector("#helpButton")?.addEventListener("click", openHelp);
     }
 
     async function init() {
@@ -1490,6 +1492,7 @@
       downloadImage.addEventListener("click", downloadCurrentImage);
       queryButton.addEventListener("click", showEnterpriseNotice);
       shortcutButton?.addEventListener("click", toggleShortcuts);
+      helpButton?.addEventListener("click", openHelp);
       closeShortcuts.addEventListener("click", () => {
         shortcutPopover.hidden = true;
       });
@@ -1497,8 +1500,12 @@
       trainButton.addEventListener("click", showEnterpriseNotice);
     }
 
-    function toggleShortcuts() {
-      shortcutPopover.hidden = !shortcutPopover.hidden;
+    function toggleShortcuts(forceOpen) {
+      shortcutPopover.hidden = typeof forceOpen === "boolean" ? !forceOpen : !shortcutPopover.hidden;
+    }
+
+    function openHelp() {
+      window.location.assign("/help");
     }
 
     function visibleTreeButtons() {
@@ -1914,6 +1921,11 @@
         }
         if (!(event.metaKey || event.ctrlKey)) return;
         const key = event.key.toLowerCase();
+        if (key === "h") {
+          event.preventDefault();
+          openHelp();
+          return;
+        }
         const labelShortcut = labelShortcutIndex(event);
         if (labelShortcut !== null) {
           event.preventDefault();

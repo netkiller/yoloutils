@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+
+{% block title %}算力{% endblock %}
+
+{% block content %}
+  <main class="resources-main">
+    <section class="toolbar" aria-labelledby="resources-title">
+      <div>
+        <h1 id="resources-title">算力</h1>
+        <p class="project-description muted">添加 SSH 服务器，统一管理远程算力资源。</p>
+      </div>
+      <div class="toolbar-actions">
+        <button class="secondary-button" type="button" data-open-resource-dialog>添加算力</button>
+      </div>
+    </section>
+
+    <section class="resources-layout" aria-label="算力管理">
+      <section class="resource-card resource-list-card" aria-labelledby="resource-list-title">
+        <div class="resource-card-head">
+          <div>
+            <h2 id="resource-list-title">算力列表</h2>
+            <p>刚刚添加的服务器。</p>
+          </div>
+          <span class="count">{{ resources | length }} 台服务器</span>
+        </div>
+        <div class="resource-list">
+          {% if resources %}
+            {% for item in resources %}
+              <article class="resource-server" ondblclick="location.href='{{ resources_base }}/server/{{ item.id }}'" tabindex="0" title="双击进入服务器详情">
+                <div>
+                  <strong>{{ item.name }}</strong>
+                  <span>{{ item.address }}</span>
+                </div>
+                <div class="resource-server-actions">
+                  <a href="{{ resources_base }}/server/{{ item.id }}" aria-label="进入 {{ item.name }} 详情">详情</a>
+                  <a href="{{ resources_base }}/server/{{ item.id }}/edit" aria-label="编辑 {{ item.name }}">编辑</a>
+                </div>
+                {% if item.note %}
+                  <p>{{ item.note }}</p>
+                {% endif %}
+              </article>
+            {% endfor %}
+          {% else %}
+            <div class="empty compact">暂无服务器</div>
+          {% endif %}
+        </div>
+      </section>
+    </section>
+
+    <section class="resource-market-grid" aria-label="算力服务">
+      <article class="resource-card">
+        <div class="resource-card-head">
+          <div>
+            <h2>购买算力</h2>
+            <p>需要训练、验证、预测服务器，可以直接联系我们。</p>
+          </div>
+        </div>
+        <div class="resource-contact">
+          <span>手机</span>
+          <strong>13113668890</strong>
+          <span>联系人</span>
+          <strong>陈先生</strong>
+        </div>
+      </article>
+
+      <article class="resource-card">
+        <div class="resource-card-head">
+          <div>
+            <h2>算力合作</h2>
+            <p>如果你有闲置 GPU 服务器，可以与平台合作出售算力。</p>
+          </div>
+        </div>
+        <p class="resource-copy">提供服务器规格、GPU 型号、显存、带宽、在线时段和报价，我们评估后接入平台，按任务或时长分配训练与推理订单。</p>
+      </article>
+    </section>
+
+    <dialog id="resourceDialog" class="resource-dialog">
+      <form class="resource-card resource-form" method="post" action="{{ resources_base }}">
+        <div class="resource-card-head">
+          <div>
+            <h2>添加算力</h2>
+            <p>添加 SSH，用于远程管理服务器。</p>
+          </div>
+          <button class="dialog-close" type="button" data-close-resource-dialog aria-label="关闭">×</button>
+        </div>
+        <label>
+          <span>名称</span>
+          <input name="name" type="text" placeholder="例如 4090 工作站">
+        </label>
+        <div class="resource-form-row">
+          <label>
+            <span>主机</span>
+            <input name="host" type="text" placeholder="192.168.1.10" required>
+          </label>
+          <label>
+            <span>端口</span>
+            <input name="port" type="number" min="1" max="65535" value="22" required>
+          </label>
+        </div>
+        <div class="resource-form-row">
+          <label>
+            <span>用户名</span>
+            <input name="username" type="text" placeholder="root" required>
+          </label>
+        </div>
+        <label>
+          <span>密码</span>
+          <input name="password" type="password" autocomplete="new-password" placeholder="SSH 密码" required>
+        </label>
+        <label>
+          <span>备注</span>
+          <textarea name="note" rows="3" placeholder="GPU、机房、用途等"></textarea>
+        </label>
+        <button type="submit">添加服务器</button>
+      </form>
+    </dialog>
+  </main>
+
+  {% set footer_id = "stats" %}
+  {% set footer_left = workspace %}
+  {% include "partials/footer.html" %}
+  <script>
+    (() => {
+      const dialog = document.getElementById("resourceDialog");
+      document.querySelector("[data-open-resource-dialog]")?.addEventListener("click", () => dialog?.showModal());
+      document.querySelector("[data-close-resource-dialog]")?.addEventListener("click", () => dialog?.close());
+      dialog?.addEventListener("click", event => {
+        if (event.target === dialog) dialog.close();
+      });
+    })();
+  </script>
+{% endblock %}

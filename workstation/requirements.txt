@@ -13,3 +13,4 @@ tqdm
 fastapi
 uvicorn
 jinja2
+paramiko

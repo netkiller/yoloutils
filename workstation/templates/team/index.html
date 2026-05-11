@@ -3,7 +3,7 @@
 {% block title %}团队{% endblock %}
 
 {% block styles %}
-  <link rel="stylesheet" href="/static/css/project.css?v=20260511-login-panel">
+  <link rel="stylesheet" href="/static/css/project.css?v=20260511-team-project-status">
 {% endblock %}
 
 {% block content %}
@@ -28,7 +28,10 @@
               {% for user in online_users %}
                 <div class="online-user" title="{{ user.name }}">
                   <span class="online-user-dot" style="--user-color: {{ user.color }}" aria-hidden="true">{{ user.initial }}</span>
-                  <span class="online-user-name">{{ user.name }}</span>
+                  <span class="online-user-text">
+                    <span class="online-user-name">{{ user.name }}</span>
+                    <span class="online-user-project">{% if user.project %}打开项目：{{ user.project_name or user.project }}{% else %}未打开项目{% endif %}</span>
+                  </span>
                 </div>
               {% endfor %}
             </div>
@@ -90,5 +93,5 @@
   {% set footer_left = workspace %}
   {% include "partials/footer.html" %}
 
-  <script src="/static/js/project.js?v=20260507-chat"></script>
+  <script src="/static/js/project.js?v=20260511-team-project-status"></script>
 {% endblock %}

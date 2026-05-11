@@ -3,6 +3,9 @@ html { min-height: 100%; background: #f5f7fa; }
 body { margin: 0; min-height: 100vh; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #1f2933; background: #f5f7fa; }
 header { height: 44px; display: grid; grid-template-columns: minmax(160px, 1fr) auto minmax(160px, 1fr); align-items: center; gap: 16px; padding: 0 24px; border-bottom: 1px solid #d9e2ec; background: #fff; font-weight: 650; }
 .header-title { min-width: 0; height: 100%; display: flex; align-items: center; gap: 10px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.header-home-link { width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 30px; border: 1px solid #d9e2ec; border-radius: 6px; background: #fff; color: #334e68; text-decoration: none; }
+.header-home-link:hover { background: #e6f0ff; color: #243b53; }
+.header-home-icon { width: 17px; height: 17px; display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .brand-link { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: #1f2933; text-decoration: none; }
 .brand-link:hover { color: #1d4ed8; }
 .enterprise-link { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: 5px; height: 30px; min-width: 62px; padding: 0 9px; border: 1px solid #d9e2ec; border-radius: 6px; color: #334e68; background: #fff; font-size: 12px; line-height: 1; text-decoration: none; }
@@ -271,7 +274,7 @@ footer { height: 40px; display: flex; align-items: center; justify-content: spac
 .stat strong { color: #1f2933; font-weight: 700; }
 .stat.warn strong { color: #b45309; }
 .stat.bad strong { color: #be123c; }
-.footer-button { width: auto; height: 26px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 0 8px; border: 1px solid #d9e2ec; border-radius: 6px; background: #fff; color: #334e68; font-size: 12px; line-height: 1; white-space: nowrap; }
+.footer-button { width: auto; height: 26px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 0 8px; border: 1px solid #d9e2ec; border-radius: 6px; background: #fff; color: #334e68; font-size: 12px; line-height: 1; text-decoration: none; white-space: nowrap; }
 .footer-button:hover, .footer-button.active { background: #e6f0ff; color: #243b53; }
 .console-splitter { height: 4px; display: none; cursor: row-resize; border-top: 1px solid #d9e2ec; border-bottom: 1px solid #d9e2ec; background: #e4e7eb; }
 .console-splitter:hover, .console-splitter.dragging { background: #bcccdc; }
