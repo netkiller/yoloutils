@@ -105,17 +105,18 @@
     <div id="leftPanel" class="left-panel">
       <aside id="treePane" class="left-pane tree-pane">
         <div class="pane-header">
-          <h2><span class="pane-title-icon">▰</span>目录</h2>
+          <h2><span class="pane-title-icon">▱</span><span class="pane-title-text">目录</span></h2>
           <div class="pane-tools">
             <button id="reloadTree" class="icon-button" title="重载目录">↻</button>
             <button id="toggleTree" class="icon-button" title="隐藏目录栏">‹</button>
+            <button id="showFilesFromTree" class="icon-button show-files-from-tree" title="显示文件栏">▤</button>
           </div>
         </div>
         <div id="tree" class="tree"></div>
         <div id="modelSplitter" class="panel-splitter model-splitter" title="拖动调整目录和模型高度"></div>
         <div id="modelPane" class="model-pane">
           <div class="pane-header">
-            <h2><span class="pane-title-icon">◎</span>模型 <strong id="modelCount" class="pane-title-count">-</strong></h2>
+            <h2><span class="pane-title-icon">◎</span><span class="pane-title-text">模型</span> <strong id="modelCount" class="pane-title-count">-</strong></h2>
             <div class="collaboration-tools">
               <button id="toggleModelPane" class="icon-button collapse-button" title="折叠/展开模型">▾</button>
             </div>
@@ -125,7 +126,7 @@
         <div id="collaborationSplitter" class="panel-splitter collaboration-splitter" title="拖动调整模型和协作高度"></div>
         <div id="collaboration" class="collaboration">
           <div class="pane-header collaboration-header">
-            <h2><span class="pane-title-icon">◌</span>协作 <strong id="onlineCount" class="pane-title-count">-</strong></h2>
+            <h2><span class="pane-title-icon">◌</span><span class="pane-title-text">协作</span> <strong id="onlineCount" class="pane-title-count">-</strong></h2>
             <div class="collaboration-tools">
               <button id="toggleCollaboration" class="icon-button collapse-button" title="折叠/展开协作">▾</button>
             </div>
@@ -136,10 +137,10 @@
       <div id="leftSplitter" class="vertical-splitter" title="拖动调整目录和文件列表比例"></div>
       <aside class="left-pane files-pane">
         <div class="pane-header">
-          <h2><span class="pane-title-icon">▯</span>文件</h2>
+          <h2><span class="pane-title-icon">▯</span><span class="pane-title-text">文件</span></h2>
           <div class="pane-tools">
             <button id="toggleFileSort" class="icon-button" title="未达标排在上面">↑</button>
-            <button id="showTree" class="icon-button" title="显示目录栏">☰</button>
+            <button id="toggleFiles" class="icon-button" title="隐藏文件栏">‹</button>
           </div>
         </div>
         <div id="files" class="files"></div>
@@ -156,10 +157,16 @@
           <button id="deleteAnnotation" class="tool-button" title="删除当前标注"><span class="header-icon">×</span><span>删除</span><span class="shortcut-hint">⌘D</span></button>
           <button id="resetAnnotation" class="tool-button" title="重新读取标注"><span class="header-icon">↺</span><span>重置</span><span class="shortcut-hint">⌘R</span></button>
           <button id="saveAnnotation" class="tool-button" title="保存当前标注"><span class="header-icon">✓</span><span>保存</span><span class="shortcut-hint">⌘S</span></button>
+          <button id="showFiles" class="icon-button" title="显示文件栏">▯</button>
           <button id="showRight" class="icon-button" title="显示标签/信息栏">☰</button>
         </div>
       </div>
       <div class="canvas-wrap"><canvas id="canvas"></canvas><div id="empty" class="empty">请选择图片</div></div>
+      <div id="viewerFileNav" class="viewer-file-nav">
+        <button id="viewerPrevFile" class="icon-button" type="button" title="上一张">‹</button>
+        <span id="viewerFileName" class="viewer-file-name">-</span>
+        <button id="viewerNextFile" class="icon-button" type="button" title="下一张">›</button>
+      </div>
     </section>
     <aside id="rightPanel" class="right-panel">
       <div id="topInfoPane" class="right-pane top-info-pane">
@@ -215,16 +222,48 @@
     </form>
   </dialog>
   <div id="imageContextMenu" class="context-menu" hidden>
-    <button id="deleteFileMenuItem" type="button">删除文件</button>
+    <button type="button" data-file-action="delete_file"><span class="menu-icon">✕</span><span>删除文件</span></button>
+    <button type="button" data-file-action="delete_txt"><span class="menu-icon">⌫</span><span>删除.txt文件</span></button>
+    <button type="button" data-file-action="create_negative_txt"><span class="menu-icon">□</span><span>创建负样本集.txt空文件</span></button>
+    <button type="button" data-file-action="lowercase"><span class="menu-icon">a</span><span>文件名和扩展转小写</span></button>
+    <button type="button" data-file-action="uppercase"><span class="menu-icon">A</span><span>文件名和扩展转大写</span></button>
+    <button type="button" data-file-action="rename"><span class="menu-icon">✎</span><span>重命名</span></button>
+    <button type="button" data-file-action="share"><span class="menu-icon">⇪</span><span>分享</span></button>
   </div>
+  <div id="treeContextMenu" class="context-menu" hidden>
+    <button type="button" data-directory-action="delete_directory"><span class="menu-icon">✕</span><span>删除目录</span></button>
+    <button type="button" data-directory-action="delete_txt"><span class="menu-icon">⌫</span><span>删除.txt文件</span></button>
+    <button type="button" data-directory-action="create_negative_txt"><span class="menu-icon">□</span><span>创建负样本集.txt空文件</span></button>
+    <button type="button" data-directory-action="lowercase"><span class="menu-icon">a</span><span>文件名和扩展转小写</span></button>
+    <button type="button" data-directory-action="uppercase"><span class="menu-icon">A</span><span>文件名和扩展转大写</span></button>
+    <button type="button" data-directory-action="rename"><span class="menu-icon">✎</span><span>重命名</span></button>
+  </div>
+  <dialog id="contextActionDialog" class="context-action-dialog">
+    <form id="contextActionForm" class="context-action-form">
+      <h3 id="contextActionTitle">确认操作</h3>
+      <p id="contextActionMessage" class="context-action-message"></p>
+      <label id="contextActionInputWrap" class="context-action-input-wrap" hidden>
+        <span id="contextActionInputLabel">名称</span>
+        <input id="contextActionInput" type="text" autocomplete="off">
+      </label>
+      <div class="context-action-buttons">
+        <button id="contextActionCancel" class="secondary-button" type="button">取消</button>
+        <button id="contextActionConfirm" type="submit">确定</button>
+      </div>
+    </form>
+  </dialog>
   <script>
     const colors = ["#e11d48", "#2563eb", "#16a34a", "#d97706", "#7c3aed", "#0891b2", "#be123c", "#4d7c0f"];
     const treeEl = document.getElementById("tree");
     const filesEl = document.getElementById("files");
+    const filesPane = document.querySelector(".files-pane");
     const appMain = document.getElementById("appMain");
     const leftPanel = document.getElementById("leftPanel");
     const leftSplitter = document.getElementById("leftSplitter");
     const mainSplitter = document.getElementById("mainSplitter");
+    const toggleFiles = document.getElementById("toggleFiles");
+    const showFiles = document.getElementById("showFiles");
+    const showFilesFromTree = document.getElementById("showFilesFromTree");
     const toggleTree = document.getElementById("toggleTree");
     const treePane = document.getElementById("treePane");
     const reloadTree = document.getElementById("reloadTree");
@@ -284,12 +323,25 @@
     const usernameInput = document.getElementById("usernameInput");
     const usernameSubmit = document.getElementById("usernameSubmit");
     const imageContextMenu = document.getElementById("imageContextMenu");
-    const deleteFileMenuItem = document.getElementById("deleteFileMenuItem");
+    const treeContextMenu = document.getElementById("treeContextMenu");
+    const contextActionDialog = document.getElementById("contextActionDialog");
+    const contextActionForm = document.getElementById("contextActionForm");
+    const contextActionTitle = document.getElementById("contextActionTitle");
+    const contextActionMessage = document.getElementById("contextActionMessage");
+    const contextActionInputWrap = document.getElementById("contextActionInputWrap");
+    const contextActionInputLabel = document.getElementById("contextActionInputLabel");
+    const contextActionInput = document.getElementById("contextActionInput");
+    const contextActionCancel = document.getElementById("contextActionCancel");
+    const contextActionConfirm = document.getElementById("contextActionConfirm");
     const canvas = document.getElementById("canvas");
     const ctx = canvas.getContext("2d");
     const empty = document.getElementById("empty");
     const viewerTitle = document.getElementById("viewerTitle");
     const viewerHeader = document.getElementById("viewerHeader");
+    const viewerFileNav = document.getElementById("viewerFileNav");
+    const viewerPrevFile = document.getElementById("viewerPrevFile");
+    const viewerNextFile = document.getElementById("viewerNextFile");
+    const viewerFileName = document.getElementById("viewerFileName");
     const zoomIndicator = document.getElementById("zoomIndicator");
     const lockBanner = document.getElementById("lockBanner");
     let currentDir = "";
@@ -305,6 +357,9 @@
     let boxHitAreas = [];
     let canvasInteraction = null;
     let currentFiles = [];
+    let contextFilePath = "";
+    let contextTreePath = "";
+    let contextActionResolve = null;
     let fileSortDirection = "asc";
     let annotateMode = false;
     let maskEnabled = false;
@@ -322,9 +377,12 @@
     const collapsedDirs = new Set();
     let statisticsData = null;
     let histogramExpandedTopHeight = null;
+    let histogramExpandedLabelsHeight = null;
     let selectedAutoModel = "";
     let autoAnnotateEnabled = false;
     let autoAnnotateRunning = false;
+    let expandedModelPaneHeight = 120;
+    let expandedCollaborationHeight = 120;
 
     async function getJson(url) {
       const response = await fetch(url);
@@ -401,6 +459,7 @@
       button.appendChild(icon);
       button.appendChild(name);
       button.onclick = () => selectDir(node.path, button);
+      button.oncontextmenu = event => showTreeContextMenu(event, node.path);
       row.appendChild(button);
       wrapper.appendChild(row);
       if (hasChildren) {
@@ -512,6 +571,7 @@
           .find(button => button.dataset.path === currentPath);
         if (activeRow) activeRow.classList.add("active");
       }
+      updateViewerFileNav();
     }
 
     async function refreshCurrentFiles() {
@@ -552,6 +612,14 @@
       return remaining[Math.min(Math.max(index, 0), remaining.length - 1)].path;
     }
 
+    function updateViewerFileNav() {
+      const file = currentPath ? sortedCurrentFiles().find(item => item.path === currentPath) : null;
+      viewerFileName.textContent = file?.name || (currentPath ? currentPath.split("/").pop() : "-") || "-";
+      const disabled = !currentFiles.length;
+      viewerPrevFile.disabled = disabled;
+      viewerNextFile.disabled = disabled;
+    }
+
     async function selectFirstCurrentFile() {
       const [firstFile] = sortedCurrentFiles();
       if (!firstFile) {
@@ -567,6 +635,7 @@
         setBoxesDirty(false);
         resetImageZoom();
         viewerTitle.innerHTML = '<span class="pane-title-icon">▧</span>图像';
+        updateViewerFileNav();
         canvas.style.display = "none";
         empty.style.display = "block";
         exifEl.innerHTML = '<div class="empty">请选择图片</div>';
@@ -584,6 +653,7 @@
       lockBanner.hidden = true;
       lockBanner.textContent = "";
       currentPath = path;
+      updateViewerFileNav();
       currentImage = null;
       currentLabelFile = "";
       lockedByOther = null;
@@ -621,6 +691,7 @@
         empty.style.display = "block";
       };
       image.src = `/media?path=${encodeURIComponent(path)}`;
+      updateViewerFileNav();
     }
 
     function redrawImage() {
@@ -1460,23 +1531,247 @@
 
     function hideContextMenu() {
       imageContextMenu.hidden = true;
+      treeContextMenu.hidden = true;
     }
 
     function showContextMenu(event) {
       if (!currentPath) return;
       event.preventDefault();
+      const targetButton = event.target instanceof Element ? event.target.closest("[data-path]") : null;
+      contextFilePath = targetButton?.dataset.path || currentPath;
+      treeContextMenu.hidden = true;
       imageContextMenu.hidden = false;
-      const menuWidth = imageContextMenu.offsetWidth || 132;
-      const menuHeight = imageContextMenu.offsetHeight || 34;
+      const menuWidth = imageContextMenu.offsetWidth || 218;
+      const menuHeight = imageContextMenu.offsetHeight || 240;
       imageContextMenu.style.left = `${Math.min(event.clientX, window.innerWidth - menuWidth - 8)}px`;
       imageContextMenu.style.top = `${Math.min(event.clientY, window.innerHeight - menuHeight - 8)}px`;
+    }
+
+    function showTreeContextMenu(event, path) {
+      event.preventDefault();
+      event.stopPropagation();
+      contextTreePath = path || "";
+      imageContextMenu.hidden = true;
+      treeContextMenu.hidden = false;
+      const menuWidth = treeContextMenu.offsetWidth || 218;
+      const menuHeight = treeContextMenu.offsetHeight || 210;
+      treeContextMenu.style.left = `${Math.min(event.clientX, window.innerWidth - menuWidth - 8)}px`;
+      treeContextMenu.style.top = `${Math.min(event.clientY, window.innerHeight - menuHeight - 8)}px`;
+    }
+
+    function showContextActionDialog(options) {
+      return new Promise(resolve => {
+        if (contextActionResolve) {
+          contextActionResolve(null);
+        }
+        contextActionResolve = resolve;
+        contextActionTitle.textContent = options.title || "确认操作";
+        contextActionMessage.textContent = options.message || "";
+        contextActionConfirm.textContent = options.confirmText || "确定";
+        if (options.input) {
+          contextActionInputWrap.hidden = false;
+          contextActionInputLabel.textContent = options.inputLabel || "名称";
+          contextActionInput.value = options.value || "";
+        } else {
+          contextActionInputWrap.hidden = true;
+          contextActionInput.value = "";
+        }
+        if (contextActionDialog.open) {
+          contextActionDialog.close();
+        }
+        contextActionDialog.showModal();
+        if (options.input) {
+          contextActionInput.focus();
+          contextActionInput.select();
+        } else {
+          contextActionConfirm.focus();
+        }
+      });
+    }
+
+    function closeContextActionDialog(value) {
+      const resolve = contextActionResolve;
+      contextActionResolve = null;
+      if (contextActionDialog.open) {
+        contextActionDialog.close();
+      }
+      if (resolve) {
+        resolve(value);
+      }
+    }
+
+    async function runDirectoryAction(action) {
+      const path = contextTreePath || "";
+      hideContextMenu();
+      const labels = {
+        delete_directory: "删除目录",
+        delete_txt: "删除 .txt 文件",
+        create_negative_txt: "创建负样本集空 .txt 文件",
+        lowercase: "文件名和扩展转小写",
+        uppercase: "文件名和扩展转大写",
+        rename: "重命名",
+      };
+      if (action === "delete_directory" && !path) {
+        alert("不能删除根目录");
+        return;
+      }
+      let name = "";
+      if (action === "rename") {
+        const currentName = (path || "").split("/").pop();
+        const answer = await showContextActionDialog({
+          title: "重命名目录",
+          message: path || "根目录",
+          input: true,
+          inputLabel: "新的目录名",
+          value: currentName || "",
+          confirmText: "重命名",
+        });
+        name = answer?.name?.trim() || "";
+        if (!name) return;
+      } else {
+        const confirmed = await showContextActionDialog({
+          title: labels[action] || "执行操作",
+          message: path || "根目录",
+          confirmText: "执行",
+        });
+        if (!confirmed) return;
+      }
+      let result = null;
+      try {
+        result = await postJson("/api/directory/action", {path, action, name});
+      } catch (error) {
+        alert(error.message);
+        return;
+      }
+      if (action === "rename" && result?.renamed?.to) {
+        if (currentDir === path) {
+          currentDir = result.renamed.to;
+        } else if (path && currentDir.startsWith(`${path}/`)) {
+          currentDir = `${result.renamed.to}${currentDir.slice(path.length)}`;
+        }
+      }
+      const affectsCurrentDir = !path || path === currentDir || currentDir.startsWith(`${path}/`) || ["lowercase", "uppercase", "rename"].includes(action);
+      if (affectsCurrentDir) {
+        currentPath = "";
+        currentImage = null;
+        currentLabelFile = "";
+        currentBoxes = [];
+        savedBoxes = [];
+        selectedBoxIndex = -1;
+        setBoxesDirty(false);
+      }
+      await loadStatistics();
+      await loadTree();
+      if (action === "delete_directory") {
+        await selectDir("", findTreeButton(""));
+      } else if (affectsCurrentDir) {
+        await refreshCurrentFiles();
+        await selectFirstCurrentFile();
+      } else {
+        await refreshCurrentFiles();
+      }
+    }
+
+    async function runFileAction(action) {
+      const path = contextFilePath || currentPath;
+      hideContextMenu();
+      if (!path || (path === currentPath && lockedByOther)) return;
+      const labels = {
+        delete_file: "删除文件",
+        delete_txt: "删除 .txt 文件",
+        create_negative_txt: "创建负样本集空 .txt 文件",
+        lowercase: "文件名和扩展转小写",
+        uppercase: "文件名和扩展转大写",
+        rename: "重命名",
+      };
+      if (action === "share") {
+        await shareFile(path);
+        return;
+      }
+      let name = "";
+      if (action === "rename") {
+        const answer = await showContextActionDialog({
+          title: "重命名文件",
+          message: path,
+          input: true,
+          inputLabel: "新的文件名",
+          value: path.split("/").pop() || "",
+          confirmText: "重命名",
+        });
+        name = answer?.name?.trim() || "";
+        if (!name) return;
+      } else {
+        const confirmed = await showContextActionDialog({
+          title: labels[action] || "执行操作",
+          message: path,
+          confirmText: "执行",
+        });
+        if (!confirmed) return;
+      }
+      const nextPath = action === "delete_file" ? nextFileAfterDelete(path) : null;
+      try {
+        if (action === "delete_file") {
+          await postJson("/api/file/delete", {
+            path,
+            client_id: clientId(),
+            username: username || "独立用户",
+          });
+        } else {
+          await postJson("/api/file/action", {path, action, name});
+        }
+      } catch (error) {
+        alert(error.message);
+        await acquireCurrentLock();
+        return;
+      }
+      if (path === currentPath || ["lowercase", "uppercase", "rename"].includes(action)) {
+        currentPath = "";
+        currentImage = null;
+        currentLabelFile = "";
+        currentBoxes = [];
+        savedBoxes = [];
+        selectedBoxIndex = -1;
+        setBoxesDirty(false);
+      }
+      await loadStatistics();
+      await loadTree();
+      await refreshCurrentFiles();
+      if (nextPath && currentFiles.some(file => file.path === nextPath)) {
+        await selectImage(nextPath, fileRow(nextPath));
+      } else if (!currentPath) {
+        await selectFirstCurrentFile();
+      }
+    }
+
+    async function shareFile(path) {
+      const mediaBase = window.location.pathname.startsWith("/annotate") ? "/annotate/media" : "/media";
+      const url = `${window.location.origin}${mediaBase}?path=${encodeURIComponent(path)}&raw=1`;
+      const payload = {title: path.split("/").pop() || "image", text: url, url};
+      try {
+        if (navigator.share) {
+          await navigator.share(payload);
+          return;
+        }
+        await navigator.clipboard.writeText(url);
+        alert("已复制图片地址");
+      } catch (error) {
+        if (navigator.clipboard) {
+          await navigator.clipboard.writeText(url);
+          alert("已复制图片地址");
+        }
+      }
     }
 
     async function deleteCurrentFile() {
       hideContextMenu();
       if (!currentPath || lockedByOther) return;
       const deletedPath = currentPath;
-      if (!confirm(`删除 ${deletedPath} 和同名 .txt 文件？`)) return;
+      const confirmed = await showContextActionDialog({
+        title: "删除文件",
+        message: `${deletedPath} 和同名 .txt 文件`,
+        confirmText: "删除",
+      });
+      if (!confirmed) return;
       const nextPath = nextFileAfterDelete(deletedPath);
       try {
         await postJson("/api/file/delete", {
@@ -1529,9 +1824,17 @@
     }
 
     async function queryLocation() {
-      const keyword = prompt("查询目录或当前文件", currentPath || currentDir || "");
-      if (!keyword || !keyword.trim()) return;
-      const query = keyword.trim().toLowerCase();
+      const answer = await showContextActionDialog({
+        title: "查询",
+        message: "查询目录或当前文件",
+        input: true,
+        inputLabel: "关键字",
+        value: currentPath || currentDir || "",
+        confirmText: "查询",
+      });
+      const keyword = answer?.name?.trim() || "";
+      if (!keyword) return;
+      const query = keyword.toLowerCase();
       const dirButton = Array.from(document.querySelectorAll("#tree button")).find(button => {
         const path = (button.dataset.path || "").toLowerCase();
         const name = button.querySelector(".tree-name")?.textContent.toLowerCase() || "";
@@ -1726,7 +2029,21 @@
       canvas.parentElement.addEventListener("contextmenu", showContextMenu);
       document.addEventListener("click", hideContextMenu);
       window.addEventListener("blur", hideContextMenu);
-      deleteFileMenuItem.addEventListener("click", deleteCurrentFile);
+      imageContextMenu.querySelectorAll("[data-file-action]").forEach(button => {
+        button.addEventListener("click", () => runFileAction(button.dataset.fileAction));
+      });
+      treeContextMenu.querySelectorAll("[data-directory-action]").forEach(button => {
+        button.addEventListener("click", () => runDirectoryAction(button.dataset.directoryAction));
+      });
+      contextActionForm.addEventListener("submit", event => {
+        event.preventDefault();
+        closeContextActionDialog({name: contextActionInput.value});
+      });
+      contextActionCancel.addEventListener("click", () => closeContextActionDialog(null));
+      contextActionDialog.addEventListener("cancel", event => {
+        event.preventDefault();
+        closeContextActionDialog(null);
+      });
       canvas.addEventListener("mousedown", event => {
         hideContextMenu();
         if (!currentImage || event.button !== 0 || lockedByOther) return;
@@ -1937,6 +2254,7 @@
         labelsPane.style.flexGrow = "0";
         histogramPane.style.flexBasis = `${Math.max(min, rect.height - labelsHeight - splitterSize)}px`;
         histogramPane.style.flexGrow = "1";
+        histogramExpandedLabelsHeight = labelsHeight;
         redrawHistogram();
       });
       window.addEventListener("mouseup", () => {
@@ -1961,6 +2279,13 @@
       panel.style.flexBasis = `${Math.round(height)}px`;
       panel.style.flexGrow = "0";
       panel.style.flexShrink = "0";
+    }
+
+    function clearPanelHeight(panel) {
+      if (!panel) return;
+      panel.style.flexBasis = "";
+      panel.style.flexGrow = "";
+      panel.style.flexShrink = "";
     }
 
     function initTreePaneSplitters() {
@@ -2018,6 +2343,65 @@
     function initLeftPanel() {
       let dragging = false;
       initTreePaneSplitters();
+      function setFilesHidden(hidden) {
+        const wasTreeHidden = leftPanel.classList.contains("tree-hidden");
+        const currentTreeWidth = Math.round(treePane.getBoundingClientRect().width);
+        const currentFilesWidth = Math.round(filesPane?.getBoundingClientRect().width || 0);
+        leftPanel.classList.toggle("files-hidden", hidden);
+        appMain.classList.toggle("files-hidden", hidden);
+        if (hidden) {
+          if (wasTreeHidden) {
+            leftPanel.dataset.filesWidth = String(Math.max(160, currentFilesWidth || 487));
+            leftPanel.classList.add("tree-hidden");
+            appMain.classList.add("tree-hidden");
+            setMainColumns(32);
+          } else {
+            leftPanel.classList.remove("tree-hidden");
+            appMain.classList.remove("tree-hidden");
+            setMainColumns(Math.max(120, currentTreeWidth || 280));
+          }
+        } else {
+          if (leftPanel.classList.contains("tree-hidden")) {
+            const savedFilesWidth = Math.max(160, Number(leftPanel.dataset.filesWidth) || 487);
+            leftPanel.style.gridTemplateColumns = `32px 1px ${savedFilesWidth}px`;
+            setMainColumns(33 + savedFilesWidth);
+          } else if (!leftPanel.style.gridTemplateColumns || leftPanel.style.gridTemplateColumns.startsWith("0px")) {
+            leftPanel.style.gridTemplateColumns = "minmax(120px, 46%) 1px minmax(160px, 1fr)";
+            setMainColumns(520);
+          } else {
+            setMainColumns(520);
+          }
+        }
+        updateViewerFileNav();
+        requestAnimationFrame(() => {
+          applyImageZoom();
+          redrawImage();
+        });
+      }
+      function setTreeHidden(hidden) {
+        const currentFilesWidth = Math.round(filesPane?.getBoundingClientRect().width || 0);
+        leftPanel.classList.toggle("tree-hidden", hidden);
+        appMain.classList.toggle("tree-hidden", hidden);
+        if (hidden) {
+          const nextFilesWidth = Math.max(160, currentFilesWidth || 487);
+          leftPanel.classList.remove("files-hidden");
+          appMain.classList.remove("files-hidden");
+          treePane.classList.remove("model-collapsed", "collaboration-collapsed");
+          clearPanelHeight(modelPane);
+          clearPanelHeight(collaboration);
+          toggleModelPane.textContent = "▾";
+          toggleCollaboration.textContent = "▾";
+          leftPanel.style.gridTemplateColumns = `32px 1px ${nextFilesWidth}px`;
+          setMainColumns(33 + nextFilesWidth);
+        } else {
+          leftPanel.style.gridTemplateColumns = "minmax(120px, 46%) 1px minmax(160px, 1fr)";
+          setMainColumns(520);
+        }
+        requestAnimationFrame(() => {
+          applyImageZoom();
+          redrawImage();
+        });
+      }
       reloadTree.addEventListener("click", async () => {
         await loadTree();
         await loadStatistics();
@@ -2029,7 +2413,7 @@
         event.preventDefault();
       });
       window.addEventListener("mousemove", event => {
-        if (!dragging || leftPanel.classList.contains("tree-hidden")) return;
+        if (!dragging || leftPanel.classList.contains("tree-hidden") || leftPanel.classList.contains("files-hidden")) return;
         const rect = leftPanel.getBoundingClientRect();
         const minTree = 120;
         const minFiles = 160;
@@ -2042,26 +2426,56 @@
         dragging = false;
         leftSplitter.classList.remove("dragging");
       });
-      toggleTree.addEventListener("click", () => {
-        leftPanel.classList.add("tree-hidden");
-        appMain.classList.add("tree-hidden");
-        setMainColumns(280);
+      toggleTree.addEventListener("click", event => {
+        event.stopPropagation();
+        setTreeHidden(true);
       });
-      showTree.addEventListener("click", () => {
-        leftPanel.classList.remove("tree-hidden");
-        appMain.classList.remove("tree-hidden");
-        if (!leftPanel.style.gridTemplateColumns || leftPanel.style.gridTemplateColumns.startsWith("0px")) {
-          leftPanel.style.gridTemplateColumns = "minmax(120px, 46%) 1px minmax(160px, 1fr)";
+      showTree?.addEventListener("click", () => {
+        setTreeHidden(false);
+      });
+      leftPanel.addEventListener("pointerdown", event => {
+        if (!leftPanel.classList.contains("tree-hidden")) return;
+        if (leftPanel.classList.contains("files-hidden") && event.target.closest(".files-pane")) {
+          event.preventDefault();
+          event.stopPropagation();
+          setFilesHidden(false);
+          return;
         }
-        setMainColumns(520);
+        if (!event.target.closest("#treePane")) return;
+        event.preventDefault();
+        event.stopPropagation();
+        setTreeHidden(false);
       });
+      toggleFiles.addEventListener("click", () => setFilesHidden(true));
+      showFiles.addEventListener("click", () => setFilesHidden(false));
+      showFilesFromTree.addEventListener("click", () => setFilesHidden(false));
+      viewerPrevFile.addEventListener("click", () => selectAdjacentImage(-1));
+      viewerNextFile.addEventListener("click", () => selectAdjacentImage(1));
       toggleModelPane.addEventListener("click", () => {
-        const collapsed = treePane.classList.toggle("model-collapsed");
-        toggleModelPane.textContent = collapsed ? "▴" : "▾";
+        const willCollapse = !treePane.classList.contains("model-collapsed");
+        if (willCollapse) {
+          expandedModelPaneHeight = Math.max(72, visiblePanelHeight(modelPane) || expandedModelPaneHeight);
+          clearPanelHeight(modelPane);
+          treePane.classList.add("model-collapsed");
+          toggleModelPane.textContent = "▴";
+        } else {
+          treePane.classList.remove("model-collapsed");
+          setPanelHeight(modelPane, expandedModelPaneHeight);
+          toggleModelPane.textContent = "▾";
+        }
       });
       toggleCollaboration.addEventListener("click", () => {
-        const collapsed = treePane.classList.toggle("collaboration-collapsed");
-        toggleCollaboration.textContent = collapsed ? "▴" : "▾";
+        const willCollapse = !treePane.classList.contains("collaboration-collapsed");
+        if (willCollapse) {
+          expandedCollaborationHeight = Math.max(72, visiblePanelHeight(collaboration) || expandedCollaborationHeight);
+          clearPanelHeight(collaboration);
+          treePane.classList.add("collaboration-collapsed");
+          toggleCollaboration.textContent = "▴";
+        } else {
+          treePane.classList.remove("collaboration-collapsed");
+          setPanelHeight(collaboration, expandedCollaborationHeight);
+          toggleCollaboration.textContent = "▾";
+        }
       });
     }
 
@@ -2080,7 +2494,7 @@
       window.addEventListener("mousemove", event => {
         if (!dragging) return;
         const rect = appMain.getBoundingClientRect();
-        const minLeft = appMain.classList.contains("tree-hidden") ? 220 : 360;
+        const minLeft = appMain.classList.contains("tree-hidden") || appMain.classList.contains("files-hidden") ? 220 : 360;
         const minViewer = 420;
         const splitterWidth = mainSplitter.getBoundingClientRect().width;
         const rightWidth = appMain.classList.contains("right-hidden") ? 0 : 220;
@@ -2132,6 +2546,12 @@
         topInfoPane.style.flexBasis = "";
         topInfoPane.style.flexGrow = "1";
         topInfoPane.style.flexShrink = "1";
+        histogramPane.style.flexBasis = "";
+        histogramPane.style.flexGrow = "";
+        histogramPane.style.flexShrink = "";
+        exifPane.style.flexBasis = "";
+        exifPane.style.flexGrow = "";
+        exifPane.style.flexShrink = "";
       }
 
       hideRight.addEventListener("click", () => {
@@ -2148,8 +2568,12 @@
         const isCollapsed = rightPanel.classList.contains("histogram-collapsed");
         if (isCollapsed) {
           rightPanel.classList.remove("histogram-collapsed");
+          if (histogramExpandedLabelsHeight) {
+            labelsPane.style.flexBasis = `${histogramExpandedLabelsHeight}px`;
+            labelsPane.style.flexGrow = "0";
+            labelsPane.style.flexShrink = "0";
+          }
           if (rightPanel.classList.contains("exif-collapsed")) {
-            clearInlineFlex(labelsPane);
             topInfoPane.style.flexBasis = "";
             topInfoPane.style.flexGrow = "1";
             topInfoPane.style.flexShrink = "1";
@@ -2160,6 +2584,7 @@
           toggleHistogram.textContent = "▾";
         } else {
           if (rightPanel.classList.contains("exif-collapsed")) {
+            histogramExpandedLabelsHeight = labelsPane.getBoundingClientRect().height;
             clearInlineFlex(labelsPane);
             topInfoPane.style.flexBasis = "";
             topInfoPane.style.flexGrow = "1";
@@ -2169,6 +2594,7 @@
             const labelsHeight = labelsPane.getBoundingClientRect().height;
             const histogramHeaderHeight = histogramPane.querySelector(".pane-header").getBoundingClientRect().height;
             histogramExpandedTopHeight = topHeight;
+            histogramExpandedLabelsHeight = labelsHeight;
             labelsPane.style.flexBasis = `${labelsHeight}px`;
             labelsPane.style.flexGrow = "0";
             topInfoPane.style.flexBasis = `${labelsHeight + histogramHeaderHeight}px`;

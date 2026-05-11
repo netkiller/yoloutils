@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}{% if current_project_name %}{{ current_project_name }} 数据集{% else %}数据集{% endif %}{% endblock %}
+{% block title %}{% if current_project_name %}项目 {{ current_project_name }} 数据集{% else %}数据集{% endif %}{% endblock %}
 
 {% block styles %}
   <link rel="stylesheet" href="/static/css/dataset.css?v=20260510-description">
@@ -10,7 +10,7 @@
   <main>
     <section class="dataset-head" aria-labelledby="dataset-title">
       <div>
-        <h1 id="dataset-title">{% if current_project_name %}{{ current_project_name }} 数据集{% else %}数据集{% endif %}</h1>
+        <h1 id="dataset-title">{% if current_project_name %}项目 {{ current_project_name }} 数据集{% else %}数据集{% endif %}</h1>
         <p class="dataset-description">数据集用于固化当前项目的图片与标签划分，生成 train / val / test 目录，供训练、验证和对比使用。</p>
       </div>
       <button class="project-link-button" id="openCreateDataset" type="button">新建数据集</button>

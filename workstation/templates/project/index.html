@@ -3,7 +3,7 @@
 {% block title %}项目{% endblock %}
 
 {% block styles %}
-  <link rel="stylesheet" href="/static/css/project.css?v=20260504-avatar-bg">
+  <link rel="stylesheet" href="/static/css/project.css?v=20260511-project-card-pie">
 {% endblock %}
 
 {% block content %}
@@ -46,6 +46,24 @@
                   <span class="folder{% if not project.images %} missing{% endif %}">images</span>
                   <span class="folder{% if not project.dataset %} missing{% endif %}">dataset</span>
                   <span class="folder{% if not project.models %} missing{% endif %}">models</span>
+                </div>
+                {% set resource_chart = project.resource_chart | default({"style": "#e2e8f0", "items": [
+                  {"label": "图像", "count": project.image_count | default(0), "percent": "0.0%", "color": "#2563eb"},
+                  {"label": "数据集", "count": project.dataset_count | default(0), "percent": "0.0%", "color": "#16a34a"},
+                  {"label": "模型", "count": project.model_count | default(0), "percent": "0.0%", "color": "#f97316"}
+                ]}) %}
+                <div class="project-resource-chart" aria-label="项目资源比例">
+                  <span class="project-resource-pie" style="background: {{ resource_chart.style }}" aria-hidden="true"></span>
+                  <div class="project-resource-legend">
+                    {% for item in resource_chart["items"] %}
+                      <div class="project-resource-row">
+                        <span class="legend-swatch" style="background: {{ item.color }}" aria-hidden="true"></span>
+                        <span class="legend-label">{{ item.label }}</span>
+                        <strong>{{ item.count }}</strong>
+                        <span>{{ item.percent }}</span>
+                      </div>
+                    {% endfor %}
+                  </div>
                 </div>
               </a>
               <div class="card-menu">

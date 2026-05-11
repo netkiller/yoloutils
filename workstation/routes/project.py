@@ -300,6 +300,120 @@ def count_files(path: Path, exts: set[str]):
     return sum(1 for item in path.rglob("*") if item.is_file() and item.suffix.lower() in exts)
 
 
+def count_dataset_dirs(path: Path):
+    roots = [path / "datasets", path / "dataset"]
+    count = 0
+    for root in roots:
+        if root.is_dir():
+            count += sum(1 for item in root.iterdir() if item.is_dir())
+    return count
+
+
+def resource_chart(image_count: int, dataset_count: int, model_count: int):
+    items = [
+        {"key": "images", "label": "图像", "count": image_count, "color": "#2563eb"},
+        {"key": "datasets", "label": "数据集", "count": dataset_count, "color": "#16a34a"},
+        {"key": "models", "label": "模型", "count": model_count, "color": "#f97316"},
+    ]
+    total = sum(item["count"] for item in items)
+    start = 0.0
+    segments = []
+    for item in items:
+        percent = (item["count"] / total * 100) if total else 0
+        end = start + percent
+        item["percent"] = f"{percent:.1f}%"
+        if item["count"]:
+            segments.append(f"{item['color']} {start:.2f}% {end:.2f}%")
+        start = end
+    return {
+        "total": total,
+        "items": items,
+        "style": f"conic-gradient({', '.join(segments)})" if segments else "#e2e8f0",
+    }
+
+
+def read_classes(path: Path):
+    if not path.is_file():
+        return []
+    try:
+        return [
+            line.strip()
+            for line in path.read_text(encoding="utf-8", errors="replace").splitlines()
+            if line.strip()
+        ]
+    except OSError:
+        return []
+
+
+def project_dashboard(projects: list[dict]):
+    total_images = 0
+    total_labels = 0
+    class_counts: dict[str, int] = {}
+    colors = ["#2563eb", "#16a34a", "#f97316", "#dc2626", "#7c3aed", "#0891b2", "#ca8a04", "#be185d"]
+
+    for project in projects:
+        images_dir = project["path"] / "images"
+        if not images_dir.is_dir():
+            continue
+        classes = read_classes(images_dir / "classes.txt")
+        image_paths = [
+            item
+            for item in images_dir.rglob("*")
+            if item.is_file() and item.suffix.lower() in IMAGE_EXTS
+        ]
+        total_images += len(image_paths)
+        label_files = []
+        for image_path in image_paths:
+            label_file = image_path.with_suffix(".txt")
+            if label_file.is_file():
+                total_labels += 1
+                label_files.append(label_file)
+        for label_file in label_files:
+            try:
+                lines = label_file.read_text(encoding="utf-8", errors="replace").splitlines()
+            except OSError:
+                continue
+            for line in lines:
+                parts = line.strip().split()
+                if len(parts) != 5:
+                    continue
+                try:
+                    class_id = int(parts[0])
+                except ValueError:
+                    continue
+                label = classes[class_id] if 0 <= class_id < len(classes) else str(class_id)
+                class_counts[label] = class_counts.get(label, 0) + 1
+
+    total_annotations = sum(class_counts.values())
+    legend = []
+    start = 0.0
+    segments = []
+    for index, (label, count) in enumerate(sorted(class_counts.items(), key=lambda item: (-item[1], item[0]))):
+        percent = (count / total_annotations * 100) if total_annotations else 0
+        end = start + percent
+        color = colors[index % len(colors)]
+        segments.append(f"{color} {start:.2f}% {end:.2f}%")
+        legend.append(
+            {
+                "label": label,
+                "count": count,
+                "percent": f"{percent:.1f}%",
+                "color": color,
+            }
+        )
+        start = end
+
+    return {
+        "image_count": total_images,
+        "label_count": total_labels,
+        "remaining_count": max(total_images - total_labels, 0),
+        "progress_percent": round((total_labels / total_images * 100) if total_images else 0),
+        "total_annotations": total_annotations,
+        "legend": legend,
+        "chart_style": f"conic-gradient({', '.join(segments)})" if segments else "#e2e8f0",
+    }
+
+
 def project_items(workspace: Path):
     projects = []
     if not workspace.is_dir():
@@ -311,6 +425,9 @@ def project_items(workspace: Path):
             continue
         children = {child.name for child in path.iterdir() if child.is_dir()}
         meta = read_project_meta(path, registry)
+        image_count = count_files(path / "images", IMAGE_EXTS)
+        dataset_count = count_dataset_dirs(path)
+        model_count = count_files(path / "models", MODEL_EXTS)
         projects.append(
             {
                 **meta,
@@ -318,8 +435,10 @@ def project_items(workspace: Path):
                 "images": "images" in children,
                 "dataset": "datasets" in children or "dataset" in children,
                 "models": "models" in children,
-                "image_count": count_files(path / "images", IMAGE_EXTS),
-                "model_count": count_files(path / "models", MODEL_EXTS),
+                "image_count": image_count,
+                "dataset_count": dataset_count,
+                "model_count": model_count,
+                "resource_chart": resource_chart(image_count, dataset_count, model_count),
             }
         )
     return projects
@@ -754,6 +873,7 @@ def project_detail(directory: str, request: Request):
         meta = read_project_meta(path, read_project_registry(workspace))
         image_count = count_files(path / "images", IMAGE_EXTS)
         model_count = count_files(path / "models", MODEL_EXTS)
+        dashboard = project_dashboard([{"path": path}])
         has_classes = (path / "images" / "classes.txt").is_file()
         project_ready = image_count > 0
         projects_by_user = read_user_projects(workspace)
@@ -780,6 +900,7 @@ def project_detail(directory: str, request: Request):
                     "classes_text": (path / "images" / "classes.txt").read_text(encoding="utf-8") if has_classes else "",
                 },
                 "remote_user": getpass.getuser(),
+                "dashboard": dashboard,
                 "error": request.query_params.get("error"),
                 "active_page": "project",
                 "show_create_project": False,

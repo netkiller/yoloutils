@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}{% if current_project_name %}{{ current_project_name }} 模型{% else %}模型{% endif %}{% endblock %}
+{% block title %}{% if current_project_name %}项目 {{ current_project_name }} 模型{% else %}模型{% endif %}{% endblock %}
 
 {% block styles %}
   <link rel="stylesheet" href="/static/css/train.css?v=20260505-demo-mode">
@@ -10,7 +10,7 @@
   <main class="train-main">
     <section class="train-head">
       <div>
-        <h1>{% if current_project_name %}{{ current_project_name }} 模型{% else %}模型{% endif %}</h1>
+        <h1>{% if current_project_name %}项目 {{ current_project_name }} 模型{% else %}模型{% endif %}</h1>
         {% if demo_mode %}
           <p class="demo-note">当前为演示模式，不会启动训练。</p>
         {% endif %}

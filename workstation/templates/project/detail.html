@@ -3,7 +3,7 @@
 {% block title %}项目 {{ project.name }}{% endblock %}
 
 {% block styles %}
-  <link rel="stylesheet" href="/static/css/project.css?v=20260508-sftp-compact">
+  <link rel="stylesheet" href="/static/css/project.css?v=20260511-project-dashboard">
 {% endblock %}
 
 {% block content %}
@@ -47,6 +47,52 @@
         </div>
       </aside>
     {% endif %}
+
+    <section class="dashboard-card" aria-labelledby="dashboard-title">
+      <div class="dashboard-head">
+        <div>
+          <h2 id="dashboard-title">Dashboard</h2>
+          <p>当前项目标注概览</p>
+        </div>
+        <span class="dashboard-progress">{{ dashboard.progress_percent }}%</span>
+      </div>
+      <div class="dashboard-body">
+        <div class="annotation-progress" aria-label="标注进度">
+          <div class="progress-row">
+            <span>图片</span>
+            <strong>{{ dashboard.image_count }}</strong>
+          </div>
+          <div class="progress-row">
+            <span>已有 .txt 标注</span>
+            <strong>{{ dashboard.label_count }}</strong>
+          </div>
+          <div class="progress-row muted-row">
+            <span>未标注</span>
+            <strong>{{ dashboard.remaining_count }}</strong>
+          </div>
+          <div class="progress-track" aria-hidden="true">
+            <span style="width: {{ dashboard.progress_percent }}%"></span>
+          </div>
+        </div>
+        <div class="class-dashboard" aria-label="classes.txt 标签比例">
+          <span class="dashboard-pie" style="background: {{ dashboard.chart_style }}"></span>
+          <div class="dashboard-legend">
+            {% if dashboard.legend %}
+              {% for item in dashboard.legend %}
+                <div class="dashboard-legend-row">
+                  <span class="legend-swatch" style="background: {{ item.color }}" aria-hidden="true"></span>
+                  <span class="legend-label">{{ item.label }}</span>
+                  <strong>{{ item.count }}</strong>
+                  <span>{{ item.percent }}</span>
+                </div>
+              {% endfor %}
+            {% else %}
+              <p class="empty compact">暂无标签统计</p>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </section>
 
     <section class="upload-layout" data-project="{{ project.directory }}">
       <article class="upload-panel">

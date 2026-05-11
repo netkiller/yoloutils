@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block title %}{% if project_name %}项目 {{ project_name }} 预测{% else %}预测{% endif %}{% endblock %}
+
+{% block styles %}
+  <link rel="stylesheet" href="/static/css/validate.css?v=20260511-predict">
+{% endblock %}
+
+{% block content %}
+  <main class="validate-main">
+    <section class="validate-head" aria-labelledby="predict-title">
+      <div>
+        <h1 id="predict-title">{% if project_name %}项目 {{ project_name }} 预测{% else %}预测{% endif %}</h1>
+        <p>{{ project_name or current_project or "未选择项目" }}</p>
+      </div>
+      <span class="model-count">{{ models | length }} 个模型</span>
+    </section>
+
+    <section class="validate-tools" aria-label="预测操作">
+      <form class="tool-panel" method="get" action="/annotate/">
+        <input type="hidden" name="project" value="{{ current_project }}">
+        <div>
+          <h2>预测</h2>
+          <p>选择模型后进入标注页执行自动识别。</p>
+        </div>
+        <label>
+          <span>模型</span>
+          <select name="model" required>
+            {% for model in models %}
+              <option value="{{ model.relative_path }}">{{ model.filename }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          <span>数据集</span>
+          <select name="dataset">
+            {% for dataset in datasets %}
+              <option value="{{ dataset.name }}">{{ dataset.name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <button type="submit" {% if not current_project or not models %}disabled{% endif %}>进入预测</button>
+      </form>
+    </section>
+  </main>
+
+  {% set footer_id = "stats" %}
+  {% set footer_left = workspace %}
+  {% include "partials/footer.html" %}
+{% endblock %}

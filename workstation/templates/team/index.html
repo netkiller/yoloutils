@@ -3,7 +3,7 @@
 {% block title %}团队{% endblock %}
 
 {% block styles %}
-  <link rel="stylesheet" href="/static/css/project.css?v=20260507-team-chat-fill">
+  <link rel="stylesheet" href="/static/css/project.css?v=20260511-login-panel">
 {% endblock %}
 
 {% block content %}
@@ -64,14 +64,21 @@
           </form>
         </section>
       {% else %}
-        <form class="login-form team-page-card" method="post" action="/team/login">
+        <form class="login-form team-page-card login-panel" method="post" action="/team/login">
           <section class="login-fields">
-            <label>
+            <div class="login-panel-head">
+              <span class="login-mark" aria-hidden="true">◌</span>
+              <div>
+                <h2>进入团队</h2>
+                <p>使用在线用户名登录工作站</p>
+              </div>
+            </div>
+            <label class="login-input-label">
               <span>用户名</span>
-              <input name="username" type="text" autocomplete="name" required autofocus>
+              <input name="username" type="text" autocomplete="name" placeholder="输入用户名" required autofocus>
             </label>
             <div class="dialog-actions login-actions">
-              <button type="submit">进入</button>
+              <button type="submit">进入工作站</button>
             </div>
           </section>
         </form>

@@ -12,6 +12,7 @@ from starlette.responses import RedirectResponse, Response
 from routes.annotate import create_annotate_app
 from routes.dataset import router as dataset_router
 from routes.project import current_username, router as project_router, team_mode_enabled, workspace_path
+from routes.predict import router as predict_router
 from routes.train import router as train_router
 from routes.validate import router as validate_router
 
@@ -22,6 +23,7 @@ app = FastAPI()
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 app.include_router(dataset_router)
 app.include_router(project_router)
+app.include_router(predict_router)
 app.include_router(train_router)
 app.include_router(validate_router)
 

@@ -1,4 +1,5 @@
 import os
+import shutil
 import socket
 import subprocess
 import sys
@@ -68,6 +69,7 @@ class Workstation:
         self.mdns = "netkiller.local"
         self.presence = {}
         self.locks = {}
+        self.log_root = None
         self.classes_file = None
         self.class_groups = []
         self.classes = []
@@ -89,6 +91,7 @@ class Workstation:
             return
 
         self.workspace = Path(workspace).expanduser().resolve()
+        self.log_root = self.workspace
         if not self.workspace.is_dir():
             print(f"workspace 目录不存在: {self.workspace}")
             return
@@ -217,10 +220,10 @@ class Workstation:
                 continue
 
     def _pid_file(self):
-        return self.workspace / ".yoloutils-workstation.pid"
+        return (self.log_root or self.workspace) / ".yoloutils-workstation.pid"
 
     def _log_file(self):
-        return self.workspace / ".yoloutils-workstation.log"
+        return (self.log_root or self.workspace) / ".yoloutils-workstation.log"
 
     def _is_process_running(self, pid: int):
         try:
@@ -698,6 +701,143 @@ class Workstation:
             self._release_lock(relative_path, client_id)
         return {"deleted": deleted}
 
+    def _directory_operation(self, directory: str, action: str, name: str = ""):
+        path = self._safe_path(directory)
+        if not path.is_dir():
+            raise HTTPException(status_code=404, detail="directory not found")
+        if action == "rename":
+            if path == self.workspace:
+                raise HTTPException(status_code=400, detail="不能重命名根目录")
+            return {"ok": True, "action": action, "renamed": self._rename_path(path, name)}
+        if action == "delete_directory":
+            if path == self.workspace:
+                raise HTTPException(status_code=400, detail="不能删除根目录")
+            shutil.rmtree(path)
+            return {"ok": True, "action": action, "deleted": self._relative(path)}
+        if action == "delete_txt":
+            deleted = []
+            for item in sorted(path.rglob("*.txt"), key=lambda item: item.as_posix().lower()):
+                if item.is_file() and item.name.lower() != "classes.txt":
+                    item.unlink()
+                    deleted.append(self._relative(item))
+            return {"ok": True, "action": action, "deleted": deleted}
+        if action == "create_negative_txt":
+            created = []
+            for image in sorted((item for item in path.rglob("*") if self._is_image(item)), key=lambda item: item.as_posix().lower()):
+                label_file = image.with_suffix(".txt")
+                if not label_file.exists():
+                    label_file.write_text("", encoding="utf-8")
+                    created.append(self._relative(label_file))
+            return {"ok": True, "action": action, "created": created}
+        if action in ("lowercase", "uppercase"):
+            changed = []
+            skipped = []
+            items = sorted(
+                (item for item in path.rglob("*") if item.is_file()),
+                key=lambda item: len(item.parts),
+                reverse=True,
+            )
+            for item in items:
+                next_name = item.name.lower() if action == "lowercase" else item.name.upper()
+                if next_name == item.name:
+                    continue
+                target = item.with_name(next_name)
+                if target.exists():
+                    try:
+                        same_file = item.samefile(target)
+                    except OSError:
+                        same_file = False
+                    if not same_file:
+                        skipped.append(self._relative(item))
+                        continue
+                    temporary = item.with_name(f".{item.name}.yoloutils-rename-tmp")
+                    suffix = 0
+                    while temporary.exists():
+                        suffix += 1
+                        temporary = item.with_name(f".{item.name}.yoloutils-rename-tmp-{suffix}")
+                    item.rename(temporary)
+                    temporary.rename(target)
+                    changed.append({"from": self._relative(item), "to": self._relative(target)})
+                    continue
+                item.rename(target)
+                changed.append({"from": self._relative(item), "to": self._relative(target)})
+            return {"ok": True, "action": action, "changed": changed, "skipped": skipped}
+        raise HTTPException(status_code=400, detail="invalid action")
+
+    def _rename_path(self, path: Path, name: str):
+        name = (name or "").strip()
+        if not name or "/" in name or "\\" in name:
+            raise HTTPException(status_code=400, detail="invalid name")
+        target = path.with_name(name)
+        if target.exists():
+            raise HTTPException(status_code=409, detail="目标名称已存在")
+        path.rename(target)
+        return {"from": self._relative(path), "to": self._relative(target)}
+
+    def _file_operation(self, image_path: str, action: str, name: str = ""):
+        path = self._safe_path(image_path)
+        if not self._is_image(path):
+            raise HTTPException(status_code=404, detail="image not found")
+        label_file = path.with_suffix(".txt")
+        if action == "delete_txt":
+            deleted = []
+            if label_file.exists():
+                label_file.unlink()
+                deleted.append(self._relative(label_file))
+            return {"ok": True, "action": action, "deleted": deleted}
+        if action == "create_negative_txt":
+            created = []
+            if not label_file.exists():
+                label_file.write_text("", encoding="utf-8")
+                created.append(self._relative(label_file))
+            return {"ok": True, "action": action, "created": created}
+        if action in ("lowercase", "uppercase"):
+            changed = []
+            for item in (path, label_file):
+                if not item.exists():
+                    continue
+                next_name = item.name.lower() if action == "lowercase" else item.name.upper()
+                if next_name == item.name:
+                    continue
+                changed.extend(self._rename_case(item, next_name))
+            return {"ok": True, "action": action, "changed": changed}
+        if action == "rename":
+            old_label = label_file
+            target_name = (name or "").strip()
+            if not target_name or "/" in target_name or "\\" in target_name:
+                raise HTTPException(status_code=400, detail="invalid name")
+            target_image = path.with_name(target_name)
+            if old_label.exists() and target_image.with_suffix(".txt").exists():
+                raise HTTPException(status_code=409, detail="目标 .txt 已存在")
+            renamed = self._rename_path(path, target_name)
+            new_image = self._safe_path(renamed["to"])
+            if old_label.exists():
+                new_label = new_image.with_suffix(".txt")
+                old_label.rename(new_label)
+                renamed["label"] = {"from": self._relative(old_label), "to": self._relative(new_label)}
+            return {"ok": True, "action": action, "renamed": renamed}
+        raise HTTPException(status_code=400, detail="invalid action")
+
+    def _rename_case(self, item: Path, next_name: str):
+        target = item.with_name(next_name)
+        if target.exists():
+            try:
+                same_file = item.samefile(target)
+            except OSError:
+                same_file = False
+            if not same_file:
+                raise HTTPException(status_code=409, detail=f"目标名称已存在: {target.name}")
+            temporary = item.with_name(f".{item.name}.yoloutils-rename-tmp")
+            suffix = 0
+            while temporary.exists():
+                suffix += 1
+                temporary = item.with_name(f".{item.name}.yoloutils-rename-tmp-{suffix}")
+            item.rename(temporary)
+            temporary.rename(target)
+            return [{"from": self._relative(item), "to": self._relative(target)}]
+        item.rename(target)
+        return [{"from": self._relative(item), "to": self._relative(target)}]
+
     def _append_operation_log(self, username: str, image_path: str, lines):
         timestamp = datetime.now().isoformat(timespec="seconds")
         summary = "; ".join(lines) if lines else "清空标注"
@@ -949,6 +1089,24 @@ class Workstation:
                 payload.get("path", ""),
                 str(payload.get("client_id", "")).strip(),
                 str(payload.get("username", "")).strip(),
+            )
+
+        @app.post("/api/directory/action")
+        async def directory_action(request: Request):
+            payload = await request.json()
+            return self._directory_operation(
+                str(payload.get("path", "")).strip(),
+                str(payload.get("action", "")).strip(),
+                str(payload.get("name", "")).strip(),
+            )
+
+        @app.post("/api/file/action")
+        async def file_action(request: Request):
+            payload = await request.json()
+            return self._file_operation(
+                str(payload.get("path", "")).strip(),
+                str(payload.get("action", "")).strip(),
+                str(payload.get("name", "")).strip(),
             )
 
         @app.get("/api/exif")

@@ -224,16 +224,6 @@ def workstation_html(workstation: Workstation, active_mode: str = "annotate", pr
         .replace("'/media", "'/annotate/media")
         .replace("`/media", "`/annotate/media")
         .replace(
-            "header { height: 48px;",
-            "header { height: 44px;",
-            1,
-        )
-        .replace(
-            "padding: 0 16px; border-bottom:",
-            "padding: 0 24px; border-bottom:",
-            1,
-        )
-        .replace(
             '<a class="brand-link" href="https://www.netkiller.cn" target="_blank" rel="noopener noreferrer">Yolo Workstation</a>',
             ""
             f'<span class="enterprise-link user-avatar-link" style="background:{user_color(username)}">'
@@ -271,6 +261,14 @@ def workstation_html(workstation: Workstation, active_mode: str = "annotate", pr
             f'id="trainButton" class="header-button" onclick="location.href=\'/train{project_query}\'"',
         )
         .replace(
+            'id="validateButton" class="header-button"',
+            f'id="validateButton" class="header-button" onclick="location.href=\'/validate{project_query}\'"',
+        )
+        .replace(
+            'id="predictButton" class="header-button"',
+            f'id="predictButton" class="header-button" onclick="location.href=\'/predict{project_query}\'"',
+        )
+        .replace(
             'datasetButton.addEventListener("click", showEnterpriseNotice);',
             f'datasetButton.addEventListener("click", () => {{ location.href = "/dataset{project_query}"; }});',
         )
@@ -278,18 +276,13 @@ def workstation_html(workstation: Workstation, active_mode: str = "annotate", pr
             'trainButton.addEventListener("click", showEnterpriseNotice);',
             f'trainButton.addEventListener("click", () => {{ location.href = "/train{project_query}"; }});',
         )
-        .replace(
-            f'<button id="trainButton" class="header-button" onclick="location.href=\'/train{project_query}\'" title="训练"><span class="header-icon">▶</span><span>训练</span></button>',
-            f'<button id="trainButton" class="header-button" onclick="location.href=\'/train{project_query}\'" title="训练"><span class="header-icon">▶</span><span>训练</span></button>'
-            f'<button id="validateButton" class="header-button" title="验证" onclick="location.href=\'/validate{project_query}\'"><span class="header-icon">✓</span><span>验证</span></button>',
-            1,
-        )
     )
     active_button = {
         "annotate": "annotateModeButton",
         "dataset": "datasetButton",
         "train": "trainButton",
         "validate": "validateButton",
+        "predict": "predictButton",
     }.get(active_mode)
     if active_button:
         html = html.replace(
@@ -368,6 +361,7 @@ def create_workstation():
 
     workstation.workspace = site_workspace()
     workstation.model_root = workstation.workspace
+    workstation.log_root = workstation.workspace
     workstation.dataset = Path(dataset).expanduser().resolve() if dataset else None
     workstation.run = Path(run).expanduser().resolve() if run else None
     workstation.requested_classes_file = os.environ.get("YOLOUTILS_CLASSES") or None
@@ -395,7 +389,22 @@ def create_workstation():
 def apply_project_workspace(workstation: Workstation, project: str):
     images_dir = project_images_workspace(project)
     workstation.workspace = images_dir if images_dir is not None else site_workspace()
-    workstation.model_root = project_root_workspace(project) if images_dir is not None else workstation.workspace
+    project_root = project_root_workspace(project) if images_dir is not None else None
+    workstation.model_root = project_root if project_root is not None else workstation.workspace
+    workstation.log_root = project_root if project_root is not None else workstation.workspace
+    if project_root is not None and images_dir is not None:
+        old_log = images_dir / ".yoloutils-workstation.log"
+        new_log = project_root / ".yoloutils-workstation.log"
+        if old_log.is_file():
+            try:
+                if new_log.exists():
+                    with open(new_log, "a", encoding="utf-8") as target:
+                        target.write(old_log.read_text(encoding="utf-8", errors="replace"))
+                    old_log.unlink()
+                else:
+                    old_log.replace(new_log)
+            except OSError:
+                pass
     workstation.root_label = project_display_name(project) if images_dir is not None else "根目录"
     workstation.class_groups = workstation._load_class_groups()
     workstation.classes_file = (

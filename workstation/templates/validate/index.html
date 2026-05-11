@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}验证{% endblock %}
+{% block title %}{% if project_name %}项目 {{ project_name }} 验证{% else %}验证{% endif %}{% endblock %}
 
 {% block styles %}
   <link rel="stylesheet" href="/static/css/validate.css?v=20260503">
@@ -10,7 +10,7 @@
   <main class="validate-main">
     <section class="validate-head" aria-labelledby="validate-title">
       <div>
-        <h1 id="validate-title">验证</h1>
+        <h1 id="validate-title">{% if project_name %}项目 {{ project_name }} 验证{% else %}验证{% endif %}</h1>
         <p>{{ project_name or current_project or "未选择项目" }}</p>
       </div>
       <span class="model-count">{{ models | length }} 个模型</span>
