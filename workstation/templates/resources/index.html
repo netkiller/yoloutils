@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 
-{% block title %}算力{% endblock %}
+{% block title %}算力中心{% endblock %}
 
 {% block content %}
   <main class="resources-main">
     <section class="toolbar" aria-labelledby="resources-title">
       <div>
-        <h1 id="resources-title">算力</h1>
+        <h1 id="resources-title">算力中心</h1>
         <p class="project-description muted">添加 SSH 服务器，统一管理远程算力资源。</p>
       </div>
       <div class="toolbar-actions">
@@ -26,9 +26,25 @@
         <div class="resource-list">
           {% if resources %}
             {% for item in resources %}
-              <article class="resource-server" data-href="{{ resources_base }}/server/{{ item.id }}" tabindex="0" role="link" title="点击进入服务器详情">
-                <div class="resource-server-logo os-{{ item.summary.os_family or 'linux' }}" aria-label="{{ item.summary.system or 'Linux' }}">
-                  <span></span>
+              <article
+                class="resource-server"
+                data-href="{{ resources_base }}/server/{{ item.id }}"
+                data-edit-url="{{ resources_base }}/server/{{ item.id }}/edit"
+                data-name="{{ item.name }}"
+                data-host="{{ item.host }}"
+                data-port="{{ item.port }}"
+                data-username="{{ item.username }}"
+                data-password="{{ item.password }}"
+                data-use-private-key="{{ '1' if item.use_private_key else '0' }}"
+                data-private-key='{{ item.private_key | tojson }}'
+                data-note="{{ item.note }}"
+                tabindex="0"
+                role="link"
+                title="点击进入服务器详情"
+              >
+                <div class="resource-server-logo" aria-label="{{ item.summary.system or 'Linux' }}">
+                  {% set os_family = item.summary.os_family or "linux" %}
+                  <img src="/static/img/os/{{ os_family }}{% if os_family == 'macos' %}.png{% else %}.svg{% endif %}" alt="{{ os_family }}">
                 </div>
                 <div class="resource-server-title">
                   <strong>{{ item.name }}</strong>
@@ -36,31 +52,82 @@
                 </div>
                 <div class="resource-server-actions">
                   <a href="{{ resources_base }}/server/{{ item.id }}" data-resource-action aria-label="进入 {{ item.name }} 详情">详情</a>
-                  <a href="{{ resources_base }}/server/{{ item.id }}/edit" data-resource-action aria-label="编辑 {{ item.name }}">编辑</a>
+                  <a href="{{ resources_base }}/server/{{ item.id }}/ssh" data-resource-action aria-label="通过 SSH 连接 {{ item.name }}">OpenSSH</a>
+                  <button type="button" data-resource-action data-edit-resource aria-label="编辑 {{ item.name }}">编辑</button>
                 </div>
                 <dl class="resource-server-specs">
                   <div>
-                    <dt>Hostname</dt>
+                    <dt>
+                      <span class="resource-spec-label">
+                        <svg class="resource-spec-icon" viewBox="0 0 24 24" aria-hidden="true">
+                          <rect x="4" y="5" width="16" height="5" rx="1.5"></rect>
+                          <rect x="4" y="14" width="16" height="5" rx="1.5"></rect>
+                          <path d="M8 7.5h.01M8 16.5h.01"></path>
+                        </svg>
+                        主机名
+                      </span>
+                    </dt>
                     <dd>{{ item.summary.hostname or "未知" }}</dd>
                   </div>
                   <div>
-                    <dt>系统</dt>
+                    <dt>
+                      <span class="resource-spec-label">
+                        <svg class="resource-spec-icon" viewBox="0 0 24 24" aria-hidden="true">
+                          <rect x="4" y="5" width="16" height="11" rx="1.5"></rect>
+                          <path d="M9 20h6M12 16v4"></path>
+                        </svg>
+                        系统
+                      </span>
+                    </dt>
                     <dd>{{ item.summary.system or "未知" }}</dd>
                   </div>
                   <div>
-                    <dt>处理器</dt>
+                    <dt>
+                      <span class="resource-spec-label">
+                        <svg class="resource-spec-icon" viewBox="0 0 24 24" aria-hidden="true">
+                          <rect x="8" y="8" width="8" height="8" rx="1.5"></rect>
+                          <path d="M4 9h4M4 15h4M16 9h4M16 15h4M9 4v4M15 4v4M9 16v4M15 16v4"></path>
+                        </svg>
+                        处理器
+                      </span>
+                    </dt>
                     <dd>{{ item.summary.cpu_count }} 核</dd>
                   </div>
                   <div>
-                    <dt>内存</dt>
+                    <dt>
+                      <span class="resource-spec-label">
+                        <svg class="resource-spec-icon" viewBox="0 0 24 24" aria-hidden="true">
+                          <rect x="5" y="7" width="14" height="10" rx="1.5"></rect>
+                          <path d="M8 7V4M12 7V4M16 7V4M8 20v-3M12 20v-3M16 20v-3"></path>
+                        </svg>
+                        内存
+                      </span>
+                    </dt>
                     <dd>{{ item.summary.memory_total or "未知" }}</dd>
                   </div>
                   <div>
-                    <dt>磁盘</dt>
+                    <dt>
+                      <span class="resource-spec-label">
+                        <svg class="resource-spec-icon" viewBox="0 0 24 24" aria-hidden="true">
+                          <ellipse cx="12" cy="6" rx="7" ry="3"></ellipse>
+                          <path d="M5 6v8c0 1.7 3.1 3 7 3s7-1.3 7-3V6"></path>
+                          <path d="M5 10c0 1.7 3.1 3 7 3s7-1.3 7-3"></path>
+                        </svg>
+                        磁盘
+                      </span>
+                    </dt>
                     <dd>{{ item.summary.disk_total or "未知" }}</dd>
                   </div>
                   <div>
-                    <dt>显卡</dt>
+                    <dt>
+                      <span class="resource-spec-label">
+                        <svg class="resource-spec-icon" viewBox="0 0 24 24" aria-hidden="true">
+                          <rect x="4" y="7" width="13" height="10" rx="1.5"></rect>
+                          <path d="M17 10h3v4h-3M8 11h5M8 14h3"></path>
+                        </svg>
+                        显卡
+                      </span>
+                    </dt>
                     <dd>{{ item.summary.gpu_count }} 张 / {{ item.summary.gpu_memory_total }}</dd>
                   </div>
                 </dl>
@@ -107,11 +174,11 @@
     </section>
 
     <dialog id="resourceDialog" class="resource-dialog">
-      <form class="resource-card resource-form" method="post" action="{{ resources_base }}">
+      <form class="resource-card resource-form" method="post" action="{{ resources_base }}" data-resource-form>
         <div class="resource-card-head">
           <div>
-            <h2>添加算力</h2>
-            <p>添加 SSH，用于远程管理服务器。</p>
+            <h2 data-resource-form-title>添加算力</h2>
+            <p data-resource-form-copy>添加 SSH，用于远程管理服务器。</p>
           </div>
           <button class="dialog-close" type="button" data-close-resource-dialog aria-label="关闭">×</button>
         </div>
@@ -119,7 +186,7 @@
           <span>名称</span>
           <input name="name" type="text" placeholder="例如 4090 工作站">
         </label>
-        <div class="resource-form-row">
+        <div class="resource-form-row host-port-row">
           <label>
             <span>主机</span>
             <input name="host" type="text" placeholder="192.168.1.10" required>
@@ -129,21 +196,32 @@
             <input name="port" type="number" min="1" max="65535" value="22" required>
           </label>
         </div>
-        <div class="resource-form-row">
+        <div class="resource-form-row auth-row">
           <label>
             <span>用户名</span>
             <input name="username" type="text" placeholder="root" required>
           </label>
+          <label>
+            <span>密码</span>
+            <input name="password" type="password" autocomplete="new-password" placeholder="SSH 密码或私钥口令">
+          </label>
         </div>
-        <label>
-          <span>密码</span>
-          <input name="password" type="password" autocomplete="new-password" placeholder="SSH 密码" required>
-        </label>
+        <div class="private-key-panel">
+          <label class="checkbox-label">
+            <input name="use_private_key" type="checkbox" data-private-key-toggle>
+            <span>私钥证书</span>
+          </label>
+          <textarea name="private_key" rows="6" placeholder="粘贴 OpenSSH 私钥，例如 -----BEGIN OPENSSH PRIVATE KEY-----" disabled data-private-key-text></textarea>
+          <label class="file-upload-label">
+            <span>上传私钥证书</span>
+            <input type="file" accept=".pem,.key,.txt,.pub,*/*" disabled data-private-key-file>
+          </label>
+        </div>
         <label>
           <span>备注</span>
           <textarea name="note" rows="3" placeholder="GPU、机房、用途等"></textarea>
         </label>
-        <button type="submit">添加服务器</button>
+        <button type="submit" data-resource-form-submit>添加服务器</button>
       </form>
     </dialog>
   </main>
@@ -154,10 +232,83 @@
   <script>
     (() => {
       const dialog = document.getElementById("resourceDialog");
-      document.querySelector("[data-open-resource-dialog]")?.addEventListener("click", () => dialog?.showModal());
+      const form = document.querySelector("[data-resource-form]");
+      const formTitle = document.querySelector("[data-resource-form-title]");
+      const formCopy = document.querySelector("[data-resource-form-copy]");
+      const formSubmit = document.querySelector("[data-resource-form-submit]");
+      const privateKeyToggle = document.querySelector("[data-private-key-toggle]");
+      const privateKeyText = document.querySelector("[data-private-key-text]");
+      const privateKeyFile = document.querySelector("[data-private-key-file]");
+      const passwordInput = form?.elements.password;
+
+      function setPrivateKeyEnabled(enabled) {
+        if (!privateKeyToggle || !privateKeyText || !privateKeyFile) return;
+        privateKeyToggle.checked = enabled;
+        privateKeyText.disabled = !enabled;
+        privateKeyFile.disabled = !enabled;
+        if (passwordInput) {
+          passwordInput.disabled = enabled;
+          if (enabled) passwordInput.value = "";
+        }
+        if (!enabled) {
+          privateKeyText.value = "";
+          privateKeyFile.value = "";
+        }
+      }
+
+      function setFormMode(mode, card) {
+        if (!form) return;
+        form.reset();
+        if (mode === "edit" && card) {
+          form.action = card.dataset.editUrl;
+          formTitle.textContent = "编辑算力";
+          formCopy.textContent = "修改 SSH 连接信息，保存时会重新读取服务器参数。";
+          formSubmit.textContent = "保存修改";
+          form.elements.name.value = card.dataset.name || "";
+          form.elements.host.value = card.dataset.host || "";
+          form.elements.port.value = card.dataset.port || "22";
+          form.elements.username.value = card.dataset.username || "";
+          form.elements.password.value = card.dataset.password || "";
+          setPrivateKeyEnabled(card.dataset.usePrivateKey === "1");
+          try {
+            form.elements.private_key.value = JSON.parse(card.dataset.privateKey || "\"\"");
+          } catch (error) {
+            form.elements.private_key.value = "";
+          }
+          form.elements.note.value = card.dataset.note || "";
+          return;
+        }
+        form.action = "{{ resources_base }}";
+        formTitle.textContent = "添加算力";
+        formCopy.textContent = "添加 SSH，用于远程管理服务器。";
+        formSubmit.textContent = "添加服务器";
+        form.elements.port.value = "22";
+        setPrivateKeyEnabled(false);
+      }
+
+      privateKeyToggle?.addEventListener("change", () => setPrivateKeyEnabled(privateKeyToggle.checked));
+      privateKeyFile?.addEventListener("change", async () => {
+        const file = privateKeyFile.files?.[0];
+        if (!file || !privateKeyText) return;
+        privateKeyText.value = await file.text();
+      });
+
+      document.querySelector("[data-open-resource-dialog]")?.addEventListener("click", () => {
+        setFormMode("add");
+        dialog?.showModal();
+      });
       document.querySelector("[data-close-resource-dialog]")?.addEventListener("click", () => dialog?.close());
       dialog?.addEventListener("click", event => {
         if (event.target === dialog) dialog.close();
+      });
+      document.querySelectorAll("[data-edit-resource]").forEach(button => {
+        button.addEventListener("click", event => {
+          event.preventDefault();
+          event.stopPropagation();
+          const card = button.closest("[data-href]");
+          setFormMode("edit", card);
+          dialog?.showModal();
+        });
       });
       document.querySelectorAll("[data-href]").forEach(card => {
         card.addEventListener("click", event => {

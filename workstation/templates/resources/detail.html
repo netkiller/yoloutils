@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}算力 {{ resource.name }}{% endblock %}
+{% block title %}算力中心 {{ resource.name }}{% endblock %}
 
 {% block content %}
   <main class="resources-main" data-resource-detail data-metrics-url="{{ resources_base }}/server/{{ resource.id }}/metrics">
@@ -9,7 +9,10 @@
         <h1 id="resource-detail-title">{{ resource.name }}</h1>
         <p class="project-description muted">{{ resource.address }}</p>
       </div>
-      <a class="resource-back-link" href="{{ resources_base }}">返回算力列表</a>
+      <div class="toolbar-actions">
+        <a class="resource-back-link" href="{{ resources_base }}/server/{{ resource.id }}/ssh">OpenSSH</a>
+        <a class="resource-back-link" href="{{ resources_base }}">返回算力列表</a>
+      </div>
     </section>
 
     {% if not metrics.ok %}
@@ -39,47 +42,69 @@
           <h2>CPU 负载</h2>
           <strong>{{ metrics.load.percent }}%</strong>
         </div>
-        <p class="resource-copy">1 / 5 / 15 分钟：{{ metrics.load.values[0] }} / {{ metrics.load.values[1] }} / {{ metrics.load.values[2] }}</p>
-        <div class="cpu-vertical-bars" data-cpu-bars aria-label="每个 CPU 使用率">
-          {% for cpu in metrics.cpu_items %}
-            <div class="cpu-vertical-item">
-              <div class="cpu-vertical-track"><span style="height: {{ cpu.percent }}%"></span></div>
-              <span>{{ cpu.label }}</span>
-              <strong>{{ cpu.percent }}%</strong>
+        <div class="metric-bar"><span style="{{ metrics.load.style }}"></span></div>
+        <div class="load-bars" aria-label="1、5、15 分钟 CPU 负载">
+          {% for load in metrics.load["items"] %}
+            <div class="load-bar-row">
+              <span>{{ load.label }}</span>
+              <div class="metric-bar"><span style="width: {{ load.percent }}%"></span></div>
+              <strong>{{ load.value }}</strong>
             </div>
           {% endfor %}
+        </div>
+        <p class="resource-scroll-hint">CPU 使用率</p>
+        <div class="cpu-bars-scroll" aria-label="每个 CPU 使用率横向滚动区域">
+          <div class="cpu-vertical-bars" data-cpu-bars>
+            {% for cpu in metrics.cpu_items %}
+              <div class="cpu-vertical-item">
+                <div class="cpu-vertical-track"><span style="height: {{ cpu.percent }}%"></span></div>
+                <span>{{ cpu.label }}</span>
+                <strong>{{ cpu.percent }}%</strong>
+              </div>
+            {% endfor %}
+          </div>
         </div>
       </article>
     </section>
 
     <section class="resource-detail-grid" aria-label="资源指标">
-      <article class="resource-card metric-card">
+      <article class="resource-card metric-card trend-metric-card">
         <div class="metric-head">
           <h2>内存</h2>
-          <strong>{{ metrics.memory.percent }}%</strong>
+          <strong data-memory-percent>{{ metrics.memory.percent }}%</strong>
         </div>
-        <div class="metric-pie-row">
-          <span class="metric-pie" style="background: {{ metrics.memory.style }}" aria-hidden="true"></span>
-          <dl class="metric-list">
-            <dt>总容量</dt><dd>{{ metrics.memory.total }}</dd>
-            <dt>已用</dt><dd>{{ metrics.memory.used }}</dd>
-            <dt>可用</dt><dd>{{ metrics.memory.available }}</dd>
-          </dl>
+        <div class="metric-pie-row metric-with-trend">
+          <span class="metric-pie" style="background: {{ metrics.memory.style }}" aria-hidden="true" data-memory-pie></span>
+          <svg class="line-chart compact" viewBox="0 0 320 120" preserveAspectRatio="none" aria-label="内存使用率变化折线图">
+            <polyline data-line-memory-used points=""></polyline>
+            <polyline data-line-memory-shared points=""></polyline>
+            <polyline data-line-memory-cache points=""></polyline>
+            <polyline data-line-memory-available points=""></polyline>
+          </svg>
+        </div>
+        <div class="chart-legend capacity-legend">
+          <span><i class="total-line"></i>总容量 <strong>{{ metrics.memory.total }}</strong></span>
+          {% for item in metrics.memory["items"] %}
+            <span><i style="background: {{ item.color }}"></i>{{ item.label }} <strong>{{ item.value }}</strong></span>
+          {% endfor %}
         </div>
       </article>
 
-      <article class="resource-card metric-card">
+      <article class="resource-card metric-card trend-metric-card">
         <div class="metric-head">
-          <h2>磁盘 /</h2>
-          <strong>{{ metrics.disk.percent }}%</strong>
+          <h2>磁盘</h2>
+          <strong data-disk-percent>{{ metrics.disk.percent }}%</strong>
         </div>
-        <div class="metric-pie-row">
-          <span class="metric-pie" style="background: {{ metrics.disk.style }}" aria-hidden="true"></span>
-          <dl class="metric-list">
-            <dt>总容量</dt><dd>{{ metrics.disk.total }}</dd>
-            <dt>已用</dt><dd>{{ metrics.disk.used }}</dd>
-            <dt>可用</dt><dd>{{ metrics.disk.available }}</dd>
-          </dl>
+        <div class="metric-pie-row metric-with-trend">
+          <span class="metric-pie" style="background: {{ metrics.disk.style }}" aria-hidden="true" data-disk-pie></span>
+          <svg class="line-chart compact" viewBox="0 0 320 120" preserveAspectRatio="none" aria-label="磁盘使用率变化折线图">
+            <polyline data-line-disk points=""></polyline>
+          </svg>
+        </div>
+        <div class="chart-legend capacity-legend">
+          <span><i class="total-line"></i>总容量 <strong>{{ metrics.disk.total }}</strong></span>
+          <span><i class="used-line"></i>已用 <strong>{{ metrics.disk.used }}</strong></span>
+          <span><i class="free-line"></i>可用 <strong>{{ metrics.disk.available }}</strong></span>
         </div>
       </article>
 
@@ -156,7 +181,17 @@
       const initialNode = document.getElementById("resourceMetricsInitial");
       if (!root || !initialNode) return;
       let previous = JSON.parse(initialNode.textContent || "{}");
-      const history = {diskRead: [], diskWrite: [], networkRx: [], networkTx: []};
+      const history = {
+        diskRead: [],
+        diskWrite: [],
+        networkRx: [],
+        networkTx: [],
+        memoryUsed: [],
+        memoryShared: [],
+        memoryCache: [],
+        memoryAvailable: [],
+        disk: [],
+      };
       const maxPoints = 30;
 
       function formatRate(value) {
@@ -184,6 +219,16 @@
         }).join(" ");
       }
 
+      function percentPoints(values) {
+        const width = 320;
+        const height = 120;
+        return values.map((value, index) => {
+          const x = values.length <= 1 ? 0 : (index / (values.length - 1)) * width;
+          const y = height - (Math.max(0, Math.min(value, 100)) / 100) * (height - 12) - 6;
+          return `${x.toFixed(1)},${y.toFixed(1)}`;
+        }).join(" ");
+      }
+
       function setText(selector, value) {
         const node = document.querySelector(selector);
         if (node) node.textContent = value;
@@ -194,6 +239,11 @@
         document.querySelector("[data-line-write]")?.setAttribute("points", points(history.diskWrite));
         document.querySelector("[data-line-rx]")?.setAttribute("points", points(history.networkRx));
         document.querySelector("[data-line-tx]")?.setAttribute("points", points(history.networkTx));
+        document.querySelector("[data-line-memory-used]")?.setAttribute("points", percentPoints(history.memoryUsed));
+        document.querySelector("[data-line-memory-shared]")?.setAttribute("points", percentPoints(history.memoryShared));
+        document.querySelector("[data-line-memory-cache]")?.setAttribute("points", percentPoints(history.memoryCache));
+        document.querySelector("[data-line-memory-available]")?.setAttribute("points", percentPoints(history.memoryAvailable));
+        document.querySelector("[data-line-disk]")?.setAttribute("points", percentPoints(history.disk));
       }
 
       function updateCpu(current, last) {
@@ -222,6 +272,21 @@
       }
 
       function updateRates(current, last) {
+        const memoryPercent = Number(current.memory?.percent || 0);
+        const diskPercent = Number(current.disk?.percent || 0);
+        const memoryItems = current.memory?.items || [];
+        pushHistory("memoryUsed", Number(memoryItems[0]?.percent || 0));
+        pushHistory("memoryShared", Number(memoryItems[1]?.percent || 0));
+        pushHistory("memoryCache", Number(memoryItems[2]?.percent || 0));
+        pushHistory("memoryAvailable", Number(memoryItems[3]?.percent || 0));
+        pushHistory("disk", diskPercent);
+        setText("[data-memory-percent]", `${memoryPercent}%`);
+        setText("[data-disk-percent]", `${diskPercent}%`);
+        const memoryPie = document.querySelector("[data-memory-pie]");
+        const diskPie = document.querySelector("[data-disk-pie]");
+        if (memoryPie && current.memory?.style) memoryPie.style.background = current.memory.style;
+        if (diskPie && current.disk?.style) diskPie.style.background = current.disk.style;
+        updateLines();
         if (!last?.timestamp || !current.timestamp) return;
         const seconds = Math.max(1, current.timestamp - last.timestamp);
         const diskRead = ((current.disk_io?.read_bytes || 0) - (last.disk_io?.read_bytes || 0)) / seconds;
@@ -238,7 +303,6 @@
         setText("[data-network-rx-rate]", formatRate(networkRx));
         setText("[data-network-tx-rate]", formatRate(networkTx));
         setText("[data-network-current]", formatRate(networkRx + networkTx));
-        updateLines();
       }
 
       async function refreshMetrics() {

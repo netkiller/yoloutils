@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 
-{% block title %}编辑算力 {{ resource.name }}{% endblock %}
+{% block title %}编辑算力中心 {{ resource.name }}{% endblock %}
 
 {% block content %}
   <main class="resources-main">
     <section class="toolbar" aria-labelledby="resource-edit-title">
       <div>
-        <h1 id="resource-edit-title">编辑算力</h1>
+        <h1 id="resource-edit-title">编辑算力中心</h1>
         <p class="project-description muted">{{ resource.address }}</p>
       </div>
       <a class="resource-back-link" href="{{ resources_base }}/server/{{ resource.id }}">返回详情</a>

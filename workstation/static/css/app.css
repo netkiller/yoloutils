@@ -229,6 +229,7 @@ nav a.active {
   border-radius: 6px;
   background: #ffffff;
   color: #334e68;
+  font-family: inherit;
   font-size: 12px;
   font-weight: 650;
   line-height: 1;
@@ -693,6 +694,54 @@ main {
   gap: 10px;
 }
 
+.resource-form-row.host-port-row {
+  grid-template-columns: 3fr 1fr;
+}
+
+.resource-form-row.auth-row {
+  grid-template-columns: 1fr 1fr;
+}
+
+.private-key-panel {
+  display: grid;
+  gap: 8px;
+}
+
+.checkbox-label {
+  display: inline-flex !important;
+  grid-template-columns: none;
+  align-items: center;
+  justify-content: start;
+  gap: 8px !important;
+  width: max-content;
+  color: var(--text) !important;
+  font-size: 13px !important;
+  font-weight: 650;
+}
+
+.checkbox-label input {
+  width: auto;
+}
+
+.file-upload-label {
+  display: grid;
+  gap: 6px;
+}
+
+.file-upload-label input {
+  padding: 8px;
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+  background: #f8fafc;
+}
+
+.private-key-panel textarea:disabled,
+.private-key-panel input:disabled,
+.resource-form input:disabled {
+  opacity: .48;
+  cursor: not-allowed;
+}
+
 .resource-edit-form {
   max-width: 620px;
 }
@@ -725,63 +774,15 @@ main {
   align-items: center;
   justify-content: center;
   border-radius: 8px;
-  background: #0f172a;
-  color: #ffffff;
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0;
+  border: 1px solid #e6edf5;
+  background: #ffffff;
 }
 
-.resource-server-logo span::before {
-  content: "LIN";
-}
-
-.resource-server-logo.os-ubuntu {
-  background: #e95420;
-}
-
-.resource-server-logo.os-ubuntu span::before {
-  content: "UBU";
-}
-
-.resource-server-logo.os-debian {
-  background: #a80030;
-}
-
-.resource-server-logo.os-debian span::before {
-  content: "DEB";
-}
-
-.resource-server-logo.os-centos {
-  background: #262577;
-}
-
-.resource-server-logo.os-centos span::before {
-  content: "COS";
-}
-
-.resource-server-logo.os-rocky {
-  background: #10b981;
-}
-
-.resource-server-logo.os-rocky span::before {
-  content: "RCK";
-}
-
-.resource-server-logo.os-windows {
-  background: #0078d4;
-}
-
-.resource-server-logo.os-windows span::before {
-  content: "WIN";
-}
-
-.resource-server-logo.os-macos {
-  background: #111827;
-}
-
-.resource-server-logo.os-macos span::before {
-  content: "MAC";
+.resource-server-logo img {
+  width: 28px;
+  height: 28px;
+  display: block;
+  object-fit: contain;
 }
 
 .resource-server:hover {
@@ -800,7 +801,8 @@ main {
 .resource-server strong,
 .resource-server span,
 .resource-server p,
-.resource-server a {
+.resource-server a,
+.resource-server button {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -826,14 +828,15 @@ main {
 
 .resource-server-specs {
   grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  display: flex;
+  flex-wrap: nowrap;
   gap: 8px;
   margin: 4px 0 0;
 }
 
 .resource-server-specs div {
   min-width: 0;
+  flex: 1 1 0;
   display: grid;
   gap: 2px;
   padding: 8px;
@@ -857,6 +860,28 @@ main {
   font-weight: 650;
 }
 
+.resource-spec-label {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: top;
+}
+
+.resource-spec-icon {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .resource-server-specs dd {
   color: var(--text);
   font-size: 12px;
@@ -868,6 +893,7 @@ main {
 }
 
 .resource-server a,
+.resource-server button,
 .resource-back-link {
   height: 30px;
   display: inline-flex;
@@ -883,6 +909,7 @@ main {
   line-height: 1;
   text-decoration: none;
   white-space: nowrap;
+  cursor: pointer;
 }
 
 .resource-server-actions {
@@ -892,6 +919,7 @@ main {
 }
 
 .resource-server a:hover,
+.resource-server button:hover,
 .resource-back-link:hover {
   background: #e6f0ff;
   color: #243b53;
@@ -927,6 +955,10 @@ main {
 
 .metric-card {
   align-content: start;
+}
+
+.trend-metric-card {
+  gap: 10px;
 }
 
 .server-wide-card .metric-list {
@@ -980,6 +1012,44 @@ main {
   background: var(--accent);
 }
 
+.load-bars {
+  display: grid;
+  gap: 8px;
+}
+
+.load-bar-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) 54px;
+  gap: 10px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.load-bar-row strong {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 12px;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resource-scroll-hint {
+  margin: -4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.cpu-bars-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 4px;
+  scrollbar-gutter: stable;
+}
+
 .cpu-vertical-bars {
   width: max-content;
   min-width: 100%;
@@ -989,7 +1059,7 @@ main {
   grid-auto-columns: 48px;
   align-items: end;
   gap: 12px;
-  overflow: visible;
+  overflow: hidden;
   padding: 8px 2px 10px;
   border: 1px solid #e6edf5;
   border-radius: 8px;
@@ -1053,6 +1123,11 @@ main {
     #f8fafc;
 }
 
+.line-chart.compact {
+  height: 112px;
+  min-height: 0;
+}
+
 .line-chart polyline {
   fill: none;
   stroke-width: 2.5;
@@ -1066,6 +1141,26 @@ main {
 
 .line-chart [data-line-write],
 .line-chart [data-line-tx] {
+  stroke: #f97316;
+}
+
+.line-chart [data-line-memory-used] {
+  stroke: #1667c7;
+}
+
+.line-chart [data-line-memory-shared] {
+  stroke: #8b5cf6;
+}
+
+.line-chart [data-line-memory-cache] {
+  stroke: #f59e0b;
+}
+
+.line-chart [data-line-memory-available] {
+  stroke: #94a3b8;
+}
+
+.line-chart [data-line-disk] {
   stroke: #f97316;
 }
 
@@ -1109,6 +1204,39 @@ main {
   align-items: center;
 }
 
+.metric-with-trend {
+  grid-template-columns: 84px minmax(0, 1fr);
+  gap: 18px;
+  align-items: center;
+}
+
+.metric-with-trend .metric-pie {
+  align-self: center;
+  width: 84px;
+  height: 84px;
+}
+
+.metric-with-trend .line-chart {
+  min-width: 0;
+}
+
+.capacity-legend {
+  padding-top: 2px;
+}
+
+.chart-legend .total-line {
+  background: #64748b;
+}
+
+.chart-legend .used-line {
+  background: #f97316;
+}
+
+.chart-legend .free-line {
+  background: #e2e8f0;
+  border: 1px solid #94a3b8;
+}
+
 .metric-pie {
   width: 78px;
   height: 78px;
@@ -1148,7 +1276,7 @@ main {
 
 .gpu-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -1176,6 +1304,47 @@ main {
 .resource-contact strong {
   color: var(--text);
   font-size: 16px;
+}
+
+.ssh-main {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 16px;
+}
+
+.ssh-card {
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.ssh-status {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ssh-terminal {
+  width: 100%;
+  height: 100%;
+  min-height: 520px;
+  padding: 14px;
+  display: block;
+  overflow: auto;
+  border: 1px solid #0f172a;
+  border-radius: 8px;
+  background: #020617;
+  color: #d1fae5;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: pre;
+  caret-color: #d1fae5;
+  user-select: text;
+}
+
+.ssh-terminal:focus {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
 }
 
 .footer-console {
@@ -1237,6 +1406,12 @@ button:hover {
   background: var(--accent-dark);
 }
 
+@media (max-width: 1100px) {
+  .gpu-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 720px) {
   body {
     padding-top: 88px;
@@ -1271,7 +1446,8 @@ button:hover {
   }
 
   .resource-form-row,
-  .metric-pie-row {
+  .metric-pie-row,
+  .gpu-grid {
     grid-template-columns: 1fr;
   }
 

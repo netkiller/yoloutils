@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+
+{% block title %}OpenSSH {{ resource.name }}{% endblock %}
+
+{% block content %}
+  <main class="resources-main ssh-main">
+    <section class="toolbar" aria-labelledby="resource-ssh-title">
+      <div>
+        <h1 id="resource-ssh-title">OpenSSH</h1>
+        <p class="project-description muted">{{ resource.name }} · {{ resource.address }}</p>
+      </div>
+      <a class="resource-back-link" href="{{ resources_base }}/server/{{ resource.id }}">返回详情</a>
+    </section>
+
+    <section class="resource-card ssh-card" data-ssh-terminal data-ssh-url="{{ resources_base }}/server/{{ resource.id }}/ssh/ws">
+      <div class="resource-card-head">
+        <div>
+          <h2>{{ resource.name }}</h2>
+          <p>Web SSH 连接会直接打开远程 Shell。</p>
+        </div>
+        <span class="ssh-status" data-ssh-status>连接中</span>
+      </div>
+      <div
+        class="ssh-terminal"
+        data-ssh-output
+        tabindex="0"
+        role="textbox"
+        aria-label="OpenSSH terminal"
+        contenteditable="true"
+        spellcheck="false"
+      ></div>
+    </section>
+  </main>
+
+  {% set footer_id = "stats" %}
+  {% set footer_left = workspace %}
+  {% include "partials/footer.html" %}
+  <script>
+    (() => {
+      const root = document.querySelector("[data-ssh-terminal]");
+      const output = document.querySelector("[data-ssh-output]");
+      const status = document.querySelector("[data-ssh-status]");
+      if (!root || !output) return;
+
+      const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+      const socket = new WebSocket(`${protocol}//${location.host}${root.dataset.sshUrl}`);
+
+      const ansiColors = [
+        "#111827", "#dc2626", "#16a34a", "#ca8a04",
+        "#2563eb", "#9333ea", "#0891b2", "#e5e7eb",
+        "#6b7280", "#f87171", "#4ade80", "#facc15",
+        "#60a5fa", "#c084fc", "#22d3ee", "#ffffff",
+      ];
+      const terminalStyle = { foreground: "", background: "", bold: false };
+
+      function colorFromIndex(index) {
+        if (index < 16) return ansiColors[index];
+        if (index >= 16 && index <= 231) {
+          const value = index - 16;
+          const levels = [0, 95, 135, 175, 215, 255];
+          const r = levels[Math.floor(value / 36) % 6];
+          const g = levels[Math.floor(value / 6) % 6];
+          const b = levels[value % 6];
+          return `rgb(${r}, ${g}, ${b})`;
+        }
+        if (index >= 232 && index <= 255) {
+          const level = 8 + (index - 232) * 10;
+          return `rgb(${level}, ${level}, ${level})`;
+        }
+        return "";
+      }
+
+      function applySgr(params) {
+        const codes = params ? params.split(";").map(code => Number(code || 0)) : [0];
+        for (let index = 0; index < codes.length; index += 1) {
+          const code = codes[index];
+          if (code === 0) {
+            terminalStyle.foreground = "";
+            terminalStyle.background = "";
+            terminalStyle.bold = false;
+          } else if (code === 1) terminalStyle.bold = true;
+          else if (code === 22) terminalStyle.bold = false;
+          else if (code >= 30 && code <= 37) terminalStyle.foreground = ansiColors[code - 30];
+          else if (code >= 90 && code <= 97) terminalStyle.foreground = ansiColors[code - 90 + 8];
+          else if (code === 39) terminalStyle.foreground = "";
+          else if (code >= 40 && code <= 47) terminalStyle.background = ansiColors[code - 40];
+          else if (code >= 100 && code <= 107) terminalStyle.background = ansiColors[code - 100 + 8];
+          else if (code === 49) terminalStyle.background = "";
+          else if ((code === 38 || code === 48) && codes[index + 1] === 5) {
+            const color = colorFromIndex(codes[index + 2]);
+            if (code === 38) terminalStyle.foreground = color;
+            else terminalStyle.background = color;
+            index += 2;
+          } else if ((code === 38 || code === 48) && codes[index + 1] === 2) {
+            const color = `rgb(${codes[index + 2] || 0}, ${codes[index + 3] || 0}, ${codes[index + 4] || 0})`;
+            if (code === 38) terminalStyle.foreground = color;
+            else terminalStyle.background = color;
+            index += 4;
+          }
+        }
+      }
+
+      function appendText(fragment, text) {
+        const normalized = String(text || "")
+          .replace(/\r\n/g, "\n")
+          .replace(/\r/g, "\n")
+          .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "");
+        if (!normalized) return;
+        const node = document.createElement("span");
+        node.textContent = normalized;
+        if (terminalStyle.foreground) node.style.color = terminalStyle.foreground;
+        if (terminalStyle.background) node.style.backgroundColor = terminalStyle.background;
+        if (terminalStyle.bold) node.style.fontWeight = "700";
+        fragment.appendChild(node);
+      }
+
+      function moveCaretToEnd() {
+        const selection = window.getSelection();
+        if (!selection) return;
+        const range = document.createRange();
+        range.selectNodeContents(output);
+        range.collapse(false);
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
+
+      function append(text) {
+        const fragment = document.createDocumentFragment();
+        const sequencePattern = /\x1b\[((?:\d|;)*)m|\x1b\][^\x07]*(?:\x07|\x1b\\)|\x1b\[[0-?]*[ -/]*[@-~]|\x1b[()][A-Za-z0-9]/g;
+        let offset = 0;
+        let match = sequencePattern.exec(String(text || ""));
+        while (match) {
+          appendText(fragment, String(text || "").slice(offset, match.index));
+          if (match[1] !== undefined) applySgr(match[1]);
+          offset = match.index + match[0].length;
+          match = sequencePattern.exec(String(text || ""));
+        }
+        appendText(fragment, String(text || "").slice(offset));
+        output.appendChild(fragment);
+        output.scrollTop = output.scrollHeight;
+        moveCaretToEnd();
+      }
+
+      socket.addEventListener("open", () => {
+        status.textContent = "已连接";
+        output.focus();
+      });
+      socket.addEventListener("message", event => append(event.data || ""));
+      socket.addEventListener("close", () => {
+        status.textContent = "已断开";
+        append("\r\n[连接已断开]\r\n");
+      });
+      socket.addEventListener("error", () => {
+        status.textContent = "连接错误";
+      });
+
+      output.addEventListener("beforeinput", event => {
+        event.preventDefault();
+        if (socket.readyState !== WebSocket.OPEN) return;
+        let payload = "";
+        if (event.inputType === "insertText" && event.data) payload = event.data;
+        else if (event.inputType === "insertLineBreak" || event.inputType === "insertParagraph") payload = "\r";
+        else if (event.inputType === "deleteContentBackward") payload = "\x7f";
+        else if (event.inputType === "deleteContentForward") payload = "\x1b[3~";
+        else return;
+        socket.send(payload);
+      });
+
+      output.addEventListener("keydown", event => {
+        if (event.metaKey || event.altKey) return;
+        if (socket.readyState !== WebSocket.OPEN) return;
+        if (event.isComposing) return;
+        let payload = "";
+        if (event.key === "Enter" || event.code === "Enter" || event.code === "NumpadEnter") payload = "\r";
+        else if (event.key === "Backspace" || event.code === "Backspace") payload = "\x7f";
+        else if (event.key === "Delete" || event.key === "Del" || event.code === "Delete") payload = "\x1b[3~";
+        else if (event.key === "Tab") payload = "\t";
+        else if (event.ctrlKey && event.key.toLowerCase() === "c") payload = "\x03";
+        else if (event.ctrlKey && event.key.toLowerCase() === "d") payload = "\x04";
+        else if (event.key === "ArrowUp") payload = "\x1b[A";
+        else if (event.key === "ArrowDown") payload = "\x1b[B";
+        else if (event.key === "ArrowRight") payload = "\x1b[C";
+        else if (event.key === "ArrowLeft") payload = "\x1b[D";
+        else return;
+        event.preventDefault();
+        socket.send(payload);
+      });
+
+      output.addEventListener("paste", event => {
+        if (socket.readyState !== WebSocket.OPEN) return;
+        event.preventDefault();
+        socket.send(event.clipboardData.getData("text"));
+      });
+    })();
+  </script>
+{% endblock %}

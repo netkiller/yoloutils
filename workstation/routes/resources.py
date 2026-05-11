@@ -1,15 +1,16 @@
 import hashlib
+import io
 import json
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import asyncio
 from urllib.parse import parse_qs
 from pathlib import Path
 
-from fastapi import APIRouter, Request, status
+from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect, status
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from routes.project import header_context, project_dir, require_team_login, workspace_path
+from routes.project import current_username, header_context, project_dir, require_team_login, team_mode_enabled, workspace_path
 
 
 router = APIRouter()
@@ -49,7 +50,10 @@ def normalize_resource(item: dict):
         "port": port,
         "username": str(item.get("username") or ""),
         "password": str(item.get("password") or ""),
+        "use_private_key": bool(item.get("use_private_key")),
+        "private_key": str(item.get("private_key") or ""),
         "note": str(item.get("note") or ""),
+        "summary": item.get("summary") if isinstance(item.get("summary"), dict) else default_resource_summary(),
     }
     normalized["address"] = f"{normalized['username']}@{normalized['host']}:{normalized['port']}"
     return normalized
@@ -78,32 +82,23 @@ def find_resource(workspace: Path, resource_id: str):
     return None
 
 
-def resource_list_items(workspace: Path):
-    items = read_resources(workspace)
-    if not items:
-        return []
+def default_resource_summary(error: str = ""):
+    return {
+        "ok": False,
+        "error": error,
+        "hostname": "未知",
+        "system": "未知",
+        "os_family": "linux",
+        "cpu_count": "未知",
+        "memory_total": "未知",
+        "disk_total": "未知",
+        "gpu_count": 0,
+        "gpu_memory_total": "0 B",
+    }
 
-    summaries = {}
-    with ThreadPoolExecutor(max_workers=min(4, len(items))) as executor:
-        futures = {executor.submit(resource_summary, item): item["id"] for item in items}
-        for future in as_completed(futures):
-            resource_id = futures[future]
-            try:
-                summaries[resource_id] = future.result()
-            except Exception as error:
-                summaries[resource_id] = {
-                    "ok": False,
-                    "error": str(error),
-                    "hostname": "未知",
-                    "system": "未知",
-                    "os_family": "linux",
-                    "cpu_count": "未知",
-                    "memory_total": "未知",
-                    "disk_total": "未知",
-                    "gpu_count": 0,
-                    "gpu_memory_total": "0 B",
-                }
-    return [{**item, "summary": summaries.get(item["id"], {})} for item in items]
+
+def resource_list_items(workspace: Path):
+    return read_resources(workspace)
 
 
 def resource_form_data(form: dict):
@@ -111,6 +106,8 @@ def resource_form_data(form: dict):
     host = (form.get("host", [""])[0] or "").strip()
     username = (form.get("username", [""])[0] or "").strip()
     password = (form.get("password", [""])[0] or "").strip()
+    use_private_key = (form.get("use_private_key", [""])[0] or "").lower() in ("1", "true", "yes", "on")
+    private_key = (form.get("private_key", [""])[0] or "").strip()
     note = (form.get("note", [""])[0] or "").strip()
     try:
         port = int(form.get("port", ["22"])[0] or 22)
@@ -123,6 +120,8 @@ def resource_form_data(form: dict):
         "port": port,
         "username": username,
         "password": password,
+        "use_private_key": use_private_key,
+        "private_key": private_key if use_private_key else "",
         "note": note,
     }
 
@@ -155,6 +154,36 @@ def capacity_metric(total: int, used: int, color: str = "#2563eb"):
     }
 
 
+def segmented_capacity_metric(total: int, segments: list[tuple[str, int, str]]):
+    total = max(int(total or 0), 0)
+    cursor = 0.0
+    gradient = []
+    items = []
+    used = 0
+    for label, raw_value, color in segments:
+        value = max(int(raw_value or 0), 0)
+        if total:
+            value = min(value, max(total - used, 0))
+        percent = round((value / total * 100) if total else 0, 1)
+        start = cursor
+        end = min(cursor + percent, 100)
+        if percent > 0:
+            gradient.append(f"{color} {start}% {end}%")
+        cursor = end
+        used += value
+        items.append({"label": label, "value": format_bytes(value), "bytes": value, "percent": percent, "color": color})
+    if cursor < 100:
+        gradient.append(f"#e2e8f0 {cursor}% 100%")
+    return {
+        "total": format_bytes(total),
+        "used": format_bytes(used),
+        "available": format_bytes(max(total - used, 0)),
+        "percent": round((used / total * 100) if total else 0, 1),
+        "items": items,
+        "style": f"conic-gradient({', '.join(gradient)})" if gradient else "#e2e8f0",
+    }
+
+
 def run_ssh_commands(resource: dict):
     try:
         import paramiko
@@ -168,16 +197,17 @@ def run_ssh_commands(resource: dict):
     client = paramiko.SSHClient()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     try:
+        connect_kwargs = ssh_connect_kwargs(resource)
         client.connect(
             hostname=resource["host"],
             port=resource["port"],
             username=resource["username"],
-            password=resource["password"],
             timeout=8,
             banner_timeout=8,
             auth_timeout=8,
             look_for_keys=False,
             allow_agent=False,
+            **connect_kwargs,
         )
         commands = {
             "hostname": "hostname",
@@ -188,7 +218,7 @@ def run_ssh_commands(resource: dict):
             "cpu_usage": "grep '^cpu[0-9]' /proc/stat 2>/dev/null | awk '{idle=$5+$6; total=0; for(i=2;i<=NF;i++) total+=$i; usage=(total-idle)*100/total; printf \"CPU %d %.1f\\n\", NR, usage}'",
             "loadavg": "cat /proc/loadavg 2>/dev/null || uptime",
             "uptime": "cat /proc/uptime 2>/dev/null | awk '{print int($1)}'",
-            "memory": "free -b | awk '/Mem:/ {print $2\" \"$3\" \"$7}'",
+            "memory": "free -b | awk '/Mem:/ {print $2\" \"$3\" \"$5\" \"$6\" \"$7}'",
             "disk": "df -B1 / | awk 'NR==2 {print $2\" \"$3\" \"$4\" \"$5}'",
             "disk_io": "awk '$3 !~ /^(loop|ram|sr)/ {r+=$6*512; w+=$10*512} END {print r+0\" \"w+0}' /proc/diskstats 2>/dev/null",
             "network": "awk -F'[: ]+' 'NR>2 && $2 != \"lo\" {rx+=$3; tx+=$11} END {print rx+0\" \"tx+0}' /proc/net/dev 2>/dev/null",
@@ -205,6 +235,34 @@ def run_ssh_commands(resource: dict):
         return {"ok": False, "error": f"SSH 连接失败：{error}", "commands": {}}
     finally:
         client.close()
+
+
+def private_key_from_text(key_text: str, password: str = ""):
+    import paramiko
+
+    last_error = None
+    key_classes = [
+        key_class
+        for key_class in (
+            getattr(paramiko, "RSAKey", None),
+            getattr(paramiko, "ECDSAKey", None),
+            getattr(paramiko, "Ed25519Key", None),
+            getattr(paramiko, "DSSKey", None),
+        )
+        if key_class is not None
+    ]
+    for key_class in key_classes:
+        try:
+            return key_class.from_private_key(io.StringIO(key_text), password=password or None)
+        except Exception as error:
+            last_error = error
+    raise ValueError(f"私钥解析失败：{last_error}")
+
+
+def ssh_connect_kwargs(resource: dict):
+    if resource.get("use_private_key") and resource.get("private_key"):
+        return {"pkey": private_key_from_text(resource["private_key"], resource.get("password", ""))}
+    return {"password": resource.get("password", "")}
 
 
 def remote_metrics(resource: dict):
@@ -225,6 +283,14 @@ def remote_metrics(resource: dict):
     while len(load_values) < 3:
         load_values.append(0.0)
     load_percent = round(min((load_values[0] / cpu_count * 100) if cpu_count else 0, 100), 1)
+    load_items = [
+        {
+            "label": label,
+            "value": value,
+            "percent": round(min((value / cpu_count * 100) if cpu_count else 0, 100), 1),
+        }
+        for label, value in zip(("1 分钟", "5 分钟", "15 分钟"), load_values)
+    ]
 
     cpu_items = []
     for index, line in enumerate((commands.get("cpu_usage") or "").splitlines(), start=1):
@@ -254,9 +320,13 @@ def remote_metrics(resource: dict):
 
     memory_parts = (commands.get("memory") or "").split()
     try:
-        memory_total, memory_used = int(memory_parts[0]), int(memory_parts[1])
+        memory_total = int(memory_parts[0])
+        memory_used = int(memory_parts[1])
+        memory_shared = int(memory_parts[2])
+        memory_cache = int(memory_parts[3])
+        memory_available = int(memory_parts[4])
     except (ValueError, IndexError):
-        memory_total, memory_used = 0, 0
+        memory_total, memory_used, memory_shared, memory_cache, memory_available = 0, 0, 0, 0, 0
 
     disk_parts = (commands.get("disk") or "").split()
     try:
@@ -311,9 +381,18 @@ def remote_metrics(resource: dict):
             "values": load_values,
             "percent": load_percent,
             "style": f"width: {load_percent}%",
+            "items": load_items,
         },
         "uptime": commands.get("uptime", ""),
-        "memory": capacity_metric(memory_total, memory_used, "#16a34a"),
+        "memory": segmented_capacity_metric(
+            memory_total,
+            [
+                ("已用", max(memory_used - memory_shared - memory_cache, 0), "#1667c7"),
+                ("共享", memory_shared, "#8b5cf6"),
+                ("缓存", memory_cache, "#f59e0b"),
+                ("可用", memory_available, "#94a3b8"),
+            ],
+        ),
         "disk": capacity_metric(disk_total, disk_used, "#f97316"),
         "disk_io": {
             "read_bytes": disk_read_bytes,
@@ -364,6 +443,13 @@ def resource_summary(resource: dict):
         "gpu_count": metrics["gpu_count"],
         "gpu_memory_total": metrics["gpu_memory_total"],
     }
+
+
+def collect_resource_summary(resource: dict):
+    try:
+        return resource_summary(resource)
+    except Exception as error:
+        return default_resource_summary(str(error))
 
 
 @router.get("/resources")
@@ -438,6 +524,108 @@ def resource_metrics(resource_id: str, request: Request, project: str = ""):
     return JSONResponse(remote_metrics(resource))
 
 
+@router.get("/resources/server/{resource_id}/ssh")
+@router.get("/resources/{project}/server/{resource_id}/ssh")
+def resource_ssh(resource_id: str, request: Request, project: str = ""):
+    workspace = workspace_path()
+    login_response = require_team_login(request, workspace)
+    if login_response:
+        return login_response
+    current_project = current_project_from_request(request, workspace, project)
+    resource = find_resource(workspace, resource_id)
+    if resource is None:
+        return RedirectResponse(url=resources_base(current_project), status_code=status.HTTP_303_SEE_OTHER)
+    response = templates.TemplateResponse(
+        request=request,
+        name="resources/ssh.html",
+        context={
+            "request": request,
+            "workspace": workspace,
+            "active_page": "resources",
+            "current_project": current_project,
+            "resources_base": resources_base(current_project),
+            "resource": resource,
+            **header_context(request, workspace),
+        },
+    )
+    if current_project:
+        response.set_cookie("current_project", current_project, httponly=True, samesite="lax")
+    return response
+
+
+def open_ssh_shell(resource: dict):
+    import paramiko
+
+    client = paramiko.SSHClient()
+    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    connect_kwargs = ssh_connect_kwargs(resource)
+    client.connect(
+        hostname=resource["host"],
+        port=resource["port"],
+        username=resource["username"],
+        timeout=8,
+        banner_timeout=8,
+        auth_timeout=8,
+        look_for_keys=False,
+        allow_agent=False,
+        **connect_kwargs,
+    )
+    channel = client.invoke_shell(term="xterm-256color", width=120, height=32)
+    channel.setblocking(False)
+    channel.send("stty erase '^?' 2>/dev/null; bind '\"\\e[3~\": delete-char' 2>/dev/null\r")
+    return client, channel
+
+
+@router.websocket("/resources/server/{resource_id}/ssh/ws")
+@router.websocket("/resources/{project}/server/{resource_id}/ssh/ws")
+async def resource_ssh_ws(websocket: WebSocket, resource_id: str, project: str = ""):
+    await websocket.accept()
+    workspace = workspace_path()
+    if team_mode_enabled() and not current_username(websocket, workspace):
+        await websocket.send_text("\r\n请先登录团队账号\r\n")
+        await websocket.close(code=1008)
+        return
+    resource = find_resource(workspace, resource_id)
+    if resource is None:
+        await websocket.send_text("\r\n服务器不存在\r\n")
+        await websocket.close()
+        return
+    try:
+        client, channel = await asyncio.to_thread(open_ssh_shell, resource)
+    except Exception as error:
+        await websocket.send_text(f"\r\nSSH 连接失败：{error}\r\n")
+        await websocket.close()
+        return
+
+    async def reader():
+        try:
+            while True:
+                if channel.closed:
+                    break
+                if channel.recv_ready():
+                    data = channel.recv(4096).decode("utf-8", errors="replace")
+                    await websocket.send_text(data)
+                else:
+                    await asyncio.sleep(0.03)
+        except Exception:
+            pass
+
+    reader_task = asyncio.create_task(reader())
+    try:
+        while True:
+            text = await websocket.receive_text()
+            if text:
+                channel.send(text)
+    except WebSocketDisconnect:
+        pass
+    finally:
+        reader_task.cancel()
+        try:
+            channel.close()
+        finally:
+            client.close()
+
+
 @router.get("/resources/server/{resource_id}/edit")
 @router.get("/resources/{project}/server/{resource_id}/edit")
 def resource_edit(resource_id: str, request: Request, project: str = ""):
@@ -477,6 +665,7 @@ async def update_resource(resource_id: str, request: Request, project: str = "")
     current_project = current_project_from_request(request, workspace, project)
     form = parse_qs((await request.body()).decode("utf-8"), keep_blank_values=True)
     updated = resource_form_data(form)
+    updated["summary"] = collect_resource_summary(updated)
     items = read_resources(workspace)
     next_items = []
     found = False
@@ -502,6 +691,7 @@ async def add_resource(request: Request, project: str = ""):
     current_project = current_project_from_request(request, workspace, project)
     form = parse_qs((await request.body()).decode("utf-8"), keep_blank_values=True)
     payload = resource_form_data(form)
+    payload["summary"] = collect_resource_summary(payload)
     items = read_resources(workspace)
     items.append(
         {

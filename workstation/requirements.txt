@@ -12,5 +12,6 @@ tqdm
 #dominate
 fastapi
 uvicorn
+websockets
 jinja2
 paramiko
