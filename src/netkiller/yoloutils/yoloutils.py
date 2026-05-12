@@ -181,6 +181,24 @@ class YoloUtils:
         # self.parser = argparse.ArgumentParser(description='合并YOLO标签工具')
 
         self.copy = self.subparsers.add_parser("copy", help="从指定标签复制图片文件")
+        self.copy.add_argument('-s', "--source", type=str, default=None, help="图片来源地址")
+        self.copy.add_argument('-t', "--target", type=str, default=None, help="图片目标地址")
+        self.copy.add_argument(
+            '-l',
+            "--label", type=str, default=None, help="逗号分割多个标签"
+        )
+        self.copy.add_argument(
+            "-u", "--uuid", action="store_true", default=False, help="UUID 文件名"
+        )
+        self.copy.add_argument(
+            "-c", "--clean", action="store_true", default=False, help="清理目标文件夹"
+        )
+        copy = self.copy.add_argument_group(title='负样本集工具', description="向数据集中增加负样本数量")
+
+        copy.add_argument('-n', '--negative-samples', type=str, default=None, help='增加负样本集（.txt尺寸必须为0，没有.txt会为您创建该文件）')
+        copy.add_argument('--train', type=int, default=-1, help='训练集', metavar=100)
+        copy.add_argument('--val', type=int, default=-1, help='验证集', metavar=100)
+
         self.remove = self.subparsers.add_parser("remove", help="从YOLO TXT文件中删除指定标签")
 
         self.remove.add_argument('-s', "--source", type=str, default=None, help="图片来源地址")
@@ -207,7 +225,6 @@ class YoloUtils:
 
         # self.args = self.parser.parse_args()
         # self.parser = argparse.ArgumentParser(description='YOLO标签删除工具')
-        # self.parser.add_argument('--label', type=int, default=-1, help='长边尺寸',metavar=0)
         # self.parser = argparse.ArgumentParser(
         #     description='Yolo 工具 V3.0 - Design by netkiller - https://www.netkiller.cn')
 
@@ -359,7 +376,20 @@ class YoloUtils:
                 raise
             exit()
         elif root_args.subcommand == "copy":
-            run = YoloLabelCopy(self.copy, root_args)
+            try:
+                sub_args = self.copy.parse_args(argv[1:])
+            except SystemExit as e:
+                if e.code != 0:
+                    self.labelimg.print_help(sys.stderr)
+                raise
+            run = YoloLabelCopy()
+            if sub_args.source and sub_args.target:
+                run.main(root_args)
+            elif sub_args.source and sub_args.target and sub_args.negative_samples:
+                run.negative_samples(root_args)
+            else:
+                self.copy.print_help()
+            exit()
         elif root_args.subcommand == "remove":
             try:
                 sub_args = self.remove.parse_args(argv[1:])

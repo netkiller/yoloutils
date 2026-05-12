@@ -300,22 +300,7 @@ class YoloLabelMerge(Common):
 
 
 class YoloLabelCopy(Common):
-    def __init__(self, parser, args):
-        parser.add_argument('-s', "--source", type=str, default=None, help="图片来源地址")
-        parser.add_argument('-t', "--target", type=str, default=None, help="图片目标地址")
-        parser.add_argument(
-            '-l',
-            "--label", type=str, default=None, help="逗号分割多个标签"
-        )
-        parser.add_argument(
-            "-u", "--uuid", action="store_true", default=False, help="UUID 文件名"
-        )
-        parser.add_argument(
-            "-c", "--clean", action="store_true", default=False, help="清理目标文件夹"
-        )
-        self.parser = parser
-        self.args = args
-
+    def __init__(self):
         self.classes = {}
         self.lables = []
         self.missed = []
@@ -415,16 +400,19 @@ class YoloLabelCopy(Common):
         table.add_rows(tables)
         print(table.draw())
 
-    def main(self):
+    def negative_samples(self, **kwargs):
+        pass
+
+    def main(self, args):
+
+        self.args = args
+
         if self.args.source and self.args.target:
             self.logger.info("Start")
             self.input()
             self.process()
             self.output()
             self.logger.info("Done")
-        else:
-            self.parser.print_help()
-            exit()
 
 
 class YoloLabelChange(Common):
