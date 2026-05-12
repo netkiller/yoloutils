@@ -193,14 +193,14 @@ class YoloUtils:
         self.copy.add_argument(
             "-c", "--clean", action="store_true", default=False, help="清理目标文件夹"
         )
-        copy = self.copy.add_argument_group(title='负样本集工具', description="向数据集中增加负样本数量")
+        copy = self.copy.add_argument_group(title='负样本集工具', description="向数据集中增加负样本数量（.txt尺寸必须为0，没有.txt会为您创建该文件）")
 
         copy.add_argument(
             '-n',
             '--negative-samples',
             action="store_true",
             default=False,
-            help='增加负样本集（.txt尺寸必须为0，没有.txt会为您创建该文件）'
+            help='增加负样本集'
         )
         copy.add_argument('--train', type=int, default=-1, help='训练集', metavar=100)
         copy.add_argument('--val', type=int, default=-1, help='验证集', metavar=100)
