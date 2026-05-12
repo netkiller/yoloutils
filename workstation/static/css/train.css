@@ -1,5 +1,5 @@
 .train-main {
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto auto minmax(0, 1fr);
   align-content: stretch;
   overflow: hidden;
 }
@@ -101,6 +101,67 @@
   border-bottom: 0;
 }
 
+.train-overview {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.train-overview div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.train-overview span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.train-overview strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 22px;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.train-segmented {
+  width: max-content;
+  max-width: 100%;
+  justify-content: flex-start;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.train-segmented a {
+  height: 32px;
+  border: 0;
+  border-radius: 6px;
+  color: #52677f;
+}
+
+.train-segmented a:hover {
+  background: #edf4ff;
+}
+
+.train-segmented a.active {
+  background: #ffffff;
+  color: var(--accent);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, .08);
+  transform: none;
+}
+
 .train-tab-content {
   min-height: 0;
   overflow: auto;
@@ -115,14 +176,16 @@
 
 .model-list {
   display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
   gap: 14px;
+  align-items: start;
 }
 
 .model-card {
   break-inside: avoid;
   display: grid;
   gap: 12px;
-  margin: 0 0 14px;
+  margin: 0;
   padding: 16px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -131,10 +194,14 @@
 
 .model-card-link {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
   color: inherit;
   text-decoration: none;
+}
+
+.model-card-main {
+  min-width: 0;
 }
 
 .model-card-preview {
@@ -147,8 +214,9 @@
 
 .model-card-preview img {
   width: 100%;
-  height: auto;
+  aspect-ratio: 16 / 9;
   display: block;
+  object-fit: contain;
 }
 
 .model-card h2 {
@@ -165,9 +233,9 @@
 
 .model-metrics {
   display: flex;
-  flex-wrap: nowrap;
-  gap: 28px;
-  margin-top: 5px;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
   color: #334e68;
   font-size: 12px;
   font-weight: 400;
@@ -176,11 +244,17 @@
 }
 
 .model-metrics span {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #f1f5f9;
   white-space: nowrap;
 }
 
 .model-metrics b {
-  font-weight: 400;
+  color: #64748b;
+  font-weight: 650;
 }
 
 .model-date {
@@ -222,6 +296,10 @@
 .task-card h2 {
   margin: 0;
   font-size: 18px;
+}
+
+.task-card-title {
+  min-width: 0;
 }
 
 .task-card p {
@@ -752,6 +830,15 @@
   .dialog-actions {
     display: grid;
     align-items: stretch;
+  }
+
+  .train-main {
+    overflow: auto;
+  }
+
+  .train-overview,
+  .model-list {
+    grid-template-columns: 1fr;
   }
 
   .form-grid {

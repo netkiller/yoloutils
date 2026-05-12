@@ -325,6 +325,10 @@ def filtered_queue_tasks(tasks, queue_filter: str):
     return tasks
 
 
+def train_queue_filter(queue: str):
+    return queue if queue in {"completed", "active"} else "completed"
+
+
 def read_text_file(path: Path, max_chars: int = 12000):
     if not path.is_file():
         return ""
@@ -554,14 +558,12 @@ async def form_fields(request: Request):
 
 @router.get("/model/train")
 @router.get("/train")
-def train(request: Request, tab: str = "models", queue: str = "active"):
+def train(request: Request, tab: str = "", queue: str = "completed"):
     project = request.query_params.get("project", "")
     if project:
         url = f"/model/train/{project}"
         params = []
-        if tab != "models":
-            params.append(f"tab={tab}")
-        if queue != "active":
+        if queue != "completed":
             params.append(f"queue={queue}")
         if params:
             url += "?" + "&".join(params)
@@ -572,8 +574,7 @@ def train(request: Request, tab: str = "models", queue: str = "active"):
         tasks = list(reversed(load_tasks()))
     if current_project:
         tasks = [task for task in tasks if task.get("project") == current_project]
-    active_tab = tab if tab in {"models", "queue"} else "models"
-    queue_filter = queue if queue in {"active", "completed", "all"} else "active"
+    queue_filter = train_queue_filter(queue)
     response = templates.TemplateResponse(
         request=request,
             name="train/index.html",
@@ -583,7 +584,6 @@ def train(request: Request, tab: str = "models", queue: str = "active"):
             "tasks": tasks,
             "queue_tasks": filtered_queue_tasks(tasks, queue_filter),
             "models": model_items(tasks, current_project),
-            "active_tab": active_tab,
             "queue_filter": queue_filter,
             "active_page": "model",
             "model_active": "train",
@@ -834,15 +834,14 @@ def cancel_task(task_id: str):
 
 @router.get("/model/train/{project}")
 @router.get("/train/{project}")
-def train_with_project(request: Request, project: str, tab: str = "models", queue: str = "active"):
+def train_with_project(request: Request, project: str, tab: str = "", queue: str = "completed"):
     workspace = workspace_path()
     current_project = project
     with queue_lock:
         tasks = list(reversed(load_tasks()))
     if current_project:
         tasks = [task for task in tasks if task.get("project") == current_project]
-    active_tab = tab if tab in {"models", "queue"} else "models"
-    queue_filter = queue if queue in {"active", "completed", "all"} else "active"
+    queue_filter = train_queue_filter(queue)
     response = templates.TemplateResponse(
         request=request,
             name="train/index.html",
@@ -852,7 +851,6 @@ def train_with_project(request: Request, project: str, tab: str = "models", queu
             "tasks": tasks,
             "queue_tasks": filtered_queue_tasks(tasks, queue_filter),
             "models": model_items(tasks, current_project),
-            "active_tab": active_tab,
             "queue_filter": queue_filter,
             "active_page": "model",
             "model_active": "train",
