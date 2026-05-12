@@ -276,7 +276,7 @@ def model_items(tasks, current_project: str = ""):
                 "run_dir": run_dir,
                 "has_best": (weights_dir / "best.pt").is_file(),
                 "has_last": (weights_dir / "last.pt").is_file(),
-                "results_image": f"/train/models/{task['id']}/files/results.png" if (run_dir / "results.png").is_file() else "",
+                "results_image": f"/model/train/models/{task['id']}/files/results.png" if (run_dir / "results.png").is_file() else "",
                 "metrics": run_metrics_summary(run_dir),
                 "summary": f"{task.get('project', '')} / {task.get('dataset', '')}",
                 "updated_at": datetime.fromtimestamp(run_dir.stat().st_mtime).isoformat(timespec="seconds")
@@ -307,7 +307,7 @@ def model_items(tasks, current_project: str = ""):
                     "run_dir": resolved,
                     "has_best": (weights_dir / "best.pt").is_file(),
                     "has_last": (weights_dir / "last.pt").is_file(),
-                    "results_image": f"/train/models/{task['id']}/files/results.png" if (run_dir / "results.png").is_file() else "",
+                    "results_image": f"/model/train/models/{task['id']}/files/results.png" if (run_dir / "results.png").is_file() else "",
                     "metrics": run_metrics_summary(run_dir),
                     "summary": "",
                     "updated_at": datetime.fromtimestamp(run_dir.stat().st_mtime).isoformat(timespec="seconds"),
@@ -441,7 +441,7 @@ def run_result_assets(task):
             continue
         relative = path.relative_to(run_dir).as_posix()
         if path.suffix.lower() in RESULT_IMAGE_EXTS:
-            image = {"name": relative, "src": f"/train/models/{task['id']}/files/{relative}"}
+            image = {"name": relative, "src": f"/model/train/models/{task['id']}/files/{relative}"}
             images.append(image)
             filename = path.name.lower()
             if filename.startswith("train_") and path.suffix.lower() in {".jpg", ".jpeg"}:
@@ -457,7 +457,7 @@ def run_result_assets(task):
             elif filename.startswith("confusion") and filename.endswith(".png"):
                 image_tabs["confusion"]["images"].append(image)
         elif path.name not in WEIGHT_FILES:
-            files.append({"name": relative, "size": path.stat().st_size, "href": f"/train/models/{task['id']}/files/{relative}"})
+            files.append({"name": relative, "size": path.stat().st_size, "href": f"/model/train/models/{task['id']}/files/{relative}"})
     return {
         "run_dir": run_dir,
         "has_best": (run_dir / "weights" / "best.pt").is_file(),
@@ -552,11 +552,12 @@ async def form_fields(request: Request):
     return parse_qs(body, keep_blank_values=True)
 
 
+@router.get("/model/train")
 @router.get("/train")
 def train(request: Request, tab: str = "models", queue: str = "active"):
     project = request.query_params.get("project", "")
     if project:
-        url = f"/train/{project}"
+        url = f"/model/train/{project}"
         params = []
         if tab != "models":
             params.append(f"tab={tab}")
@@ -584,7 +585,8 @@ def train(request: Request, tab: str = "models", queue: str = "active"):
             "models": model_items(tasks, current_project),
             "active_tab": active_tab,
             "queue_filter": queue_filter,
-            "active_page": "train",
+            "active_page": "model",
+            "model_active": "train",
             "current_project": current_project,
             "current_project_name": display_project_name(workspace, current_project),
             "demo_mode": demo_mode_enabled(),
@@ -615,12 +617,13 @@ def resolve_model_task(model_id: str):
     return synthetic_run_task(project, run_dir)
 
 
+@router.get("/model/train/models/{task_id}")
 @router.get("/train/models/{task_id}")
 def train_model(request: Request, task_id: str):
     workspace = workspace_path()
     task = resolve_model_task(task_id)
     if task is None:
-        return RedirectResponse(url="/train", status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(url="/model/train", status_code=status.HTTP_303_SEE_OTHER)
     current_project = task.get("project", request.cookies.get("current_project", ""))
     assets = run_result_assets(task)
     return templates.TemplateResponse(
@@ -631,13 +634,15 @@ def train_model(request: Request, task_id: str):
             "workspace": workspace,
             "task": task,
             "assets": assets,
-            "active_page": "train",
+            "active_page": "model",
+            "model_active": "train",
             "current_project": current_project,
             **header_context(request, workspace),
         },
     )
 
 
+@router.get("/model/train/models/{task_id}/weights/{weight_name}")
 @router.get("/train/models/{task_id}/weights/{weight_name}")
 def download_model_weight(task_id: str, weight_name: str):
     task = resolve_model_task(task_id)
@@ -651,6 +656,7 @@ def download_model_weight(task_id: str, weight_name: str):
     return FileResponse(path, filename=f"{task['name']}-{weight_name}")
 
 
+@router.get("/model/train/models/{task_id}/files/{file_path:path}")
 @router.get("/train/models/{task_id}/files/{file_path:path}")
 def train_model_file(task_id: str, file_path: str):
     task = resolve_model_task(task_id)
@@ -663,11 +669,12 @@ def train_model_file(task_id: str, file_path: str):
     return FileResponse(path)
 
 
+@router.get("/model/train/new")
 @router.get("/train/new")
 def new_train(request: Request, dataset: str = ""):
     project = request.query_params.get("project", "")
     if project:
-        url = f"/train/new/{project}"
+        url = f"/model/train/new/{project}"
         if dataset:
             url += f"?dataset={dataset}"
         return RedirectResponse(url=url, status_code=status.HTTP_303_SEE_OTHER)
@@ -687,7 +694,8 @@ def new_train(request: Request, dataset: str = ""):
             "default_model_version": "YOLO26",
             "default_model_size": "N",
             "demo_mode": demo_mode_enabled(),
-            "active_page": "train",
+            "active_page": "model",
+            "model_active": "train",
             "current_project": current_project,
             **header_context(request, workspace),
         },
@@ -697,6 +705,7 @@ def new_train(request: Request, dataset: str = ""):
     return response
 
 
+@router.get("/model/train/new/{project}")
 @router.get("/train/new/{project}")
 def new_train_with_project(request: Request, project: str, dataset: str = ""):
     workspace = workspace_path()
@@ -715,7 +724,8 @@ def new_train_with_project(request: Request, project: str, dataset: str = ""):
             "default_model_version": "YOLO26",
             "default_model_size": "N",
             "demo_mode": demo_mode_enabled(),
-            "active_page": "train",
+            "active_page": "model",
+            "model_active": "train",
             "current_project": current_project,
             **header_context(request, workspace),
         },
@@ -724,6 +734,7 @@ def new_train_with_project(request: Request, project: str, dataset: str = ""):
     return response
 
 
+@router.post("/model/train")
 @router.post("/train")
 async def create_train(request: Request):
     form = await form_fields(request)
@@ -731,7 +742,7 @@ async def create_train(request: Request):
     dataset = form.get("dataset", [""])[0]
     dataset_item = selected_dataset(project, dataset)
     if dataset_item is None:
-        return RedirectResponse(url="/train/new", status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(url="/model/train/new", status_code=status.HTTP_303_SEE_OTHER)
 
     model_version = clean_model_version(form.get("model_version", ["YOLO26"])[0])
     model_size = clean_model_size(form.get("model_size", ["N"])[0])
@@ -764,9 +775,10 @@ async def create_train(request: Request):
         append_log(task["id"], "当前为演示模式，不会启动训练。\n")
     else:
         ensure_worker()
-    return RedirectResponse(url="/train", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url="/model/train", status_code=status.HTTP_303_SEE_OTHER)
 
 
+@router.get("/model/train/tasks/{task_id}")
 @router.get("/train/tasks/{task_id}")
 def train_task(request: Request, task_id: str):
     workspace = workspace_path()
@@ -774,7 +786,7 @@ def train_task(request: Request, task_id: str):
     tasks = load_tasks()
     task = next((item for item in tasks if item["id"] == task_id), None)
     if task is None:
-        return RedirectResponse(url="/train", status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(url="/model/train", status_code=status.HTTP_303_SEE_OTHER)
     log = log_file(task_id).read_text(encoding="utf-8", errors="replace") if log_file(task_id).is_file() else ""
     return templates.TemplateResponse(
         request=request,
@@ -784,13 +796,15 @@ def train_task(request: Request, task_id: str):
             "workspace": workspace,
             "task": task,
             "log": log,
-            "active_page": "train",
+            "active_page": "model",
+            "model_active": "train",
             "current_project": current_project,
             **header_context(request, workspace),
         },
     )
 
 
+@router.get("/model/train/tasks/{task_id}/logs")
 @router.get("/train/tasks/{task_id}/logs")
 def train_task_logs(task_id: str):
     tasks = load_tasks()
@@ -807,6 +821,7 @@ def train_task_logs(task_id: str):
     }
 
 
+@router.post("/model/train/tasks/{task_id}/cancel")
 @router.post("/train/tasks/{task_id}/cancel")
 def cancel_task(task_id: str):
     process = running_processes.get(task_id)
@@ -814,9 +829,10 @@ def cancel_task(task_id: str):
         process.terminate()
     update_task(task_id, status="取消", finished_at=datetime.now().isoformat(timespec="seconds"))
     append_log(task_id, "\n任务已取消。\n")
-    return RedirectResponse(url="/train", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url="/model/train", status_code=status.HTTP_303_SEE_OTHER)
 
 
+@router.get("/model/train/{project}")
 @router.get("/train/{project}")
 def train_with_project(request: Request, project: str, tab: str = "models", queue: str = "active"):
     workspace = workspace_path()
@@ -838,7 +854,8 @@ def train_with_project(request: Request, project: str, tab: str = "models", queu
             "models": model_items(tasks, current_project),
             "active_tab": active_tab,
             "queue_filter": queue_filter,
-            "active_page": "train",
+            "active_page": "model",
+            "model_active": "train",
             "current_project": current_project,
             "current_project_name": display_project_name(workspace, current_project),
             "demo_mode": demo_mode_enabled(),

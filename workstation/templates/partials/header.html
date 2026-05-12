@@ -26,12 +26,10 @@
     {% endif %}
     <a{% if active_page == "project" %} class="active"{% endif %} href="{% if current_project %}/project/{{ current_project }}{% else %}/project{% endif %}"><span class="nav-icon">▤</span><span>项目</span></a>
     <a{% if active_page == "resources" %} class="active"{% endif %} href="{% if current_project %}/resources/{{ current_project }}{% else %}/resources{% endif %}"><span class="nav-icon">▥</span><span>算力</span></a>
+    <a{% if active_page == "model" %} class="active"{% endif %} href="/model{% if current_project %}/{{ current_project }}{% endif %}"><span class="nav-icon">◎</span><span>模型</span></a>
     {% if current_project %}
       <a{% if active_page == "annotate" %} class="active"{% endif %} href="/annotate/{{ current_project }}"><span class="nav-icon">▧</span><span>标注</span></a>
       <a{% if active_page == "dataset" %} class="active"{% endif %} href="/dataset{% if current_project %}/{{ current_project }}{% endif %}"><span class="nav-icon">▦</span><span>数据集</span></a>
-      <a{% if active_page == "train" %} class="active"{% endif %} href="/train{% if current_project %}/{{ current_project }}{% endif %}"><span class="nav-icon">▶</span><span>训练</span></a>
-      <a{% if active_page == "validate" %} class="active"{% endif %} href="/validate{% if current_project %}/{{ current_project }}{% endif %}"><span class="nav-icon">✓</span><span>验证</span></a>
-      <a{% if active_page == "predict" %} class="active"{% endif %} href="/predict{% if current_project %}/{{ current_project }}{% endif %}"><span class="nav-icon">⌕</span><span>预测</span></a>
     {% endif %}
   </nav>
   <div class="header-actions">

@@ -23,8 +23,8 @@ USER_HEARTBEAT_TIMEOUT = 45
 
 
 class SiteWorkstation(Workstation):
-    def _directory_tree(self, path: Path):
-        tree = super()._directory_tree(path)
+    def _directory_tree(self, path: Path, include_children: bool = True):
+        tree = super()._directory_tree(path, include_children=include_children)
         if path == self.workspace and path.name == "annotate":
             tree["name"] = getattr(self, "root_label", "") or "根目录"
         return tree
@@ -221,6 +221,17 @@ def workstation_html(workstation: Workstation, active_mode: str = "annotate", pr
         '<button id="teamButton" class="header-button" title="团队" '
         f'onclick="location.href=\'{team_url}\'">'
         '<span class="header-icon">◌</span><span>团队</span></button>'
+        if team_mode_enabled()
+        else ""
+    )
+    user_header = (
+        ""
+        f'<span class="enterprise-link user-avatar-link" style="background:{user_color(username)}">'
+        f'{html_escape(username[:1])}</span>'
+        f'<span class="enterprise-link username-link">{escaped_username}</span>'
+        '<form method="post" action="/team/logout" style="margin:0"><button class="enterprise-link" type="submit">注销</button></form>'
+        if team_mode_enabled()
+        else ""
     )
     html = (
         html.replace('"/api/', '"/annotate/api/')
@@ -231,12 +242,7 @@ def workstation_html(workstation: Workstation, active_mode: str = "annotate", pr
         .replace("`/media", "`/annotate/media")
         .replace(
             '<a class="brand-link" href="https://www.netkiller.cn" target="_blank" rel="noopener noreferrer">Yolo Workstation</a>',
-            ""
-            f'<span class="enterprise-link user-avatar-link" style="background:{user_color(username)}">'
-            f'{html_escape(username[:1])}</span>'
-            f'<span class="enterprise-link username-link">{escaped_username}</span>'
-            '<form method="post" action="/team/logout" style="margin:0"><button class="enterprise-link" type="submit">注销</button></form>'
-            f'{close_project_button}',
+            f"{user_header}{close_project_button}",
             1,
         )
         .replace(
@@ -263,32 +269,22 @@ def workstation_html(workstation: Workstation, active_mode: str = "annotate", pr
             f'id="datasetButton" class="header-button" onclick="location.href=\'/dataset/{quote(project, safe="")}\'"',
         )
         .replace(
-            'id="trainButton" class="header-button"',
-            f'id="trainButton" class="header-button" onclick="location.href=\'/train/{quote(project, safe="")}\'"',
-        )
-        .replace(
-            'id="validateButton" class="header-button"',
-            f'id="validateButton" class="header-button" onclick="location.href=\'/validate/{quote(project, safe="")}\'"',
-        )
-        .replace(
-            'id="predictButton" class="header-button"',
-            f'id="predictButton" class="header-button" onclick="location.href=\'/predict/{quote(project, safe="")}\'"',
+            'id="modelButton" class="header-button"',
+            f'id="modelButton" class="header-button" onclick="location.href=\'/model/{quote(project, safe="")}\'"',
         )
         .replace(
             'datasetButton.addEventListener("click", showEnterpriseNotice);',
             f'datasetButton.addEventListener("click", () => {{ location.href = "/dataset/{quote(project, safe="")}"; }});',
         )
         .replace(
-            'trainButton.addEventListener("click", showEnterpriseNotice);',
-            f'trainButton.addEventListener("click", () => {{ location.href = "/train/{quote(project, safe="")}"; }});',
+            'modelButton.addEventListener("click", showEnterpriseNotice);',
+            f'modelButton.addEventListener("click", () => {{ location.href = "/model/{quote(project, safe="")}"; }});',
         )
     )
     active_button = {
         "annotate": "annotateModeButton",
         "dataset": "datasetButton",
-        "train": "trainButton",
-        "validate": "validateButton",
-        "predict": "predictButton",
+        "model": "modelButton",
     }.get(active_mode)
     if active_button:
         html = html.replace(

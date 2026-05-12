@@ -52,7 +52,7 @@
             <div class="dataset-footer">
               <a class="view-button" href="/dataset/{{ dataset.project_dir }}/{{ dataset.name }}">查看</a>
               <a class="download-button" href="/dataset/{{ dataset.project_dir }}/{{ dataset.name }}/download">下载</a>
-              <a class="train-button" href="/train/new/{{ dataset.project_dir }}?dataset={{ dataset.name }}">去训练</a>
+              <a class="train-button" href="/model/train/new/{{ dataset.project_dir }}?dataset={{ dataset.name }}">去训练</a>
             </div>
           </article>
         {% endfor %}

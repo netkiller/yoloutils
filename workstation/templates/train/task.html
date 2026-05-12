@@ -8,9 +8,10 @@
 
 {% block content %}
   <main class="train-task-main">
+    {% include "partials/model_nav.html" %}
     <section class="train-head">
       <div>
-        <a class="back-link" href="/train">返回训练队列</a>
+        <a class="back-link" href="/model/train">返回训练队列</a>
         <h1>{{ task.name }}</h1>
         <p>{{ task.project }} / {{ task.dataset }} · <span data-task-status>{{ task.status }}</span></p>
       </div>
@@ -35,7 +36,7 @@
       const refresh = async () => {
         const shouldStick = atBottom();
         try {
-          const response = await fetch(`/train/tasks/${taskId}/logs`, {cache: "no-store"});
+          const response = await fetch(`/model/train/tasks/${taskId}/logs`, {cache: "no-store"});
           const data = await response.json();
           if (!response.ok || !data.ok) return;
           if (status) status.textContent = data.task.status;

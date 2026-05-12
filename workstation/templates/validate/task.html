@@ -3,22 +3,31 @@
 {% block title %}验证任务{% endblock %}
 
 {% block styles %}
-  <link rel="stylesheet" href="/static/css/validate.css?v=20260503">
+  <link rel="stylesheet" href="/static/css/validate.css?v=20260512-val">
   <link rel="stylesheet" href="/static/css/train.css?v=20260503-scroll">
 {% endblock %}
 
 {% block content %}
   <main class="train-task-main">
+    {% include "partials/model_nav.html" %}
     <div>
-      <a class="back-link" href="/validate/{{ task.project }}">返回验证</a>
+      <a class="back-link" href="/model/val/{{ task.project }}">返回验证</a>
       <section class="validate-task-card">
         <div>
           <h1>{{ task.name }}</h1>
           <p>{{ task.mode }} / {{ task.dataset }} / {{ task.model }}</p>
+          {% if task.metrics %}
+            <dl class="validate-inline-metrics">
+              <div><dt>mAP50</dt><dd>{{ task.metrics.get("map50", "-") }}</dd></div>
+              <div><dt>mAP50-95</dt><dd>{{ task.metrics.get("map5095", "-") }}</dd></div>
+              <div><dt>P</dt><dd>{{ task.metrics.get("precision", "-") }}</dd></div>
+              <div><dt>R</dt><dd>{{ task.metrics.get("recall", "-") }}</dd></div>
+            </dl>
+          {% endif %}
         </div>
         <span class="status">{{ task.status }}</span>
         {% if task.status in ["排队中", "进行中"] %}
-          <form method="post" action="/validate/tasks/{{ task.id }}/cancel">
+          <form method="post" action="/model/val/tasks/{{ task.id }}/cancel">
             <button type="submit">取消</button>
           </form>
         {% endif %}

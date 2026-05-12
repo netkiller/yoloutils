@@ -1,4 +1,5 @@
 import os
+import json
 import shutil
 import socket
 import subprocess
@@ -75,6 +76,8 @@ class Workstation:
         self.classes = []
         self.model_root = None
         self.model_cache = {}
+        self.statistics_cache = None
+        self.statistics_cache_at = 0.0
 
     def main(
         self,
@@ -391,27 +394,25 @@ class Workstation:
             key=lambda path: self._relative(path).lower(),
         )
 
-    def _directory_tree(self, path: Path):
-        children = [
-            self._directory_tree(child)
-            for child in sorted(path.iterdir(), key=lambda item: item.name.lower())
-            if child.is_dir()
-        ]
-        images = [item for item in path.iterdir() if self._is_image(item)]
+    def _directory_tree(self, path: Path, include_children: bool = True):
+        entries = list(path.iterdir())
+        directories = sorted((item for item in entries if item.is_dir()), key=lambda item: item.name.lower())
+        children = [self._directory_tree(child, include_children=False) for child in directories] if include_children else []
+        images = [item for item in entries if self._is_image(item)]
         direct_complete = all(
             not self._is_damaged_image(image)
             and self._validate_label_file(image.with_suffix(".txt")) == "valid"
             for image in images
         )
-        has_images = bool(images) or any(child["has_images"] for child in children)
-        complete = has_images and direct_complete and all(
-            child["complete"] for child in children if child["has_images"]
-        )
+        has_images = bool(images)
+        complete = has_images and direct_complete
         return {
             "name": path.name if path != self.workspace else self.workspace.name,
             "path": "" if path == self.workspace else self._relative(path),
             "has_images": has_images,
             "complete": complete,
+            "has_child_dirs": bool(directories),
+            "children_loaded": include_children,
             "children": children,
         }
 
@@ -472,6 +473,132 @@ class Workstation:
                 return "invalid"
         return "valid"
 
+    def _label_statistics(self, label_file: Path):
+        result = {"status": "missing", "classes": {}}
+        if not label_file.exists():
+            return result
+        try:
+            lines = [
+                line.strip()
+                for line in label_file.read_text(encoding="utf-8", errors="replace").splitlines()
+                if line.strip()
+            ]
+        except OSError:
+            result["status"] = "invalid"
+            return result
+        if not lines:
+            result["status"] = "empty"
+            return result
+        valid = True
+        for line in lines:
+            parts = line.split()
+            if len(parts) != 5:
+                valid = False
+                continue
+            try:
+                class_id = int(parts[0])
+                [float(value) for value in parts[1:]]
+            except ValueError:
+                valid = False
+                continue
+            label = self.classes[class_id] if 0 <= class_id < len(self.classes) else str(class_id)
+            result["classes"][label] = result["classes"].get(label, 0) + 1
+        result["status"] = "valid" if valid else "invalid"
+        return result
+
+    def _project_index_file(self):
+        if not self.log_root:
+            return None
+        return Path(self.log_root) / ".workstation" / "index.json"
+
+    def _apply_index_label_change(self, old_stats: dict, new_stats: dict, image_delta: int = 0):
+        index_file = self._project_index_file()
+        if index_file is None or not index_file.is_file():
+            self._invalidate_statistics()
+            return
+        try:
+            index = json.loads(index_file.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            self._invalidate_statistics()
+            return
+        annotate = index.setdefault("annotate", {})
+        annotate["images"] = max(0, int(annotate.get("images") or 0) + image_delta)
+        status_keys = {
+            "missing": "txt_missing",
+            "empty": "txt_empty",
+            "invalid": "txt_invalid",
+            "valid": "txt_valid",
+        }
+        old_status = old_stats.get("status", "missing")
+        new_status = new_stats.get("status", "missing")
+        if old_status != "missing":
+            annotate["labels"] = max(0, int(annotate.get("labels") or 0) - 1)
+        if new_status != "missing":
+            annotate["labels"] = int(annotate.get("labels") or 0) + 1
+        for status, delta in ((old_status, -1), (new_status, 1)):
+            key = status_keys.get(status)
+            if key:
+                annotate[key] = max(0, int(annotate.get(key) or 0) + delta)
+        class_counts = annotate.setdefault("class_counts", {})
+        for label, count in (old_stats.get("classes") or {}).items():
+            next_count = int(class_counts.get(label) or 0) - int(count or 0)
+            if next_count > 0:
+                class_counts[label] = next_count
+            else:
+                class_counts.pop(label, None)
+        for label, count in (new_stats.get("classes") or {}).items():
+            class_counts[label] = int(class_counts.get(label) or 0) + int(count or 0)
+        index["updated_at"] = datetime.now().isoformat(timespec="seconds")
+        try:
+            index_file.write_text(json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8")
+        except OSError:
+            pass
+        self._invalidate_statistics()
+
+    def _rebuild_workspace_index(self):
+        index_file = self._project_index_file()
+        if index_file is None or not index_file.is_file():
+            self._invalidate_statistics()
+            return
+        try:
+            index = json.loads(index_file.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            index = {}
+        annotate = {
+            "images": 0,
+            "labels": 0,
+            "txt_missing": 0,
+            "txt_empty": 0,
+            "txt_invalid": 0,
+            "txt_valid": 0,
+            "class_counts": {},
+        }
+        for image_path in self.workspace.rglob("*"):
+            if not self._is_image(image_path):
+                continue
+            annotate["images"] += 1
+            stats = self._label_statistics(image_path.with_suffix(".txt"))
+            status = stats["status"]
+            if status != "missing":
+                annotate["labels"] += 1
+            key = {
+                "missing": "txt_missing",
+                "empty": "txt_empty",
+                "invalid": "txt_invalid",
+                "valid": "txt_valid",
+            }.get(status)
+            if key:
+                annotate[key] += 1
+            for label, count in stats["classes"].items():
+                annotate["class_counts"][label] = annotate["class_counts"].get(label, 0) + count
+        index["annotate"] = annotate
+        index["updated_at"] = datetime.now().isoformat(timespec="seconds")
+        try:
+            index_file.write_text(json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8")
+        except OSError:
+            pass
+        self._invalidate_statistics()
+
     def _is_damaged_image(self, image_file: Path):
         if Image is None:
             return False
@@ -483,6 +610,11 @@ class Workstation:
             return True
 
     def _statistics(self):
+        indexed = self._indexed_statistics()
+        if indexed is not None:
+            return indexed
+        if self.statistics_cache and time.time() - self.statistics_cache_at < 10:
+            return self.statistics_cache
         images = self._image_files()
         result = {
             "workspace": str(self.workspace),
@@ -517,7 +649,47 @@ class Workstation:
         result["txt_invalid_total"] = result["txt_empty"] + result["txt_invalid"]
         result["classes"] = len(self.classes)
         result["classes_files"] = len(self.class_groups)
+        self.statistics_cache = result
+        self.statistics_cache_at = time.time()
         return result
+
+    def _invalidate_statistics(self):
+        self.statistics_cache = None
+        self.statistics_cache_at = 0.0
+
+    def _indexed_statistics(self):
+        if not self.log_root:
+            return None
+        index_file = Path(self.log_root) / ".workstation" / "index.json"
+        if not index_file.is_file():
+            return None
+        try:
+            index = json.loads(index_file.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+        annotate = index.get("annotate") or {}
+        images = int(annotate.get("images") or 0)
+        txt_missing = int(annotate.get("txt_missing") or 0)
+        txt_empty = int(annotate.get("txt_empty") or 0)
+        txt_invalid = int(annotate.get("txt_invalid") or 0)
+        txt_valid = int(annotate.get("txt_valid") or 0)
+        txt_total = txt_empty + txt_invalid + txt_valid
+        return {
+            "workspace": str(self.workspace),
+            "images": images,
+            "images_damaged": 0,
+            "txt_total": txt_total,
+            "txt_missing": txt_missing,
+            "txt_empty": txt_empty,
+            "txt_invalid": txt_invalid,
+            "txt_valid": txt_valid,
+            "txt_problem": txt_missing + txt_empty + txt_invalid,
+            "txt_invalid_total": txt_empty + txt_invalid,
+            "classes": len(self.classes),
+            "classes_files": len(self.class_groups),
+            "indexed": True,
+            "updated_at": index.get("updated_at", ""),
+        }
 
     def _models_root(self):
         return (self.model_root or self.workspace).resolve()
@@ -664,10 +836,12 @@ class Workstation:
             lines.append(f"{class_id} {cx:.6f} {cy:.6f} {width:.6f} {height:.6f}")
 
         label_file = path.with_suffix(".txt")
+        old_stats = self._label_statistics(label_file)
         if lines:
             label_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
         else:
             label_file.write_text("", encoding="utf-8")
+        self._apply_index_label_change(old_stats, self._label_statistics(label_file))
         if self.team_mode:
             self._append_operation_log(username or "未命名", relative_path, lines)
         if self.team_mode and client_id:
@@ -684,11 +858,13 @@ class Workstation:
             if lock and lock["client_id"] != client_id:
                 raise HTTPException(status_code=423, detail=f"文件已被 {lock['username']} 锁定")
         label_file = path.with_suffix(".txt")
+        old_stats = self._label_statistics(label_file)
         deleted = []
         for item in (path, label_file):
             if item.exists():
                 item.unlink()
                 deleted.append(self._relative(item))
+        self._apply_index_label_change(old_stats, {"status": "missing", "classes": {}}, image_delta=-1)
         if self.team_mode:
             timestamp = datetime.now().isoformat(timespec="seconds")
             message = f"[{timestamp}] {username or '未命名'} 删除 {relative_path}: {', '.join(deleted)}\n"
@@ -708,11 +884,14 @@ class Workstation:
         if action == "rename":
             if path == self.workspace:
                 raise HTTPException(status_code=400, detail="不能重命名根目录")
-            return {"ok": True, "action": action, "renamed": self._rename_path(path, name)}
+            renamed = self._rename_path(path, name)
+            self._rebuild_workspace_index()
+            return {"ok": True, "action": action, "renamed": renamed}
         if action == "delete_directory":
             if path == self.workspace:
                 raise HTTPException(status_code=400, detail="不能删除根目录")
             shutil.rmtree(path)
+            self._rebuild_workspace_index()
             return {"ok": True, "action": action, "deleted": self._relative(path)}
         if action == "delete_txt":
             deleted = []
@@ -720,6 +899,7 @@ class Workstation:
                 if item.is_file() and item.name.lower() != "classes.txt":
                     item.unlink()
                     deleted.append(self._relative(item))
+            self._rebuild_workspace_index()
             return {"ok": True, "action": action, "deleted": deleted}
         if action == "create_negative_txt":
             created = []
@@ -728,6 +908,7 @@ class Workstation:
                 if not label_file.exists():
                     label_file.write_text("", encoding="utf-8")
                     created.append(self._relative(label_file))
+            self._rebuild_workspace_index()
             return {"ok": True, "action": action, "created": created}
         if action in ("lowercase", "uppercase"):
             changed = []
@@ -761,6 +942,7 @@ class Workstation:
                     continue
                 item.rename(target)
                 changed.append({"from": self._relative(item), "to": self._relative(target)})
+            self._rebuild_workspace_index()
             return {"ok": True, "action": action, "changed": changed, "skipped": skipped}
         raise HTTPException(status_code=400, detail="invalid action")
 
@@ -780,16 +962,20 @@ class Workstation:
             raise HTTPException(status_code=404, detail="image not found")
         label_file = path.with_suffix(".txt")
         if action == "delete_txt":
+            old_stats = self._label_statistics(label_file)
             deleted = []
             if label_file.exists():
                 label_file.unlink()
                 deleted.append(self._relative(label_file))
+            self._apply_index_label_change(old_stats, {"status": "missing", "classes": {}})
             return {"ok": True, "action": action, "deleted": deleted}
         if action == "create_negative_txt":
+            old_stats = self._label_statistics(label_file)
             created = []
             if not label_file.exists():
                 label_file.write_text("", encoding="utf-8")
                 created.append(self._relative(label_file))
+            self._apply_index_label_change(old_stats, self._label_statistics(label_file))
             return {"ok": True, "action": action, "created": created}
         if action in ("lowercase", "uppercase"):
             changed = []
@@ -973,8 +1159,11 @@ class Workstation:
             return {"team_mode": self.team_mode, "share_url": self._share_url() if self.team_mode else ""}
 
         @app.get("/api/tree")
-        def tree():
-            return self._directory_tree(self.workspace)
+        def tree(directory: str = Query(default="")):
+            path = self._safe_path(directory)
+            if not path.is_dir():
+                raise HTTPException(status_code=404, detail="directory not found")
+            return self._directory_tree(path)
 
         @app.get("/api/files")
         def files(directory: str = Query(default="")):

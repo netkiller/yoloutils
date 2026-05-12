@@ -3,7 +3,8 @@ import io
 import json
 import time
 import asyncio
-from urllib.parse import parse_qs
+import subprocess
+from urllib.parse import parse_qs, urlencode
 from pathlib import Path
 
 from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect, status
@@ -128,6 +129,10 @@ def resource_form_data(form: dict):
 
 def resource_detail_url(current_project: str, resource_id: str):
     return f"{resources_base(current_project)}/server/{resource_id}"
+
+
+def resource_check_url(current_project: str, resource_id: str):
+    return f"{resources_base(current_project)}/check?server={resource_id}"
 
 
 def format_bytes(value: int | float):
@@ -451,6 +456,202 @@ def collect_resource_summary(resource: dict):
         return resource_summary(resource)
     except Exception as error:
         return default_resource_summary(str(error))
+
+
+def remote_exec(resource: dict, command: str, timeout: int = 25):
+    try:
+        import paramiko
+    except ImportError:
+        return False, "", "当前 Python 环境未安装 paramiko。"
+
+    client = paramiko.SSHClient()
+    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    try:
+        client.connect(
+            hostname=resource["host"],
+            port=resource["port"],
+            username=resource["username"],
+            timeout=8,
+            banner_timeout=8,
+            auth_timeout=8,
+            look_for_keys=False,
+            allow_agent=False,
+            **ssh_connect_kwargs(resource),
+        )
+        stdin, stdout, stderr = client.exec_command(command, timeout=timeout)
+        stdout_text = stdout.read().decode("utf-8", errors="replace").strip()
+        stderr_text = stderr.read().decode("utf-8", errors="replace").strip()
+        status_code = stdout.channel.recv_exit_status()
+        return status_code == 0, stdout_text, stderr_text
+    except Exception as error:
+        return False, "", str(error)
+    finally:
+        client.close()
+
+
+def local_exec(command: list[str], timeout: int = 12):
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, timeout=timeout, check=False)
+    except Exception as error:
+        return False, "", str(error)
+    return result.returncode == 0, result.stdout.strip(), result.stderr.strip()
+
+
+def local_shell(command: str, timeout: int = 12):
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, timeout=timeout, check=False, shell=True)
+    except Exception as error:
+        return False, "", str(error)
+    return result.returncode == 0, result.stdout.strip(), result.stderr.strip()
+
+
+def check_command(resource: dict | None, remote_command: str, local_command: list[str] | str, timeout: int = 12):
+    if resource:
+        return remote_exec(resource, remote_command, timeout=timeout)
+    if isinstance(local_command, str):
+        return local_shell(local_command, timeout=timeout)
+    return local_exec(local_command, timeout=timeout)
+
+
+def tool_check_items(resource: dict | None):
+    summary = resource.get("summary", {}) if resource else {}
+    server_ok = bool(summary.get("ok")) if resource else True
+    server_version = ""
+    if resource:
+        server_version = " / ".join(
+            value
+            for value in (summary.get("hostname"), summary.get("system"))
+            if value and value != "未知"
+        )
+    else:
+        ok, out, err = local_shell("hostname && uname -srmo", timeout=8)
+        server_ok = ok
+        server_version = out or err
+
+    checks = [
+        {
+            "key": "server",
+            "name": "服务器版本",
+            "ok": server_ok,
+            "version": server_version or summary.get("error") or "未知",
+            "installable": False,
+            "install_label": "",
+        }
+    ]
+
+    ok, out, err = check_command(
+        resource,
+        "command -v nvcc >/dev/null 2>&1 && nvcc --version | tail -n 1 || (command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi | grep -o 'CUDA Version: [0-9.]*' | head -n 1)",
+        "command -v nvcc >/dev/null 2>&1 && nvcc --version | tail -n 1 || (command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi | grep -o 'CUDA Version: [0-9.]*' | head -n 1)",
+    )
+    checks.append({
+        "key": "cuda",
+        "name": "Cuda 版本",
+        "ok": ok and bool(out),
+        "version": out or err or "未安装",
+        "installable": False,
+        "install_label": "需按驱动环境安装",
+    })
+
+    ok, out, err = check_command(
+        resource,
+        "python3 -c \"import ultralytics; print(ultralytics.__version__)\"",
+        ["python3", "-c", "import ultralytics; print(ultralytics.__version__)"],
+    )
+    checks.append({
+        "key": "yolo",
+        "name": "yolo 版本",
+        "ok": ok and bool(out),
+        "version": out or err or "未安装",
+        "installable": True,
+        "install_label": "一键安装",
+    })
+
+    ok, out, err = check_command(
+        resource,
+        "python3 -c \"import importlib.metadata as m; print(m.version('netkiller-yoloutils'))\"",
+        ["python3", "-c", "import importlib.metadata as m; print(m.version('netkiller-yoloutils'))"],
+    )
+    checks.append({
+        "key": "netkiller-yoloutils",
+        "name": "netkiller-yoloutils",
+        "ok": ok and bool(out),
+        "version": out or err or "未安装",
+        "installable": True,
+        "install_label": "一键安装",
+    })
+    return checks
+
+
+def install_tool(resource: dict | None, tool: str):
+    commands = {
+        "yolo": "python3 -m pip install -U ultralytics",
+        "netkiller-yoloutils": "python3 -m pip install -U netkiller-yoloutils -i https://pypi.tuna.tsinghua.edu.cn/simple",
+    }
+    command = commands.get(tool)
+    if not command:
+        return False, f"{tool} 不支持一键安装"
+    if resource:
+        ok, out, err = remote_exec(resource, command, timeout=180)
+    else:
+        ok, out, err = local_shell(command, timeout=180)
+    return ok, out or err or ("安装完成" if ok else "安装失败")
+
+
+@router.get("/resources/check")
+@router.get("/resources/{project}/check")
+def resources_check(request: Request, project: str = ""):
+    workspace = workspace_path()
+    login_response = require_team_login(request, workspace)
+    if login_response:
+        return login_response
+    current_project = current_project_from_request(request, workspace, project)
+    resource_id = request.query_params.get("server", "")
+    resource = find_resource(workspace, resource_id) if resource_id else None
+    checks = tool_check_items(resource)
+    response = templates.TemplateResponse(
+        request=request,
+        name="resources/check.html",
+        context={
+            "request": request,
+            "workspace": workspace,
+            "active_page": "resources",
+            "current_project": current_project,
+            "resources_base": resources_base(current_project),
+            "resources": resource_list_items(workspace),
+            "resource": resource,
+            "checks": checks,
+            "message": request.query_params.get("message", ""),
+            "error": request.query_params.get("error", ""),
+            **header_context(request, workspace),
+        },
+    )
+    if current_project:
+        response.set_cookie("current_project", current_project, httponly=True, samesite="lax")
+    return response
+
+
+@router.post("/resources/check/install")
+@router.post("/resources/{project}/check/install")
+async def resources_check_install(request: Request, project: str = ""):
+    workspace = workspace_path()
+    login_response = require_team_login(request, workspace)
+    if login_response:
+        return login_response
+    current_project = current_project_from_request(request, workspace, project)
+    form = parse_qs((await request.body()).decode("utf-8"), keep_blank_values=True)
+    tool = (form.get("tool", [""])[0] or "").strip()
+    resource_id = (form.get("server", [""])[0] or "").strip()
+    resource = find_resource(workspace, resource_id) if resource_id else None
+    ok, output = install_tool(resource, tool)
+    params = {}
+    if resource_id:
+        params["server"] = resource_id
+    params["message" if ok else "error"] = output[:160]
+    return RedirectResponse(
+        url=f"{resources_base(current_project)}/check?{urlencode(params)}",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
 
 
 @router.get("/resources")

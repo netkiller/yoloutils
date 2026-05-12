@@ -2,6 +2,8 @@ import base64
 import binascii
 import os
 import secrets
+import threading
+import time
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -12,7 +14,16 @@ from starlette.responses import RedirectResponse, Response
 from routes.annotate import create_annotate_app
 from routes.dataset import router as dataset_router
 from routes.help import router as help_router
-from routes.project import current_username, router as project_router, team_mode_enabled, workspace_path
+from routes.model import router as model_router
+from routes.project import (
+    ANNOTATE_DIR,
+    TEST_DIR,
+    build_project_index,
+    current_username,
+    router as project_router,
+    team_mode_enabled,
+    workspace_path,
+)
 from routes.predict import router as predict_router
 from routes.resources import router as resources_router
 from routes.train import router as train_router
@@ -30,6 +41,67 @@ app.include_router(predict_router)
 app.include_router(resources_router)
 app.include_router(train_router)
 app.include_router(validate_router)
+app.include_router(model_router)
+
+_INDEXER_STARTED = False
+_INDEXER_INTERVAL = 5
+
+
+def _dir_signature(path: Path):
+    if not path.exists():
+        return None
+    try:
+        stat = path.stat()
+    except OSError:
+        return None
+    signature = [stat.st_mtime_ns]
+    if path.is_dir():
+        try:
+            for child in path.iterdir():
+                if child.is_dir():
+                    try:
+                        signature.append(child.stat().st_mtime_ns)
+                    except OSError:
+                        continue
+        except OSError:
+            pass
+    return tuple(signature)
+
+
+def _project_signature(path: Path):
+    return (
+        _dir_signature(path / ANNOTATE_DIR),
+        _dir_signature(path / TEST_DIR),
+        _dir_signature(path / "models"),
+    )
+
+
+def _project_indexer_loop():
+    seen = {}
+    while True:
+        workspace = workspace_path()
+        if workspace.is_dir():
+            for project in workspace.iterdir():
+                if not project.is_dir() or project.name.startswith("."):
+                    continue
+                signature = _project_signature(project)
+                if signature == seen.get(project):
+                    continue
+                seen[project] = signature
+                try:
+                    build_project_index(project)
+                except Exception:
+                    continue
+        time.sleep(_INDEXER_INTERVAL)
+
+
+@app.on_event("startup")
+def start_project_indexer():
+    global _INDEXER_STARTED
+    if _INDEXER_STARTED:
+        return
+    _INDEXER_STARTED = True
+    threading.Thread(target=_project_indexer_loop, daemon=True, name="project-indexer").start()
 
 
 def basic_auth_credentials():

@@ -3,7 +3,7 @@
 {% block title %}{% if project_name %}项目 {{ project_name }} 验证{% else %}验证{% endif %}{% endblock %}
 
 {% block styles %}
-  <link rel="stylesheet" href="/static/css/validate.css?v=20260503">
+  <link rel="stylesheet" href="/static/css/validate.css?v=20260512-val">
 {% endblock %}
 
 {% block content %}
@@ -13,86 +13,64 @@
         <h1 id="validate-title">{% if project_name %}项目 {{ project_name }} 验证{% else %}验证{% endif %}</h1>
         <p>{{ project_name or current_project or "未选择项目" }}</p>
       </div>
-      <span class="model-count">{{ models | length }} 个模型</span>
+      <span class="model-count">{{ models | length }} 个模型 / {{ datasets | length }} 个数据集</span>
     </section>
 
-    <section class="validate-tools" aria-label="验证操作">
-      <form class="tool-panel" method="post" action="/validate/run">
-        <input type="hidden" name="project" value="{{ current_project }}">
-        <input type="hidden" name="split" value="val">
-        <div>
-          <h2>检验</h2>
-          <p>val split</p>
-        </div>
-        <label>
-          <span>模型</span>
-          <select name="model" data-model-select required>
-            {% for model in models %}
-              <option value="{{ model.relative_path }}">{{ model.filename }}</option>
-            {% endfor %}
-          </select>
-        </label>
-        <label>
-          <span>数据集</span>
-          <select name="dataset" required>
-            {% for dataset in datasets %}
-              <option value="{{ dataset.name }}">{{ dataset.name }}</option>
-            {% endfor %}
-          </select>
-        </label>
-        <div class="inline-fields">
-          <label>
-            <span>图片尺寸</span>
-            <input name="imgsz" type="number" min="32" step="32" value="640">
-          </label>
-          <label>
-            <span>设备</span>
-            <input name="device" type="text" placeholder="cpu / 0">
-          </label>
-        </div>
-        <button type="submit">检验</button>
-      </form>
+    {% include "partials/model_nav.html" %}
 
-      <form class="tool-panel" method="post" action="/validate/run">
+    <section class="validate-workflow" aria-label="YOLO val">
+      <form class="tool-panel validate-run-panel" method="post" action="/model/val/run">
         <input type="hidden" name="project" value="{{ current_project }}">
-        <input type="hidden" name="split" value="test">
         <div>
-          <h2>测试</h2>
-          <p>test split</p>
+          <h2>YOLO Val</h2>
+          <p>选择模型、数据集和 split，后台执行 <code>yolo detect val</code>。</p>
         </div>
-        <label>
-          <span>模型</span>
-          <select name="model" data-model-select required>
-            {% for model in models %}
-              <option value="{{ model.relative_path }}">{{ model.filename }}</option>
-            {% endfor %}
-          </select>
-        </label>
-        <label>
-          <span>数据集</span>
-          <select name="dataset" required>
-            {% for dataset in datasets %}
-              <option value="{{ dataset.name }}">{{ dataset.name }}</option>
-            {% endfor %}
-          </select>
-        </label>
-        <div class="inline-fields">
+
+        <div class="validate-form-grid">
+          <label>
+            <span>模型</span>
+            <select name="model" data-model-select required {% if not models %}disabled{% endif %}>
+              {% for model in models %}
+                <option value="{{ model.relative_path }}">{{ model.filename }} · {{ model.source }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            <span>数据集</span>
+            <select name="dataset" required {% if not datasets %}disabled{% endif %}>
+              {% for dataset in datasets %}
+                <option value="{{ dataset.name }}">{{ dataset.name }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            <span>Split</span>
+            <select name="split">
+              <option value="val">val 检验</option>
+              <option value="test">test 测试</option>
+            </select>
+          </label>
           <label>
             <span>图片尺寸</span>
             <input name="imgsz" type="number" min="32" step="32" value="640">
           </label>
           <label>
             <span>设备</span>
-            <input name="device" type="text" placeholder="cpu / 0">
+            <input name="device" type="text" placeholder="cpu / 0 / 0,1">
+          </label>
+          <label>
+            <span>任务名称</span>
+            <input name="name" type="text" placeholder="留空自动生成">
           </label>
         </div>
-        <button type="submit">测试</button>
+
+        <button type="submit" {% if not current_project or not models or not datasets %}disabled{% endif %}>开始验证</button>
       </form>
 
       <article class="tool-panel compare-panel">
         <div>
-          <h2>对比</h2>
-          <p>metric table</p>
+          <h2>模型对比</h2>
+          <p>从模型卡片中加入对比，查看 mAP、Precision、Recall。</p>
         </div>
         <div class="compare-targets" id="compareTargets">
           <span>请选择模型</span>
@@ -101,18 +79,34 @@
       </article>
     </section>
 
+    {% if not current_project %}
+      <section class="empty">请先打开项目。</section>
+    {% elif not models %}
+      <section class="empty">当前项目没有可验证的模型，请先训练或上传模型。</section>
+    {% elif not datasets %}
+      <section class="empty">当前项目没有数据集，请先生成数据集。</section>
+    {% endif %}
+
     {% if tasks %}
       <section class="validate-task-list" aria-label="验证任务">
-        {% for task in tasks[:5] %}
+        {% for task in tasks[:8] %}
           <article class="validate-task-card">
             <div>
               <h2>{{ task.name }}</h2>
               <p>{{ task.mode }} / {{ task.dataset }} / {{ task.model }}</p>
+              {% if task.metrics %}
+                <dl class="validate-inline-metrics">
+                  <div><dt>mAP50</dt><dd>{{ task.metrics.get("map50", "-") }}</dd></div>
+                  <div><dt>mAP50-95</dt><dd>{{ task.metrics.get("map5095", "-") }}</dd></div>
+                  <div><dt>P</dt><dd>{{ task.metrics.get("precision", "-") }}</dd></div>
+                  <div><dt>R</dt><dd>{{ task.metrics.get("recall", "-") }}</dd></div>
+                </dl>
+              {% endif %}
             </div>
             <span class="status">{{ task.status }}</span>
-            <a href="/validate/tasks/{{ task.id }}">查看日志</a>
+            <a href="/model/val/tasks/{{ task.id }}">查看日志</a>
             {% if task.status in ["排队中", "进行中"] %}
-              <form method="post" action="/validate/tasks/{{ task.id }}/cancel">
+              <form method="post" action="/model/val/tasks/{{ task.id }}/cancel">
                 <button type="submit">取消</button>
               </form>
             {% endif %}
@@ -174,8 +168,6 @@
           </article>
         {% endfor %}
       </section>
-    {% else %}
-      <section class="empty">暂无训练好的模型</section>
     {% endif %}
   </main>
 
@@ -234,15 +226,14 @@
         renderCompare();
       });
 
-      document.querySelectorAll(".tool-panel").forEach(form => {
-        form.addEventListener("submit", event => {
-          const model = form.querySelector("[data-model-select]")?.value || "";
-          const dataset = form.querySelector("select[name='dataset']")?.value || "";
-          if (!model || !dataset) {
-            event.preventDefault();
-            alert("请选择模型和数据集");
-          }
-        });
+      document.querySelector(".validate-run-panel")?.addEventListener("submit", event => {
+        const form = event.currentTarget;
+        const model = form.querySelector("[data-model-select]")?.value || "";
+        const dataset = form.querySelector("select[name='dataset']")?.value || "";
+        if (!model || !dataset) {
+          event.preventDefault();
+          alert("请选择模型和数据集");
+        }
       });
     })();
   </script>

@@ -55,6 +55,7 @@
                 <div class="resource-server-actions">
                   <a href="{{ resources_base }}/server/{{ item.id }}" data-resource-action aria-label="进入 {{ item.name }} 详情">详情</a>
                   <a href="{{ resources_base }}/server/{{ item.id }}/ssh" data-resource-action aria-label="通过 SSH 连接 {{ item.name }}">OpenSSH</a>
+                  <a href="{{ resources_base }}/check?server={{ item.id }}" data-resource-action aria-label="检查 {{ item.name }} 工具环境">检查</a>
                   <button type="button" data-resource-action data-edit-resource aria-label="编辑 {{ item.name }}">编辑</button>
                 </div>
                 <dl class="resource-server-specs">

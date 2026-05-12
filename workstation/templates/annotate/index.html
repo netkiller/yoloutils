@@ -305,7 +305,7 @@
     const closeShortcuts = document.getElementById("closeShortcuts");
     const annotateModeButton = document.getElementById("annotateModeButton");
     const datasetButton = document.getElementById("datasetButton");
-    const trainButton = document.getElementById("trainButton");
+    const modelButton = document.getElementById("modelButton");
     const statsEl = document.getElementById("stats");
     const onlineCount = document.getElementById("onlineCount");
     const collaborationUsers = document.getElementById("collaborationUsers");
@@ -419,12 +419,22 @@
       return colors[Math.abs(hash) % colors.length];
     }
 
+    async function loadTreeChildren(node, childrenEl) {
+      if (node.children_loaded) return;
+      childrenEl.innerHTML = '<div class="empty">加载中...</div>';
+      const data = await getJson(`/api/tree?directory=${encodeURIComponent(node.path)}`);
+      node.children = data.children || [];
+      node.children_loaded = true;
+      childrenEl.innerHTML = "";
+      for (const child of node.children) renderTree(child, childrenEl);
+    }
+
     function renderTree(node, parent = treeEl) {
       const wrapper = document.createElement("div");
       wrapper.className = "tree-node";
       const row = document.createElement("div");
       row.className = "tree-row";
-      const hasChildren = node.children.length > 0;
+      const hasChildren = (node.children || []).length > 0 || node.has_child_dirs;
       const isRoot = parent === treeEl;
       if (isRoot) wrapper.classList.add("root-node");
       const isCollapsed = collapsedDirs.has(node.path);
@@ -434,11 +444,23 @@
         toggle.className = "tree-toggle";
         toggle.textContent = isCollapsed ? "▸" : "⌄";
         toggle.title = isCollapsed ? "展开目录" : "折叠目录";
-        toggle.onclick = event => {
+        toggle.onclick = async event => {
           event.stopPropagation();
-          if (collapsedDirs.has(node.path)) collapsedDirs.delete(node.path);
-          else collapsedDirs.add(node.path);
-          loadTree();
+          const children = wrapper.querySelector(":scope > .tree-children");
+          if (collapsedDirs.has(node.path)) {
+            collapsedDirs.delete(node.path);
+            toggle.textContent = "⌄";
+            toggle.title = "折叠目录";
+            if (children) {
+              children.hidden = false;
+              await loadTreeChildren(node, children);
+            }
+          } else {
+            collapsedDirs.add(node.path);
+            toggle.textContent = "▸";
+            toggle.title = "展开目录";
+            if (children) children.hidden = true;
+          }
         };
         row.appendChild(toggle);
       } else {
@@ -459,7 +481,20 @@
       name.textContent = node.name || "/";
       button.appendChild(icon);
       button.appendChild(name);
-      button.onclick = () => selectDir(node.path, button);
+      button.onclick = async () => {
+        const children = wrapper.querySelector(":scope > .tree-children");
+        if (children && !node.children_loaded) {
+          collapsedDirs.delete(node.path);
+          children.hidden = false;
+          await loadTreeChildren(node, children);
+          const toggle = wrapper.querySelector(":scope > .tree-row > .tree-toggle");
+          if (toggle) {
+            toggle.textContent = "⌄";
+            toggle.title = "折叠目录";
+          }
+        }
+        selectDir(node.path, button);
+      };
       button.oncontextmenu = event => showTreeContextMenu(event, node.path);
       row.appendChild(button);
       wrapper.appendChild(row);
@@ -468,7 +503,7 @@
         children.className = "tree-children";
         children.hidden = isCollapsed;
         wrapper.appendChild(children);
-        for (const child of node.children) renderTree(child, children);
+        for (const child of node.children || []) renderTree(child, children);
       }
       parent.appendChild(wrapper);
     }
@@ -1497,7 +1532,7 @@
         shortcutPopover.hidden = true;
       });
       datasetButton.addEventListener("click", showEnterpriseNotice);
-      trainButton.addEventListener("click", showEnterpriseNotice);
+      modelButton.addEventListener("click", showEnterpriseNotice);
     }
 
     function toggleShortcuts(forceOpen) {

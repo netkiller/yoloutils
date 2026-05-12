@@ -8,6 +8,7 @@
 
 {% block content %}
   <main class="model-detail-main">
+    {% include "partials/model_nav.html" %}
     <section class="train-head model-detail-head">
       <div>
         <h1>模型 {{ task.name }}</h1>
@@ -21,10 +22,10 @@
       </div>
       <div class="task-actions model-downloads">
         {% if assets.has_best %}
-          <a href="/train/models/{{ task.id }}/weights/best.pt">下载 best.pt</a>
+          <a href="/model/train/models/{{ task.id }}/weights/best.pt">下载 best.pt</a>
         {% endif %}
         {% if assets.has_last %}
-          <a href="/train/models/{{ task.id }}/weights/last.pt">下载 last.pt</a>
+          <a href="/model/train/models/{{ task.id }}/weights/last.pt">下载 last.pt</a>
         {% endif %}
       </div>
     </section>

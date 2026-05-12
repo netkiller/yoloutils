@@ -8,8 +8,9 @@
 
 {% block content %}
   <main>
+    {% include "partials/model_nav.html" %}
     <dialog class="train-dialog" open>
-      <form method="post" action="/train">
+      <form method="post" action="/model/train">
         <div class="dialog-head">
           <h1>新建训练任务</h1>
           <a href="/dataset" aria-label="关闭">×</a>

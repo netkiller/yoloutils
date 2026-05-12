@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block title %}算力检查{% endblock %}
+
+{% block content %}
+  <main class="resources-main">
+    <section class="toolbar" aria-labelledby="resources-check-title">
+      <div>
+        <h1 id="resources-check-title">算力检查</h1>
+        <p class="project-description muted">
+          {% if resource %}
+            {{ resource.name }} / {{ resource.address }}
+          {% else %}
+            选择服务器后检查训练环境、工具版本和可用状态。
+          {% endif %}
+        </p>
+      </div>
+      <div class="toolbar-actions">
+        <a class="secondary-button" href="{{ resources_base }}">返回算力列表</a>
+      </div>
+    </section>
+
+    {% if message %}
+      <div class="resource-alert success-alert"><strong>安装完成</strong><span>{{ message }}</span></div>
+    {% endif %}
+    {% if error %}
+      <div class="resource-alert"><strong>安装失败</strong><span>{{ error }}</span></div>
+    {% endif %}
+
+    <section class="resource-card resource-check-card" aria-label="工具检查">
+      <div class="resource-card-head">
+        <div>
+          <h2>工具状态</h2>
+          <p>检查是否安装、安装版本以及命令是否可正常执行。</p>
+        </div>
+      </div>
+
+      {% if not resource and resources %}
+        <div class="resource-check-selector">
+          {% for item in resources %}
+            <a href="{{ resources_base }}/check?server={{ item.id }}">{{ item.name }}</a>
+          {% endfor %}
+        </div>
+      {% endif %}
+
+      <div class="resource-check-list">
+        {% for item in checks %}
+          <article class="resource-check-row{% if item.ok %} ok{% else %} missing{% endif %}">
+            <div class="resource-check-status" aria-hidden="true">{% if item.ok %}✓{% else %}!{% endif %}</div>
+            <div class="resource-check-body">
+              <strong>{{ item.name }}</strong>
+              <span>{{ item.version }}</span>
+            </div>
+            <div class="resource-check-action">
+              {% if item.ok %}
+                <span class="resource-check-badge">正常可用</span>
+              {% elif item.installable %}
+                <form method="post" action="{{ resources_base }}/check/install">
+                  <input type="hidden" name="tool" value="{{ item.key }}">
+                  {% if resource %}<input type="hidden" name="server" value="{{ resource.id }}">{% endif %}
+                  <button type="submit">{{ item.install_label }}</button>
+                </form>
+              {% else %}
+                <span class="resource-check-note">{{ item.install_label or "不可自动安装" }}</span>
+              {% endif %}
+            </div>
+          </article>
+        {% endfor %}
+      </div>
+    </section>
+  </main>
+{% endblock %}

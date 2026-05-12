@@ -181,7 +181,7 @@ def model_items(path: Path):
 
 
 def read_classes(path: Path):
-    candidates = [path / "classes.txt", workspace_path() / "classes.txt"]
+    candidates = [path / "annotate" / "classes.txt", path / "classes.txt", workspace_path() / "classes.txt"]
     for file in candidates:
         if file.is_file():
             classes = [line.strip() for line in file.read_text(encoding="utf-8").splitlines() if line.strip()]
@@ -257,9 +257,22 @@ def run_task(task):
     finally:
         running_processes.pop(task_id, None)
 
+    project = project_path(workspace_path(), task["project"])
+    run_dir = project / "validate-runs" / task["name"] if project else None
+    metrics = read_metrics(run_dir) if run_dir else {}
+    if metrics:
+        append_log(task_id, "\n验证指标:\n")
+        for key, value in metrics.items():
+            append_log(task_id, f"  {key}: {value}\n")
     status_text = "完成" if return_code == 0 else "失败"
     append_log(task_id, f"\n进程退出码: {return_code}\n")
-    update_task(task_id, status=status_text, finished_at=datetime.now().isoformat(timespec="seconds"))
+    update_task(
+        task_id,
+        status=status_text,
+        metrics=metrics,
+        result_dir=str(run_dir) if run_dir else "",
+        finished_at=datetime.now().isoformat(timespec="seconds"),
+    )
 
 
 def worker_loop():
@@ -291,11 +304,12 @@ def project_tasks(project: str):
     return [task for task in tasks if task.get("project") == project]
 
 
+@router.get("/model/val")
 @router.get("/validate")
 def validate(request: Request):
     project = request.query_params.get("project", "")
     if project:
-        return RedirectResponse(url=f"/validate/{project}", status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(url=f"/model/val/{project}", status_code=status.HTTP_303_SEE_OTHER)
     workspace = workspace_path()
     current_project = request.cookies.get("current_project", "")
     path = project_path(workspace, current_project)
@@ -308,7 +322,8 @@ def validate(request: Request):
         context={
             "request": request,
             "workspace": workspace,
-            "active_page": "validate",
+            "active_page": "model",
+            "model_active": "val",
             "current_project": current_project,
             "project_name": read_project_name(path) if path else "",
             "models": models,
@@ -322,6 +337,7 @@ def validate(request: Request):
     return response
 
 
+@router.get("/model/val/{project}")
 @router.get("/validate/{project}")
 def validate_with_project(request: Request, project: str):
     workspace = workspace_path()
@@ -336,7 +352,8 @@ def validate_with_project(request: Request, project: str):
         context={
             "request": request,
             "workspace": workspace,
-            "active_page": "validate",
+            "active_page": "model",
+            "model_active": "val",
             "current_project": current_project,
             "project_name": read_project_name(path) if path else "",
             "models": models,
@@ -349,6 +366,7 @@ def validate_with_project(request: Request, project: str):
     return response
 
 
+@router.post("/model/val/run")
 @router.post("/validate/run")
 async def create_validate_task(request: Request):
     form = await form_fields(request)
@@ -374,7 +392,7 @@ async def create_validate_task(request: Request):
         or not is_inside(dataset_path, datasets_root)
         or not dataset_path.is_dir()
     ):
-        return RedirectResponse(url=f"/validate/{project}", status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(url=f"/model/val/{project}", status_code=status.HTTP_303_SEE_OTHER)
 
     default_name = f"{split}-{dataset}-{model_path.stem}-{datetime.now().strftime('%Y%m%d%H%M%S')}"
     try:
@@ -400,15 +418,16 @@ async def create_validate_task(request: Request):
         save_tasks(tasks)
     append_log(task["id"], f"任务已创建: {task['created_at']}\n")
     ensure_worker()
-    return RedirectResponse(url=f"/validate/tasks/{task['id']}", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url=f"/model/val/tasks/{task['id']}", status_code=status.HTTP_303_SEE_OTHER)
 
 
+@router.get("/model/val/tasks/{task_id}")
 @router.get("/validate/tasks/{task_id}")
 def validate_task(request: Request, task_id: str):
     current_project = request.cookies.get("current_project", "")
     task = next((item for item in load_tasks() if item["id"] == task_id), None)
     if task is None:
-        return RedirectResponse(url="/validate", status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(url="/model/val", status_code=status.HTTP_303_SEE_OTHER)
     log = log_file(task_id).read_text(encoding="utf-8", errors="replace") if log_file(task_id).is_file() else ""
     return templates.TemplateResponse(
         request=request,
@@ -418,13 +437,15 @@ def validate_task(request: Request, task_id: str):
             "workspace": workspace_path(),
             "task": task,
             "log": log,
-            "active_page": "validate",
+            "active_page": "model",
+            "model_active": "val",
             "current_project": current_project or task.get("project", ""),
             **header_context(request, workspace_path()),
         },
     )
 
 
+@router.post("/model/val/tasks/{task_id}/cancel")
 @router.post("/validate/tasks/{task_id}/cancel")
 def cancel_task(task_id: str):
     process = running_processes.get(task_id)
@@ -432,4 +453,4 @@ def cancel_task(task_id: str):
         process.terminate()
     update_task(task_id, status="取消", finished_at=datetime.now().isoformat(timespec="seconds"))
     append_log(task_id, "\n任务已取消。\n")
-    return RedirectResponse(url="/validate", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url="/model/val", status_code=status.HTTP_303_SEE_OTHER)
