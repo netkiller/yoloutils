@@ -161,7 +161,7 @@ options:
 
 ```shell
 (.venv) neo@Neo-Mac-mini-M4 yoloutils % yoloutils labelimg -h
-usage: yoloutils labelimg [-h] [--source SOURCE] [--target TARGET] [--clean] [--classes CLASSES] [--val 10] [--test 5] [--nullable] [--uuid] [--check]
+usage: yoloutils labelimg [-h] [--source SOURCE] [--target TARGET] [--clean] [--classes CLASSES] [--val 10] [--test 5] [--nullable] [--flat-directory-structure] [--uuid] [--md5] [--random] [--report REPORT]
 
 options:
   -h, --help         show this help message and exit
@@ -169,8 +169,12 @@ options:
   --val 10           验证集占比（百分比 5 ~ 50）
   --test 5           测试集占比（百分比 5 ~ 50）
   --nullable         允许空 .txt 标注文件进入数据集
+  --flat-directory-structure
+                     扁平化目录结构
   --uuid             输出文件名使用UUID
-  --check            图片检查 corrupt JPEG restored and saved
+  --md5              输出md5sum摘要作为文件名，可以防止图片重复使用
+  --random           随机文件名
+  --report REPORT    输出 csv 报告
 
 通用参数:
   --source SOURCE    图片来源地址
@@ -250,7 +254,7 @@ yoloutils image --source ./images --target ./grid --grid 2x2
 ## 工作站
 
 ```shell
-python src/netkiller/yoloutils/yoloutils.py workstation -w /Users/neo/tmp/yolo/source
+yoloutils workstation -w /Users/neo/tmp/yolo/source
 ```
 
 启动本地 FastAPI 站点，默认地址为 `http://127.0.0.1:8000`。页面包含目录树、文件列表、图像预览和右侧信息栏；文件列表中有效标注显示绿色，空
@@ -262,7 +266,7 @@ footer 左侧展示 `--workspace` 位置，右侧展示图像数量、`.txt` 数
 后台运行：
 
 ```shell
-python src/netkiller/yoloutils/yoloutils.py workstation -w /Users/neo/tmp/yolo/source -d
+yoloutils workstation -w /Users/neo/tmp/yolo/source -d
 ```
 
 后台模式会在工作目录写入 `.yoloutils-workstation.pid` 和 `.yoloutils-workstation.log`。

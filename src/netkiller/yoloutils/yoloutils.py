@@ -259,11 +259,14 @@ class YoloUtils:
         self.labelimg.add_argument(
             "--nullable", action="store_true", default=False, help="允许空 .txt 标注文件进入数据集"
         )
-        # self.labelimg.add_argument('--clean', action="store_true", default=False, help='清理之前的数据')
-
-        self.labelimg.add_argument(
-            '-u', "--uuid", action="store_true", default=False, help="输出文件名使用UUID"
+        flat = self.labelimg.add_argument_group(
+            title="扁平化目录结构",
+            description="没有子目录，防止重名必须配合 --uuid、--md5 或 --random 使用"
         )
+        flat.add_argument('--flat-directory-structure', action="store_true", default=False, help='扁平化目录结构')
+        flat.add_argument('-u', "--uuid", action="store_true", default=False, help="输出文件名使用UUID")
+        flat.add_argument('-m', "--md5", action="store_true", default=False, help="输出md5sum摘要作为文件名，可以防止图片重复使用")
+        flat.add_argument("--random", action="store_true", default=False, help="随机文件名")
 
         self.labelimg.add_argument('-r', '--report', type=str, default=None, help='输出 csv 报告')
 

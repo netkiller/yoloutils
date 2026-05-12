@@ -571,7 +571,8 @@ yoloutils labelimg \
 ```shell
 usage: yoloutils.py labelimg [-h] [--source SOURCE] [--target TARGET] [--clean]
                              [--classes CLASSES] [--val 10] [--test 5]
-                             [--nullable] [--uuid] [--report REPORT]
+                             [--nullable] [--flat-directory-structure] [--uuid]
+                             [--md5] [--random] [--report REPORT]
 
 options:
   -h, --help         show this help message and exit
@@ -582,7 +583,11 @@ options:
   --val 10           验证集占比（百分比 5 ~ 50）
   --test 5           测试集占比（百分比 5 ~ 50）
   --nullable         允许空 .txt 标注文件进入数据集
+  --flat-directory-structure
+                     扁平化目录结构
   --uuid             输出文件名使用UUID
+  --md5              输出md5sum摘要作为文件名，可以防止图片重复使用
+  --random           随机文件名
   --report REPORT    输出 csv 报告
 ```
 
@@ -599,10 +604,14 @@ options:
 yolo_data/
 ├── images/
 │   ├── train/
+│   │   ├── positive/
+│   │   └── hard_negative/
 │   ├── val/
 │   └── test/
 ├── labels/
 │   ├── train/
+│   │   ├── positive/
+│   │   └── hard_negative/
 │   ├── val/
 │   └── test/
 └── data.yaml
@@ -614,8 +623,12 @@ yolo_data/
 - `--val` 表示每个标签抽样进入 `val` 的百分比，范围为 `5~50`。
 - `--test` 表示每个标签抽样进入 `test` 的百分比，范围为 `5~50`，默认 `5`。
 - 所有样本先复制到 `train`，再按标签抽样移动到 `val`，随后从剩余 `train` 中抽样移动到 `test`。
+- 图片和标签都会保留 `--source` 下的相对目录结构，例如 `positive/a001.jpg` 会输出到 `images/train/positive/a001.jpg`，对应标签输出到 `labels/train/positive/a001.txt`。
+- `--flat-directory-structure` 会扁平化输出目录，所有文件直接写入 `images/train`、`images/val`、`labels/train`、`labels/val` 等目录；该参数必须配合 `--uuid`、`--md5` 或 `--random` 之一使用。
 - `--nullable` 允许 0 字节空 `.txt` 进入数据集：如果存在同名图片，会复制图片并生成空 label 文件；未加该参数时空 `.txt` 会作为问题文件写入报告并跳过。
-- `--uuid` 会把输出的图片和标签文件名改为 UUID。
+- `--uuid` 会把输出的图片和标签文件名改为 UUID，同时保留相对目录结构。
+- `--md5` 会把图片内容的 MD5 摘要作为图片和标签文件名；相同图片会得到相同文件名，可用于避免重复图片。
+- `--random` 会使用随机文件名。
 - `--report` 会输出 CSV 报告，记录被忽略、缺失配对图片、空 `.txt` 或非法标签等问题文件。
 - `--classes` 可指定 `classes.txt` 路径；未指定时默认读取 `source/classes.txt`。
 - 图片配对会扫描同名文件，并按支持的图片扩展名过滤（`.jpg/.jpeg/.png/.bmp/.webp/.tif/.tiff/.heic/.heif/.avif`，不区分大小写）。
@@ -651,6 +664,12 @@ yoloutils labelimg --source ./labelimg_data --target ./yolo_data --nullable
 
 # 生成 UUID 文件名
 yoloutils labelimg --source ./labelimg_data --target ./yolo_data --uuid
+
+# 扁平化输出，必须配合 UUID、MD5 或随机文件名
+yoloutils labelimg --source ./labelimg_data --target ./yolo_data --uuid --flat-directory-structure
+
+# 扁平化输出，使用图片 MD5 作为文件名
+yoloutils labelimg --source ./labelimg_data --target ./yolo_data --md5 --flat-directory-structure
 ```
 
 #### 4.7.1 `auto`

@@ -1,5 +1,6 @@
 import csv
 import glob
+import hashlib
 import logging
 import os
 import random
@@ -72,6 +73,39 @@ class YoloLabelimg(Common):
                 return candidate
         return None
 
+    def image_md5(self, image):
+        digest = hashlib.md5()
+        with open(image, "rb") as file:
+            for chunk in iter(lambda: file.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+
+    def naming_strategy_count(self):
+        return sum([self.args.uuid, self.args.md5, self.args.random])
+
+    def output_name(self, label, image):
+        label_relpath = os.path.relpath(label, self.args.source)
+        image_relpath = os.path.relpath(image, self.args.source)
+        label_ext = ".txt"
+        image_ext = os.path.splitext(image)[1]
+
+        label_reldir = ""
+        image_reldir = ""
+        if not self.args.flat_directory_structure:
+            label_reldir = os.path.dirname(label_relpath)
+            image_reldir = os.path.dirname(image_relpath)
+
+        if self.args.uuid:
+            stem = str(uuid.uuid4())
+        elif self.args.md5:
+            stem = self.image_md5(image)
+        elif self.args.random:
+            stem = uuid.uuid4().hex
+        else:
+            stem = os.path.splitext(os.path.basename(label_relpath))[0]
+
+        return label_reldir, image_reldir, f"{stem}{label_ext}", f"{stem}{image_ext}"
+
     def input(self):
         if self.args.clean:
             clean_paths = [self.args.target]
@@ -121,24 +155,15 @@ class YoloLabelimg(Common):
             self.logger.error(f"classes.txt empty labels: {classes}")
             exit()
 
-        if not self.args.uuid:
-            has_subdirs = any(
-                os.path.isdir(os.path.join(self.args.source, name))
-                for name in os.listdir(self.args.source)
-            )
-            if has_subdirs:
-                self.logger.warning(
-                    "source has subdirectories, output files may be overwritten by duplicate names, recommend --uuid"
-                )
-                print("source 存在子目录，输出文件可能因同名被覆盖，建议使用 --uuid 参数")
-                try:
-                    answer = input("是否继续？[Y/n]: ").strip().lower()
-                except EOFError:
-                    answer = ""
-                if answer in ("n", "no"):
-                    print("已取消操作")
-                    self.logger.info("cancel labelimg operation by subdirectory warning")
-                    exit()
+        if self.naming_strategy_count() > 1:
+            print("--uuid、--md5、--random 只能选择一个")
+            self.logger.error("multiple naming strategies")
+            exit()
+
+        if self.args.flat_directory_structure and self.naming_strategy_count() == 0:
+            print("--flat-directory-structure 必须配合 --uuid、--md5 或 --random 使用，避免子目录同名文件覆盖")
+            self.logger.error("flat directory structure requires naming strategy")
+            exit()
 
         files = glob.glob(f"{self.args.source}/**/*.txt", recursive=True)
         with tqdm(
@@ -207,16 +232,12 @@ class YoloLabelimg(Common):
                 train.set_description("labels/train")
                 train.set_postfix_str(f"dir={self.progress_dir(source)[:24]:<24}")
 
-                uuid4 = None
-                if self.args.uuid:
-                    uuid4 = uuid.uuid4()
-                    label_target = os.path.join(
-                        self.args.target, "labels/train", f"{uuid4}.txt"
-                    )
-                else:
-                    label_target = os.path.join(
-                        self.args.target, "labels/train", os.path.basename(source)
-                    )
+                image = self.files[source]
+                label_reldir, image_reldir, label_filename, image_filename = self.output_name(source, image)
+                label_target = os.path.join(
+                    self.args.target, "labels/train", label_reldir, label_filename
+                )
+                os.makedirs(os.path.dirname(label_target), exist_ok=True)
                 name, extension = os.path.splitext(os.path.basename(label_target))
 
                 valid_lines = []
@@ -280,19 +301,12 @@ class YoloLabelimg(Common):
                 train.update(1)
                 # 图片复制
                 images.set_description("images/train")
-                image = self.files[source]
                 images.set_postfix_str(f"dir={self.progress_dir(image)[:24]:<24}")
 
-                if self.args.uuid:
-                    image_target = os.path.join(
-                        self.args.target,
-                        "images/train",
-                        f"{name}{os.path.splitext(image)[1]}",
-                    )
-                else:
-                    image_target = os.path.join(
-                        self.args.target, "images/train", os.path.basename(image)
-                    )
+                image_target = os.path.join(
+                    self.args.target, "images/train", image_reldir, image_filename
+                )
+                os.makedirs(os.path.dirname(image_target), exist_ok=True)
                 shutil.copy(image, image_target)
                 self.logger.info(
                     f"images/train source={image} target={image_target} name={name}"
@@ -341,35 +355,39 @@ class YoloLabelimg(Common):
         ) as progress:
             for file in sorted(split_files):
                 progress.set_description(split)
-                name, extension = os.path.splitext(os.path.basename(file))
+                image_train_root = os.path.join(self.args.target, "images/train")
+                image_relpath = os.path.relpath(file, image_train_root)
+                label_relpath = f"{os.path.splitext(image_relpath)[0]}.txt"
                 try:
                     source = os.path.join(
-                        self.args.target, "labels/train", f"{name}.txt"
+                        self.args.target, "labels/train", label_relpath
                     )
                     target = os.path.join(
-                        self.args.target, "labels", split, f"{name}.txt"
+                        self.args.target, "labels", split, label_relpath
                     )
+                    os.makedirs(os.path.dirname(target), exist_ok=True)
                     if os.path.exists(source):
                         shutil.move(source, target)
                         self.logger.info(
                             f"labels/{split} move source={source} target={target}"
                         )
                     else:
-                        self.logger.warning(f"labels/{split} missing train label name={name}")
+                        self.logger.warning(f"labels/{split} missing train label file={label_relpath}")
 
                     source = file
                     target = os.path.join(
-                        self.args.target, "images", split, os.path.basename(file)
+                        self.args.target, "images", split, image_relpath
                     )
+                    os.makedirs(os.path.dirname(target), exist_ok=True)
                     if os.path.exists(source):
                         shutil.move(source, target)
                         self.logger.info(
                             f"images/{split} move source={source} target={target}"
                         )
                     else:
-                        self.logger.warning(f"images/{split} missing train image name={name}")
+                        self.logger.warning(f"images/{split} missing train image file={image_relpath}")
                 except Exception as e:
-                    self.logger.error(f"{split} {repr(e)} name={name}")
+                    self.logger.error(f"{split} {repr(e)} file={file}")
                 progress.update(1)
 
     def output(self):
