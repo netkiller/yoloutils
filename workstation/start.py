@@ -26,6 +26,12 @@ def build_parser():
     parser.add_argument("--mDNS", dest="mdns", type=str, default=None, help=".local 分享域名")
     parser.add_argument("--reload", action="store_true", default=False, help="启用 uvicorn reload")
     parser.add_argument("--demo", action="store_true", default=False, help="演示模式")
+    parser.add_argument(
+        "--edition",
+        choices=("community", "enterprise"),
+        default="community",
+        help="版本类型: community=社区版, enterprise=企业版",
+    )
     parser.add_argument("--auth", dest="auth", type=str, default=None, help="user:password")
     return parser
 
@@ -57,6 +63,7 @@ def apply_environment(args):
     os.environ["YOLOUTILS_WORKSPACE"] = str(workspace)
     os.environ["YOLOUTILS_HOST"] = str(args.host)
     os.environ["YOLOUTILS_PORT"] = str(args.port)
+    os.environ["YOLOUTILS_EDITION"] = args.edition
     if args.mdns:
         os.environ["YOLOUTILS_MDNS"] = normalize_mdns(args.mdns)
     else:
@@ -154,6 +161,7 @@ def daemon_command(args):
         ("runs", "runs"),
         ("mDNS", "mdns"),
         ("auth", "auth"),
+        ("edition", "edition"),
     ):
         value = getattr(args, attr)
         if value is None:
@@ -236,6 +244,7 @@ def main():
         print(f"Run: {Path(args.runs).expanduser().resolve()}")
     if args.demo:
         print("Demo: enabled")
+    print(f"Edition: {args.edition}")
     if args.open:
         start_browser_opener(url, args.auth)
         print("Browser: opening")

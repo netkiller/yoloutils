@@ -92,12 +92,12 @@ class YoloLabelimg(Common):
 
         self.mkdirs(os.path.join(self.args.target))
         directory = [
-            "train/labels",
-            "train/images",
-            "val/labels",
-            "val/images",
-            "test/labels",
-            "test/images",
+            "images/train",
+            "images/val",
+            "images/test",
+            "labels/train",
+            "labels/val",
+            "labels/test",
         ]
 
         classes = self.args.classes or os.path.join(self.args.source, "classes.txt")
@@ -204,18 +204,18 @@ class YoloLabelimg(Common):
         ):
             for source in self.files.keys():
 
-                train.set_description("train/labels")
+                train.set_description("labels/train")
                 train.set_postfix_str(f"dir={self.progress_dir(source)[:24]:<24}")
 
                 uuid4 = None
                 if self.args.uuid:
                     uuid4 = uuid.uuid4()
                     label_target = os.path.join(
-                        self.args.target, "train/labels", f"{uuid4}.txt"
+                        self.args.target, "labels/train", f"{uuid4}.txt"
                     )
                 else:
                     label_target = os.path.join(
-                        self.args.target, "train/labels", os.path.basename(source)
+                        self.args.target, "labels/train", os.path.basename(source)
                     )
                 name, extension = os.path.splitext(os.path.basename(label_target))
 
@@ -275,27 +275,27 @@ class YoloLabelimg(Common):
 
                 self.add_report(source, label_target)
                 self.logger.debug(
-                    f"train/labels source={source} target={label_target} name={name}"
+                    f"labels/train source={source} target={label_target} name={name}"
                 )
                 train.update(1)
                 # 图片复制
-                images.set_description("train/images")
+                images.set_description("images/train")
                 image = self.files[source]
                 images.set_postfix_str(f"dir={self.progress_dir(image)[:24]:<24}")
 
                 if self.args.uuid:
                     image_target = os.path.join(
                         self.args.target,
-                        "train/images",
+                        "images/train",
                         f"{name}{os.path.splitext(image)[1]}",
                     )
                 else:
                     image_target = os.path.join(
-                        self.args.target, "train/images", os.path.basename(image)
+                        self.args.target, "images/train", os.path.basename(image)
                     )
                 shutil.copy(image, image_target)
                 self.logger.info(
-                    f"train/images source={image} target={image_target} name={name}"
+                    f"images/train source={image} target={image_target} name={name}"
                 )
                 images.update(1)
 
@@ -344,30 +344,30 @@ class YoloLabelimg(Common):
                 name, extension = os.path.splitext(os.path.basename(file))
                 try:
                     source = os.path.join(
-                        self.args.target, "train/labels", f"{name}.txt"
+                        self.args.target, "labels/train", f"{name}.txt"
                     )
                     target = os.path.join(
-                        self.args.target, f"{split}/labels", f"{name}.txt"
+                        self.args.target, "labels", split, f"{name}.txt"
                     )
                     if os.path.exists(source):
                         shutil.move(source, target)
                         self.logger.info(
-                            f"{split}/labels move source={source} target={target}"
+                            f"labels/{split} move source={source} target={target}"
                         )
                     else:
-                        self.logger.warning(f"{split}/labels missing train label name={name}")
+                        self.logger.warning(f"labels/{split} missing train label name={name}")
 
                     source = file
                     target = os.path.join(
-                        self.args.target, f"{split}/images", os.path.basename(file)
+                        self.args.target, "images", split, os.path.basename(file)
                     )
                     if os.path.exists(source):
                         shutil.move(source, target)
                         self.logger.info(
-                            f"{split}/images move source={source} target={target}"
+                            f"images/{split} move source={source} target={target}"
                         )
                     else:
-                        self.logger.warning(f"{split}/images missing train image name={name}")
+                        self.logger.warning(f"images/{split} missing train image name={name}")
                 except Exception as e:
                     self.logger.error(f"{split} {repr(e)} name={name}")
                 progress.update(1)
@@ -376,9 +376,9 @@ class YoloLabelimg(Common):
         names = {i: self.classes[i] for i in range(len(self.classes))}  # 标签类别
         data = {
             "path": os.path.join(os.getcwd(), self.args.target),
-            "train": "train/images",
-            "val": "val/images",
-            "test": "test/images",
+            "train": "images/train",
+            "val": "images/val",
+            "test": "images/test",
             "names": names,
             # 'nc': len(self.classes)
         }

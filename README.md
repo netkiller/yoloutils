@@ -93,9 +93,15 @@ options:
   --label LABEL    逗号分割多个标签
   -u, --uuid       UUID 文件名
   -c, --clean      清理目标文件夹
+  -n, --negative-samples
+                  增加负样本集（.txt尺寸必须为0，没有.txt会为您创建该文件）
+  --train 100     训练集
+  --val 100       验证集
 
 
 ```
+
+负样本追加会把图片写入 `images/train` 或 `images/val`，并在 `labels/train` 或 `labels/val` 创建同名空 `.txt`。
 
 ## 删除标签
 

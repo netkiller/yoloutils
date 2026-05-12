@@ -400,8 +400,87 @@ class YoloLabelCopy(Common):
         table.add_rows(tables)
         print(table.draw())
 
-    def negative_samples(self, **kwargs):
-        pass
+    def is_supported_image(self, file):
+        ext = os.path.splitext(file)[1].lower()
+        if ext == ".txt":
+            return False
+        return ext in Common.image_exts
+
+    def paired_label(self, image):
+        return f"{os.path.splitext(image)[0]}.txt"
+
+    def negative_sample_count(self):
+        train = self.args.train if self.args.train >= 0 else 0
+        val = self.args.val if self.args.val >= 0 else 0
+        return train, val
+
+    def scan_negative_images(self):
+        files = glob.glob(f"{self.args.source}/**/*", recursive=True)
+        return sorted(
+            [
+                file
+                for file in files
+                if os.path.isfile(file) and self.is_supported_image(file)
+            ]
+        )
+
+    def copy_negative_image(self, split, image):
+        label = self.paired_label(image)
+        if os.path.exists(label) and os.path.getsize(label) != 0:
+            self.missed.append([os.path.relpath(image, self.args.source), "同名 .txt 不是 0 字节"])
+            self.logger.warning(f"negative sample label not empty image={image} label={label}")
+            return False
+
+        relpath = os.path.relpath(image, self.args.source)
+        relroot, ext = os.path.splitext(relpath)
+        image_target = os.path.join(self.args.target, "images", split, f"{relroot}{ext}")
+        label_target = os.path.join(self.args.target, "labels", split, f"{relroot}.txt")
+
+        os.makedirs(os.path.dirname(image_target), exist_ok=True)
+        os.makedirs(os.path.dirname(label_target), exist_ok=True)
+        shutil.copy2(image, image_target)
+        open(label_target, "w", encoding="utf-8").close()
+        self.logger.info(f"negative sample split={split} image={image_target} label={label_target}")
+        return True
+
+    def negative_samples(self, args):
+        self.args = args
+        if not os.path.isdir(self.args.source):
+            print(f"source 目录不存在: {self.args.source}")
+            self.logger.error(f"source 目录不存在: {self.args.source}")
+            exit()
+
+        train_count, val_count = self.negative_sample_count()
+        images = self.scan_negative_images()
+        selected_train = images[:train_count] if train_count > 0 else []
+        selected_val = images[train_count:train_count + val_count] if val_count > 0 else []
+
+        total = len(selected_train) + len(selected_val)
+        done = {"train": 0, "val": 0}
+        with tqdm(total=total, ncols=120) as progress:
+            for split, selected in (("train", selected_train), ("val", selected_val)):
+                for image in selected:
+                    progress.set_description(f"{split}/{os.path.relpath(image, self.args.source)}")
+                    if self.copy_negative_image(split, image):
+                        done[split] += 1
+                    progress.update(1)
+
+        if self.missed:
+            table = Texttable(max_width=160)
+            table.add_rows([["文件", "原因"], *self.missed])
+            print(table.draw())
+
+        table = Texttable(max_width=100)
+        table.add_rows(
+            [
+                ["输出", "数量"],
+                ["source images", len(images)],
+                ["train", done["train"]],
+                ["val", done["val"]],
+                ["skip", len(self.missed)],
+            ]
+        )
+        print(table.draw())
 
     def main(self, args):
 

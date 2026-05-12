@@ -283,6 +283,7 @@ yoloutils copy \
 ```shell
 usage: yoloutils.py copy [-h] [--source SOURCE] [--target TARGET]
                          [--label LABEL] [-u] [-c]
+                         [-n] [--train 100] [--val 100]
 
 options:
   -h, --help       show this help message and exit
@@ -291,6 +292,10 @@ options:
   --label LABEL    逗号分割多个标签
   -u, --uuid       UUID 文件名
   -c, --clean      清理目标文件夹
+  -n, --negative-samples
+                  增加负样本集（.txt尺寸必须为0，没有.txt会为您创建该文件）
+  --train 100     训练集
+  --val 100       验证集
 ```
 
 详细使用说明（推荐流程）：
@@ -311,6 +316,9 @@ yoloutils copy --source ./dataset --target ./picked --label person,car,bicycle
 
 # 输出文件名改为 UUID
 yoloutils copy --source ./dataset --target ./picked --label dog --uuid
+
+# 追加负样本到 YOLO 数据集
+yoloutils copy --source ./negative --target ./yolo_data --negative-samples --train 100 --val 20
 ```
 
 实现说明：
@@ -319,6 +327,8 @@ yoloutils copy --source ./dataset --target ./picked --label dog --uuid
 - `--label` 采用逗号分隔，如 `person,dog,car`。
 - 会把 `classes.txt` 一并复制到目标目录。
 - 当前实现主要按 `.jpg` 配对复制图片。
+- 负样本模式会把图片复制到 `images/train` 或 `images/val`，并在 `labels/train` 或 `labels/val` 创建同名空 `.txt`。
+- 负样本源图片旁边如果已有同名 `.txt`，该 `.txt` 必须为 0 字节；非空 `.txt` 会跳过。
 - 该命令的复制逻辑依赖文件名和目录状态，建议先在小样本目录验证输出结果。
 
 ### 4.4 `remove`
@@ -587,15 +597,14 @@ options:
 
 ```text
 yolo_data/
-├── train/
-│   ├── images/
-│   └── labels/
-├── val/
-│   ├── images/
-│   └── labels/
-├── test/
-│   ├── images/
-│   └── labels/
+├── images/
+│   ├── train/
+│   ├── val/
+│   └── test/
+├── labels/
+│   ├── train/
+│   ├── val/
+│   └── test/
 └── data.yaml
 ```
 
@@ -610,6 +619,23 @@ yolo_data/
 - `--report` 会输出 CSV 报告，记录被忽略、缺失配对图片、空 `.txt` 或非法标签等问题文件。
 - `--classes` 可指定 `classes.txt` 路径；未指定时默认读取 `source/classes.txt`。
 - 图片配对会扫描同名文件，并按支持的图片扩展名过滤（`.jpg/.jpeg/.png/.bmp/.webp/.tif/.tiff/.heic/.heif/.avif`，不区分大小写）。
+
+负样本追加：
+
+```shell
+# 从 ./negative 追加 100 张负样本到训练集、20 张负样本到验证集
+yoloutils copy \
+    --source ./negative \
+    --target ./yolo_data \
+    --negative-samples \
+    --train 100 \
+    --val 20
+```
+
+- 负样本图片会复制到 `images/train` 或 `images/val`。
+- 对应空标签会写到 `labels/train` 或 `labels/val`。
+- 如果源图片旁边已有同名 `.txt`，该 `.txt` 必须为 0 字节；非空 `.txt` 会跳过。
+- 如果源图片旁边没有同名 `.txt`，会在目标数据集中创建空 `.txt`。
 
 常用示例：
 

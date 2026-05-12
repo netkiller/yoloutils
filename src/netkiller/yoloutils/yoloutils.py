@@ -195,7 +195,13 @@ class YoloUtils:
         )
         copy = self.copy.add_argument_group(title='负样本集工具', description="向数据集中增加负样本数量")
 
-        copy.add_argument('-n', '--negative-samples', type=str, default=None, help='增加负样本集（.txt尺寸必须为0，没有.txt会为您创建该文件）')
+        copy.add_argument(
+            '-n',
+            '--negative-samples',
+            action="store_true",
+            default=False,
+            help='增加负样本集（.txt尺寸必须为0，没有.txt会为您创建该文件）'
+        )
         copy.add_argument('--train', type=int, default=-1, help='训练集', metavar=100)
         copy.add_argument('--val', type=int, default=-1, help='验证集', metavar=100)
 
@@ -380,13 +386,13 @@ class YoloUtils:
                 sub_args = self.copy.parse_args(argv[1:])
             except SystemExit as e:
                 if e.code != 0:
-                    self.labelimg.print_help(sys.stderr)
+                    self.copy.print_help(sys.stderr)
                 raise
             run = YoloLabelCopy()
-            if sub_args.source and sub_args.target:
-                run.main(root_args)
-            elif sub_args.source and sub_args.target and sub_args.negative_samples:
-                run.negative_samples(root_args)
+            if sub_args.source and sub_args.target and sub_args.negative_samples:
+                run.negative_samples(sub_args)
+            elif sub_args.source and sub_args.target:
+                run.main(sub_args)
             else:
                 self.copy.print_help()
             exit()
