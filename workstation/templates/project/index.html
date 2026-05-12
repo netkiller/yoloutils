@@ -3,7 +3,7 @@
 {% block title %}项目{% endblock %}
 
 {% block styles %}
-  <link rel="stylesheet" href="/static/css/project.css?v=20260511-project-card-pie">
+  <link rel="stylesheet" href="/static/css/project.css?v=20260512-resources-layout">
 {% endblock %}
 
 {% block content %}
@@ -43,7 +43,7 @@
                   <div class="project-path">{{ project.path }}</div>
                 </div>
                 <div class="folders" aria-label="项目目录">
-                  <span class="folder{% if not project.images %} missing{% endif %}">images</span>
+                  <span class="folder{% if not project.images %} missing{% endif %}">annotate</span>
                   <span class="folder{% if not project.dataset %} missing{% endif %}">dataset</span>
                   <span class="folder{% if not project.models %} missing{% endif %}">models</span>
                 </div>

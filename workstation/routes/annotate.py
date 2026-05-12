@@ -25,7 +25,7 @@ USER_HEARTBEAT_TIMEOUT = 45
 class SiteWorkstation(Workstation):
     def _directory_tree(self, path: Path):
         tree = super()._directory_tree(path)
-        if path == self.workspace and path.name == "images":
+        if path == self.workspace and path.name == "annotate":
             tree["name"] = getattr(self, "root_label", "") or "根目录"
         return tree
 
@@ -152,7 +152,7 @@ def project_images_workspace(project: str):
     project_dir = (workspace / project).resolve()
     if project_dir == workspace or not is_inside(project_dir, workspace):
         return None
-    images_dir = project_dir / "images"
+    images_dir = project_dir / "annotate"
     images_dir.mkdir(parents=True, exist_ok=True)
     return images_dir.resolve()
 

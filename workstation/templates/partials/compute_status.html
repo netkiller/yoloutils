@@ -1,0 +1,71 @@
+<aside class="resource-card compute-panel" aria-labelledby="compute-title">
+  <div class="list-head">
+    <h2 id="compute-title">系统状态</h2>
+  </div>
+  <div class="compute-list">
+    <div class="compute-row">
+      <span>服务器</span>
+      <strong>{{ compute_config.server }}</strong>
+    </div>
+    <div class="compute-row compute-cpu-row">
+      <div class="compute-resource-head">
+        <span>CPU数量</span>
+        <strong>{{ compute_config.cpu_count }}</strong>
+      </div>
+      <div class="cpu-bars" aria-label="CPU 使用率">
+        {% for cpu in compute_config.cpu_items %}
+          <div class="cpu-bar-row">
+            <span>{{ cpu.label }}</span>
+            <div class="cpu-bar-track" aria-hidden="true">
+              <i style="width: {{ cpu.percent }}%"></i>
+            </div>
+            <strong>{{ cpu.percent }}%</strong>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="compute-row">
+      <span>显卡数量</span>
+      <strong>{{ compute_config.gpu_count }}</strong>
+    </div>
+    <div class="compute-resource-row">
+      <div class="compute-resource-head">
+        <span>内存数量</span>
+        <strong>{{ compute_config.memory.total }}</strong>
+      </div>
+      <div class="compute-resource-body">
+        <span class="compute-pie" style="background: {{ compute_config.memory.style }}" aria-hidden="true"></span>
+        <div class="compute-resource-meta">
+          <span>可用 {{ compute_config.memory.available }}</span>
+          <span>已用 {{ compute_config.memory.used }}</span>
+        </div>
+      </div>
+    </div>
+    <div class="compute-resource-row">
+      <div class="compute-resource-head">
+        <span>显存大小</span>
+        <strong>{{ compute_config.gpu_memory.total }}</strong>
+      </div>
+      <div class="compute-resource-body">
+        <span class="compute-pie" style="background: {{ compute_config.gpu_memory.style }}" aria-hidden="true"></span>
+        <div class="compute-resource-meta">
+          <span>可用 {{ compute_config.gpu_memory.available }}</span>
+          <span>已用 {{ compute_config.gpu_memory.used }}</span>
+        </div>
+      </div>
+    </div>
+    <div class="compute-resource-row">
+      <div class="compute-resource-head">
+        <span>磁盘空间</span>
+        <strong>{{ compute_config.disk.total }}</strong>
+      </div>
+      <div class="compute-resource-body">
+        <span class="compute-pie" style="background: {{ compute_config.disk.style }}" aria-hidden="true"></span>
+        <div class="compute-resource-meta">
+          <span>可用 {{ compute_config.disk.available }}</span>
+          <span>已用 {{ compute_config.disk.used }}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</aside>

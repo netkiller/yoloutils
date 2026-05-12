@@ -27,6 +27,8 @@ except ImportError:
 router = APIRouter()
 templates = Jinja2Templates(directory=Path(__file__).resolve().parent.parent / "templates")
 PROJECT_DIR_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
+ANNOTATE_DIR = "annotate"
+TEST_DIR = "test"
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff", ".heic", ".heif"}
 MODEL_EXTS = {".pt", ".onnx", ".engine", ".torchscript", ".tflite", ".mlmodel"}
 USER_HEARTBEAT_TIMEOUT = 45
@@ -497,7 +499,7 @@ def project_dashboard(projects: list[dict]):
     colors = ["#2563eb", "#16a34a", "#f97316", "#dc2626", "#7c3aed", "#0891b2", "#ca8a04", "#be185d"]
 
     for project in projects:
-        images_dir = project["path"] / "images"
+        images_dir = project["path"] / ANNOTATE_DIR
         if not images_dir.is_dir():
             continue
         classes = read_classes(images_dir / "classes.txt")
@@ -570,17 +572,19 @@ def project_items(workspace: Path):
             continue
         children = {child.name for child in path.iterdir() if child.is_dir()}
         meta = read_project_meta(path, registry)
-        image_count = count_files(path / "images", IMAGE_EXTS)
+        image_count = count_files(path / ANNOTATE_DIR, IMAGE_EXTS)
+        test_count = count_files(path / TEST_DIR, IMAGE_EXTS)
         dataset_count = count_dataset_dirs(path)
         model_count = count_files(path / "models", MODEL_EXTS)
         projects.append(
             {
                 **meta,
                 "path": path,
-                "images": "images" in children,
+                "images": ANNOTATE_DIR in children,
                 "dataset": "datasets" in children or "dataset" in children,
                 "models": "models" in children,
                 "image_count": image_count,
+                "test_count": test_count,
                 "dataset_count": dataset_count,
                 "model_count": model_count,
                 "resource_chart": resource_chart(image_count, dataset_count, model_count),
@@ -729,7 +733,7 @@ async def form_fields(request: Request):
 
 
 def ensure_project_structure(path: Path):
-    for subdir in ("images", "datasets", "models"):
+    for subdir in (ANNOTATE_DIR, TEST_DIR, "datasets", "models"):
         (path / subdir).mkdir(parents=True, exist_ok=True)
 
 
@@ -1058,10 +1062,11 @@ def project_detail(directory: str, request: Request):
         write_user_project(workspace, username, directory)
     try:
         meta = read_project_meta(path, read_project_registry(workspace))
-        image_count = count_files(path / "images", IMAGE_EXTS)
+        image_count = count_files(path / ANNOTATE_DIR, IMAGE_EXTS)
+        test_count = count_files(path / TEST_DIR, IMAGE_EXTS)
         model_count = count_files(path / "models", MODEL_EXTS)
         dashboard = project_dashboard([{"path": path}])
-        has_classes = (path / "images" / "classes.txt").is_file()
+        has_classes = (path / ANNOTATE_DIR / "classes.txt").is_file()
         project_ready = image_count > 0
         projects_by_user = read_user_projects(workspace)
         project_users = [
@@ -1079,12 +1084,13 @@ def project_detail(directory: str, request: Request):
                     **meta,
                     "path": path,
                     "image_count": image_count,
+                    "test_count": test_count,
                     "model_count": model_count,
                     "has_images": image_count > 0,
                     "has_models": model_count > 0,
                     "has_classes": has_classes,
                     "project_ready": project_ready,
-                    "classes_text": (path / "images" / "classes.txt").read_text(encoding="utf-8") if has_classes else "",
+                    "classes_text": (path / ANNOTATE_DIR / "classes.txt").read_text(encoding="utf-8") if has_classes else "",
                 },
                 "remote_user": getpass.getuser(),
                 "dashboard": dashboard,
@@ -1092,8 +1098,8 @@ def project_detail(directory: str, request: Request):
                 "active_page": "project",
                 "show_create_project": False,
                 "current_project": directory,
+                "is_team_mode": is_team_mode,
                 "project_users": project_users,
-                "compute_config": compute_config(workspace),
                 "footer_console_url": f"/project/{directory}/logs",
                 "project_ready": project_ready,
                 **header_context(request, workspace),
@@ -1130,14 +1136,31 @@ async def upload_images(directory: str, request: Request):
     if path is None or not path.is_dir():
         return JSONResponse({"ok": False, "error": "项目不存在"}, status_code=404)
     files = await uploaded_files(request)
-    saved = [save_upload(filename, content, path / "images") for filename, content in files]
+    saved = [save_upload(filename, content, path / ANNOTATE_DIR) for filename, content in files]
     saved = [item for item in saved if item is not None]
     append_upload_log(
         path,
         f"上传图片/文件：接收 {len(files)} 个，保存 {len(saved)} 个",
         [relative_log_entry(path, item) for item in saved],
     )
-    return {"ok": True, "saved": len(saved), "count": count_files(path / "images", IMAGE_EXTS)}
+    return {"ok": True, "saved": len(saved), "count": count_files(path / ANNOTATE_DIR, IMAGE_EXTS)}
+
+
+@router.post("/project/{directory}/upload/test")
+async def upload_test_images(directory: str, request: Request):
+    workspace = workspace_path()
+    path = project_dir(workspace, directory)
+    if path is None or not path.is_dir():
+        return JSONResponse({"ok": False, "error": "项目不存在"}, status_code=404)
+    files = await uploaded_files(request)
+    saved = [save_upload(filename, content, path / TEST_DIR) for filename, content in files]
+    saved = [item for item in saved if item is not None]
+    append_upload_log(
+        path,
+        f"上传测试图片/文件：接收 {len(files)} 个，保存 {len(saved)} 个",
+        [relative_log_entry(path, item) for item in saved],
+    )
+    return {"ok": True, "saved": len(saved), "count": count_files(path / TEST_DIR, IMAGE_EXTS)}
 
 
 @router.post("/project/{directory}/upload/classes")
@@ -1151,7 +1174,7 @@ async def upload_classes(directory: str, request: Request):
     for filename, content in files:
         if PurePosixPath((filename or "").replace("\\", "/")).name.lower() != "classes.txt":
             continue
-        target = path / "images" / "classes.txt"
+        target = path / ANNOTATE_DIR / "classes.txt"
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(content)
         append_upload_log(path, "上传 classes.txt", [relative_log_entry(path, target)])
@@ -1170,7 +1193,7 @@ async def save_classes(directory: str, request: Request):
     content = str(payload.get("content", "")).strip()
     if not content:
         return JSONResponse({"ok": False, "error": "classes.txt 不能为空"}, status_code=400)
-    target = path / "images" / "classes.txt"
+    target = path / ANNOTATE_DIR / "classes.txt"
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(content + "\n", encoding="utf-8")
     class_count = len([line for line in content.splitlines() if line.strip()])

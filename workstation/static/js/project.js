@@ -404,6 +404,8 @@ async function uploadFiles(zone, files) {
     if (kind === "images") {
       document.querySelector("[data-image-count]").textContent = `${data.count} 个文件`;
       setAnnotateReady({imagesReady: data.count > 0});
+    } else if (kind === "test") {
+      document.querySelector("[data-test-count]").textContent = `${data.count} 个文件`;
     } else if (kind === "model") {
       document.querySelector("[data-model-count]").textContent = `${data.count} 个文件`;
       setActionEnabled("[data-model-action]", data.count > 0);

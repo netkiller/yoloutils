@@ -196,10 +196,14 @@ textarea {
 
 .project-detail-shell {
   display: grid;
-  grid-template-columns: minmax(180px, 220px) minmax(0, 1080px) minmax(180px, 220px);
+  grid-template-columns: minmax(180px, 220px) minmax(0, 1080px);
   gap: 16px;
   align-items: start;
   justify-content: center;
+}
+
+.project-detail-shell.no-team {
+  grid-template-columns: minmax(0, 1080px);
 }
 
 .project-detail-main {

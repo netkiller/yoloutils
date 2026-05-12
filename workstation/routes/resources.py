@@ -10,7 +10,7 @@ from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect, status
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from routes.project import current_username, header_context, project_dir, require_team_login, team_mode_enabled, workspace_path
+from routes.project import compute_config, current_username, header_context, project_dir, require_team_login, team_mode_enabled, workspace_path
 
 
 router = APIRouter()
@@ -365,6 +365,7 @@ def remote_metrics(resource: dict):
             "memory": capacity_metric(total, used, "#7c3aed"),
             "utilization": utilization,
             "temperature": temperature,
+            "temperature_percent": min(max(temperature, 0), 100),
         })
 
     return {
@@ -473,6 +474,7 @@ def resources(request: Request, project: str = ""):
             "current_project": current_project,
             "resources_base": resources_base(current_project),
             "resources": resource_list_items(workspace),
+            "compute_config": compute_config(workspace),
             **header_context(request, workspace),
         },
     )

@@ -14,6 +14,8 @@
       </div>
     </section>
 
+    <div class="resources-shell">
+      <div class="resources-content">
     <section class="resources-layout" aria-label="算力管理">
       <section class="resource-card resource-list-card" aria-labelledby="resource-list-title">
         <div class="resource-card-head">
@@ -172,6 +174,9 @@
         <p class="resource-copy">提供服务器规格、GPU 型号、显存、带宽、在线时段和报价，我们评估后接入平台，按任务或时长分配训练与推理订单。</p>
       </article>
     </section>
+      </div>
+      {% include "partials/compute_status.html" %}
+    </div>
 
     <dialog id="resourceDialog" class="resource-dialog">
       <form class="resource-card resource-form" method="post" action="{{ resources_base }}" data-resource-form>

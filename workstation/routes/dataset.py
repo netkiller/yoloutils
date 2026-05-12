@@ -18,6 +18,7 @@ router = APIRouter()
 templates = Jinja2Templates(directory=Path(__file__).resolve().parent.parent / "templates")
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff", ".heic", ".heif"}
 DATASET_NAME_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
+ANNOTATE_DIR = "annotate"
 
 
 def workspace_path():
@@ -85,7 +86,7 @@ def copy_image_with_label(source: Path, source_root: Path, target_root: Path):
 
 
 def project_classes_file(project_path: Path):
-    candidates = [project_path / "classes.txt", project_path / "images" / "classes.txt"]
+    candidates = [project_path / "classes.txt", project_path / ANNOTATE_DIR / "classes.txt"]
     return next((candidate for candidate in candidates if candidate.is_file()), None)
 
 
@@ -100,7 +101,7 @@ def build_dataset(workspace: Path, project: str, name: str, val_percent: int, te
     if project_path is None or not project_path.is_dir():
         return None, "项目不存在"
 
-    images_root = project_path / "images"
+    images_root = project_path / ANNOTATE_DIR
     dataset_dir = project_path / "datasets" / name
     if dataset_dir.exists():
         return None, "数据集已存在"

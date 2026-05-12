@@ -23,20 +23,6 @@
     {% endif %}
 
     <section class="resource-detail-wide" aria-label="服务器信息">
-      <article class="resource-card metric-card server-wide-card">
-        <div class="resource-card-head">
-          <div>
-            <h2>服务器</h2>
-            <p>{{ metrics.hostname or resource.host }}</p>
-          </div>
-        </div>
-        <dl class="metric-list">
-          <dt>系统</dt><dd>{{ metrics.kernel or "未知" }}</dd>
-          <dt>CPU</dt><dd>{{ metrics.cpu_count }} 核</dd>
-          <dt>运行时间</dt><dd>{% if metrics.uptime %}{{ metrics.uptime }} 秒{% else %}未知{% endif %}</dd>
-        </dl>
-      </article>
-
       <article class="resource-card metric-card cpu-wide-card">
         <div class="metric-head">
           <h2>CPU 负载</h2>
@@ -70,7 +56,7 @@
             </div>
           </div>
         </div>
-        <p class="resource-scroll-hint">CPU 使用率</p>
+        <p class="resource-scroll-hint">CPU {{ metrics.cpu_count }} 核 使用率</p>
         <div class="cpu-bars-scroll" aria-label="每个 CPU 使用率横向滚动区域">
           <div class="cpu-vertical-bars" data-cpu-bars>
             {% for cpu in metrics.cpu_items %}
@@ -173,12 +159,21 @@
                 <strong>{{ gpu.utilization }}%</strong>
               </div>
               <div class="metric-bar"><span style="width: {{ gpu.utilization }}%"></span></div>
-              <div class="metric-pie-row">
+              <div class="metric-pie-row gpu-pie-row">
                 <span class="metric-pie small" style="background: {{ gpu.memory.style }}" aria-hidden="true"></span>
                 <dl class="metric-list">
                   <dt>显存</dt><dd>{{ gpu.memory.used }} / {{ gpu.memory.total }}</dd>
-                  <dt>温度</dt><dd>{{ gpu.temperature }} ℃</dd>
                 </dl>
+                <div class="gpu-temperature" aria-label="温度 {{ gpu.temperature }} ℃">
+                  <span
+                    class="temperature-gauge"
+                    style="background: conic-gradient(#ef4444 0 {{ gpu.temperature_percent }}%, #e2e8f0 {{ gpu.temperature_percent }}% 100%);"
+                    aria-hidden="true"
+                  >
+                    <span>{{ gpu.temperature | int }}℃</span>
+                  </span>
+                  <strong>温度</strong>
+                </div>
               </div>
             </article>
           {% endfor %}
@@ -214,7 +209,7 @@
         load15m: [],
         loadTotal: [],
       };
-      const maxPoints = 60;
+      const maxPoints = 120;
 
       function formatRate(value) {
         let rate = Math.max(0, Number(value) || 0);
