@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block title %}部署日志 {{ task.dataset }}{% endblock %}
+
+{% block styles %}
+  <link rel="stylesheet" href="/static/css/dataset.css?v=20260513-deploy">
+  <link rel="stylesheet" href="/static/css/train.css?v=20260513-deploy-log">
+{% endblock %}
+
+{% block content %}
+  <main class="train-task-main">
+    <section class="train-head">
+      <div>
+        <a class="back-link" href="/dataset/{{ current_project }}/deploy/{{ task.dataset }}">返回部署数据集</a>
+        <h1>{{ task.dataset }}</h1>
+        <p>{{ task.target_type_label }} / {{ task.target_label }} / {{ task.mode_label }} · <span data-deploy-status>{{ task.status }}</span></p>
+      </div>
+    </section>
+    <div class="deploy-log-progress">
+      <div class="deploy-progress" aria-label="部署进度 {{ task.progress }}%">
+        <span data-deploy-progress-bar style="width: {{ task.progress }}%"></span>
+      </div>
+      <strong data-deploy-progress>{{ task.progress }}%</strong>
+    </div>
+    <pre class="console-output" data-deploy-log data-task-id="{{ task.id }}">{{ log_text or "暂无日志" }}</pre>
+  </main>
+
+  {% set footer_id = "stats" %}
+  {% set footer_left = workspace %}
+  {% include "partials/footer.html" %}
+
+  <script>
+    (() => {
+      const output = document.querySelector("[data-deploy-log]");
+      const status = document.querySelector("[data-deploy-status]");
+      const progressText = document.querySelector("[data-deploy-progress]");
+      const progressBar = document.querySelector("[data-deploy-progress-bar]");
+      if (!output) return;
+      const taskId = output.dataset.taskId;
+      const activeStatuses = new Set(["排队中", "进行中"]);
+      let timer = null;
+      let lastLog = output.textContent;
+
+      const atBottom = () => output.scrollTop + output.clientHeight >= output.scrollHeight - 24;
+      const refresh = async () => {
+        const shouldStick = atBottom();
+        try {
+          const response = await fetch(`/dataset/{{ current_project }}/deploy/tasks/${taskId}/log`, {cache: "no-store"});
+          const data = await response.json();
+          if (!response.ok || !data.ok) return;
+          if (status) status.textContent = data.status || "";
+          if (progressText) progressText.textContent = `${data.progress || 0}%`;
+          if (progressBar) progressBar.style.width = `${data.progress || 0}%`;
+          if (data.log !== lastLog) {
+            lastLog = data.log || "暂无日志";
+            output.textContent = lastLog;
+            if (shouldStick) output.scrollTop = output.scrollHeight;
+          }
+          if (!activeStatuses.has(data.status) && timer) {
+            clearInterval(timer);
+            timer = null;
+          }
+        } catch (error) {
+          // Retry on next interval.
+        }
+      };
+
+      output.scrollTop = output.scrollHeight;
+      timer = setInterval(refresh, 1000);
+      refresh();
+    })();
+  </script>
+{% endblock %}

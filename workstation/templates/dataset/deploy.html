@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+
+{% block title %}部署数据集{% endblock %}
+
+{% block styles %}
+  <link rel="stylesheet" href="/static/css/dataset.css?v=20260513-deploy">
+{% endblock %}
+
+{% block content %}
+  <main class="dataset-deploy-main">
+    <section class="dataset-head" aria-labelledby="dataset-deploy-title">
+      <div>
+        <h1 id="dataset-deploy-title">部署数据集</h1>
+        <p class="dataset-description">将当前项目的数据集部署到本地目录或算力列表中的远程服务器。</p>
+      </div>
+      <div class="dataset-head-actions">
+        <a class="secondary-dataset-button" href="/dataset/{{ current_project }}">返回数据集</a>
+      </div>
+    </section>
+
+    <section class="deploy-layout" aria-label="数据集部署">
+      <form class="deploy-card deploy-form" method="post">
+        <div class="deploy-card-head">
+          <div>
+            <h2>添加部署任务</h2>
+            <p>使用 rsync 执行全量、增量或两端同步。</p>
+          </div>
+        </div>
+
+        <label>
+          <span>数据集名字</span>
+          <select name="dataset" required {% if selected_dataset %}data-selected-dataset="{{ selected_dataset.name }}"{% endif %}>
+            {% for dataset in datasets %}
+              <option value="{{ dataset.name }}" {% if selected_dataset and selected_dataset.name == dataset.name %}selected{% endif %}>{{ dataset.name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+
+        <div class="deploy-form-row">
+          <label>
+            <span>目标</span>
+            <select name="target_type" data-target-type>
+              <option value="local">本地</option>
+              <option value="remote">远程</option>
+            </select>
+          </label>
+          <label data-resource-field hidden>
+            <span>远程服务器</span>
+            <select name="resource_id">
+              <option value="">选择算力服务器</option>
+              {% for item in resources %}
+                <option value="{{ item.id }}">{{ item.name }} · {{ item.address }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
+
+        <label>
+          <span>部署位置</span>
+          <input name="target_path" type="text" value="~/datasets/{% if selected_dataset %}{{ selected_dataset.name }}{% endif %}" placeholder="~/datasets/dataset-name" required>
+        </label>
+
+        <div class="deploy-methods" role="radiogroup" aria-label="部署方式">
+          <label><input type="radio" name="mode" value="full"> <span>全量</span></label>
+          <label><input type="radio" name="mode" value="incremental" checked> <span>增量</span></label>
+          <label><input type="radio" name="mode" value="sync"> <span>两端同步</span></label>
+        </div>
+
+        <label class="deploy-checkbox">
+          <input type="checkbox" name="overwrite">
+          <span>全量部署时，如果目标目录已存在，允许覆盖删除</span>
+        </label>
+
+        <button class="project-link-button" type="submit" {% if not datasets %}disabled{% endif %}>开始部署</button>
+      </form>
+
+      <section class="deploy-card deploy-task-panel" aria-labelledby="deploy-task-title">
+        <div class="deploy-card-head">
+          <div>
+            <h2 id="deploy-task-title">部署任务</h2>
+            <p>当前正在进行和最近创建的部署任务。</p>
+          </div>
+          <span class="count">{{ tasks | length }} 个任务</span>
+        </div>
+        {% if tasks %}
+          <div class="deploy-task-list">
+            {% for task in tasks %}
+              <a id="task-{{ task.id }}" class="deploy-task-card" href="/dataset/{{ current_project }}/deploy/tasks/{{ task.id }}">
+                <div class="deploy-task-title">
+                  <strong>{{ task.dataset }}</strong>
+                  <span>{{ task.status }}</span>
+                </div>
+                <p>{{ task.target_type_label }} · {{ task.target_label }} · {{ task.target_path }}</p>
+                <div class="deploy-progress" aria-label="部署进度 {{ task.progress }}%">
+                  <span style="width: {{ task.progress }}%"></span>
+                </div>
+                <div class="deploy-task-meta">
+                  <span>{{ task.mode_label }}</span>
+                  <span>{{ task.updated_at }}</span>
+                </div>
+              </a>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="empty compact">暂无部署任务</div>
+        {% endif %}
+      </section>
+    </section>
+  </main>
+
+  {% set footer_id = "stats" %}
+  {% set footer_left = workspace %}
+  {% include "partials/footer.html" %}
+
+  <script>
+    (() => {
+      const form = document.querySelector(".deploy-form");
+      const datasetSelect = form?.elements.dataset;
+      const targetPath = form?.elements.target_path;
+      const targetType = form?.querySelector("[data-target-type]");
+      const resourceField = form?.querySelector("[data-resource-field]");
+
+      function syncTargetType() {
+        if (!resourceField || !targetType) return;
+        resourceField.hidden = targetType.value !== "remote";
+      }
+
+      function syncDatasetName() {
+        if (!datasetSelect || !targetPath) return;
+        const name = datasetSelect.value || "";
+        if (!targetPath.value || targetPath.value.startsWith("~/datasets/")) {
+          targetPath.value = `~/datasets/${name}`;
+        }
+      }
+
+      targetType?.addEventListener("change", syncTargetType);
+      datasetSelect?.addEventListener("change", syncDatasetName);
+      syncTargetType();
+      syncDatasetName();
+    })();
+  </script>
+{% endblock %}

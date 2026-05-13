@@ -12,6 +12,13 @@
   line-height: 1.45;
 }
 
+.dataset-head-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .project-link-button {
   height: 36px;
   display: inline-flex;
@@ -26,6 +33,25 @@
   font: inherit;
   font-weight: 650;
   text-decoration: none;
+}
+
+.secondary-dataset-button {
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #ffffff;
+  color: #334e68;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.secondary-dataset-button:hover {
+  background: #e6f0ff;
+  color: #243b53;
 }
 
 .project-link-button:hover {
@@ -148,6 +174,7 @@
 
 .view-button,
 .download-button,
+.deploy-button,
 .train-button {
   height: 36px;
   display: inline-flex;
@@ -169,16 +196,202 @@
   color: #334e68;
 }
 
+.deploy-button {
+  color: #334e68;
+}
+
 .train-button {
   color: #334e68;
 }
 
 .view-button:hover,
 .download-button:hover,
+.deploy-button:hover,
 .train-button:hover {
   border-color: var(--line);
   background: #e6f0ff;
   color: #243b53;
+}
+
+.dataset-deploy-main {
+  align-content: start;
+  overflow: auto;
+}
+
+.deploy-layout {
+  display: grid;
+  grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.deploy-card {
+  min-width: 0;
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.deploy-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.deploy-card-head h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.deploy-card-head p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.deploy-form label {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+  color: #52606d;
+  font-size: 13px;
+}
+
+.deploy-form input[type="text"],
+.deploy-form select {
+  width: 100%;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #ffffff;
+  color: var(--text);
+  font: inherit;
+}
+
+.deploy-form-row {
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr);
+  gap: 10px;
+}
+
+.deploy-methods {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.deploy-methods label,
+.deploy-checkbox {
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #f8fafc;
+  color: #334e68;
+  font-size: 13px;
+}
+
+.deploy-checkbox {
+  justify-content: flex-start;
+  line-height: 1.35;
+}
+
+.deploy-task-panel {
+  align-content: start;
+}
+
+.deploy-task-list {
+  display: grid;
+  gap: 10px;
+}
+
+.deploy-task-card {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  color: inherit;
+  text-decoration: none;
+}
+
+.deploy-task-card:hover {
+  border-color: #bdd3ef;
+  background: #f8fbff;
+}
+
+.deploy-task-title,
+.deploy-task-meta,
+.deploy-log-progress {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.deploy-task-title strong {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deploy-task-title span {
+  flex: 0 0 auto;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #eef6ff;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.deploy-task-card p,
+.deploy-task-meta {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.deploy-progress {
+  height: 9px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e2e8f0;
+}
+
+.deploy-progress span {
+  height: 100%;
+  display: block;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #1667c7, #16a34a);
+}
+
+.deploy-log-progress {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.deploy-log-progress .deploy-progress {
+  flex: 1 1 auto;
+}
+
+.deploy-log-progress strong {
+  flex: 0 0 auto;
+  color: #334e68;
+  font-size: 13px;
 }
 
 .empty {
@@ -686,7 +899,17 @@
     align-items: stretch;
   }
 
+  .dataset-head-actions {
+    justify-content: flex-start;
+  }
+
   .dataset-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .deploy-layout,
+  .deploy-form-row,
+  .deploy-methods {
     grid-template-columns: 1fr;
   }
 
