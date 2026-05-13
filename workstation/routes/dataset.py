@@ -357,10 +357,10 @@ def build_rsync_commands(task: dict, source: Path, resource: dict | None, log_pa
         if auth_error:
             return [], temp_files, auth_error
         target_arg = remote_target(resource, target_path.rstrip("/") + "/")
-        base = [*prefix, "rsync", "-az", "-e", rsync_ssh_args(resource, ssh_key)]
+        base = [*prefix, "rsync", "-az", "--info=progress2", "-e", rsync_ssh_args(resource, ssh_key)]
     else:
         target_arg = str(Path(target_path).expanduser()) + "/"
-        base = ["rsync", "-az"]
+        base = ["rsync", "-az", "--info=progress2"]
 
     if mode == "full":
         return [[*base, "--delete", source_arg, target_arg]], temp_files, ""

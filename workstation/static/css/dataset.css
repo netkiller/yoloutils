@@ -254,6 +254,71 @@
   font: inherit;
 }
 
+.deploy-select {
+  position: relative;
+  width: 100%;
+}
+
+.deploy-select > button {
+  width: 100%;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #ffffff;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.deploy-select > button::after {
+  content: "⌄";
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.deploy-select-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  max-height: 220px;
+  overflow: auto;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #ffffff;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, .16);
+}
+
+.deploy-select-menu button {
+  width: 100%;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #334e68;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+}
+
+.deploy-select-menu button:hover {
+  background: #eef6ff;
+  color: #243b53;
+}
+
 .deploy-form-row {
   display: grid;
   grid-template-columns: 132px minmax(0, 1fr);
@@ -261,16 +326,35 @@
 }
 
 .deploy-methods {
+  position: relative;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 4px;
   padding: 4px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #f8fafc;
 }
 
+.deploy-methods::before {
+  content: "";
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 4px;
+  width: calc((100% - 8px) / 2);
+  border-radius: 6px;
+  background: var(--accent);
+  box-shadow: 0 2px 6px rgba(22, 103, 199, .28);
+  transition: transform .2s ease;
+}
+
+.deploy-methods[data-mode="sync"]::before {
+  transform: translateX(100%);
+}
+
 .deploy-methods label {
+  position: relative;
+  z-index: 1;
   min-height: 36px;
   display: flex;
   align-items: center;
@@ -282,12 +366,14 @@
   cursor: pointer;
   font-size: 13px;
   font-weight: 650;
+  text-align: center;
+  user-select: none;
+  transition: color .2s ease;
 }
 
-.deploy-methods label:has(input:checked) {
-  background: #ffffff;
-  color: var(--accent);
-  box-shadow: 0 1px 2px rgba(15, 23, 42, .08);
+.deploy-methods[data-mode="full"] label:first-child,
+.deploy-methods[data-mode="sync"] label:nth-child(2) {
+  color: #ffffff;
 }
 
 .deploy-methods input {

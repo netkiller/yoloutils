@@ -3,7 +3,7 @@
 {% block title %}部署数据集{% endblock %}
 
 {% block styles %}
-  <link rel="stylesheet" href="/static/css/dataset.css?v=20260513-deploy-console">
+  <link rel="stylesheet" href="/static/css/dataset.css?v=20260513-deploy-slider">
 {% endblock %}
 
 {% block content %}
@@ -29,21 +29,29 @@
 
         <label>
           <span>数据集名字</span>
-          <select name="dataset" required {% if selected_dataset %}data-selected-dataset="{{ selected_dataset.name }}"{% endif %}>
-            {% for dataset in datasets %}
-              <option value="{{ dataset.name }}" {% if selected_dataset and selected_dataset.name == dataset.name %}selected{% endif %}>{{ dataset.name }}</option>
-            {% endfor %}
-          </select>
+          <input type="hidden" name="dataset" value="{% if selected_dataset %}{{ selected_dataset.name }}{% endif %}" required data-select-value="dataset">
+          <div class="deploy-select" data-deploy-select>
+            <button type="button" data-select-button>{% if selected_dataset %}{{ selected_dataset.name }}{% else %}选择数据集{% endif %}</button>
+            <div class="deploy-select-menu" data-select-menu hidden>
+              {% for dataset in datasets %}
+                <button type="button" data-select-option data-value="{{ dataset.name }}">{{ dataset.name }}</button>
+              {% endfor %}
+            </div>
+          </div>
         </label>
 
         <label>
           <span>算力服务器</span>
-          <select name="resource_id">
-            <option value="local">本地服务器</option>
+          <input type="hidden" name="resource_id" value="local" data-select-value="resource_id">
+          <div class="deploy-select" data-deploy-select>
+            <button type="button" data-select-button>本地服务器</button>
+            <div class="deploy-select-menu" data-select-menu hidden>
+              <button type="button" data-select-option data-value="local">本地服务器</button>
             {% for item in resources %}
-              <option value="{{ item.id }}">{{ item.name }} · {{ item.address }}</option>
+              <button type="button" data-select-option data-value="{{ item.id }}">{{ item.name }}</button>
             {% endfor %}
-          </select>
+            </div>
+          </div>
         </label>
 
         <label>
@@ -51,7 +59,7 @@
           <input name="target_path" type="text" value="~/datasets/{% if selected_dataset %}{{ selected_dataset.name }}{% endif %}" placeholder="~/datasets/dataset-name" required>
         </label>
 
-        <div class="deploy-methods deploy-mode-segment" role="radiogroup" aria-label="部署方式">
+        <div class="deploy-methods deploy-mode-segment" role="radiogroup" aria-label="部署方式" data-mode-segment data-mode="sync">
           <label><input type="radio" name="mode" value="full"> <span>全量</span></label>
           <label><input type="radio" name="mode" value="sync" checked> <span>同步</span></label>
         </div>
@@ -123,27 +131,74 @@
   <script>
     (() => {
       const form = document.querySelector(".deploy-form");
-      const datasetSelect = form?.elements.dataset;
+      const datasetInput = form?.elements.dataset;
       const targetPath = form?.elements.target_path;
       const activeStatuses = new Set(["排队中", "进行中"]);
+      let activeLogTimer = null;
 
       function syncDatasetName() {
-        if (!datasetSelect || !targetPath) return;
-        const name = datasetSelect.value || "";
+        if (!datasetInput || !targetPath) return;
+        const name = datasetInput.value || "";
         if (!targetPath.value || targetPath.value.startsWith("~/datasets/")) {
           targetPath.value = `~/datasets/${name}`;
         }
       }
 
-      datasetSelect?.addEventListener("change", syncDatasetName);
+      function closeSelects(except) {
+        document.querySelectorAll("[data-deploy-select]").forEach(select => {
+          if (select !== except) select.querySelector("[data-select-menu]")?.setAttribute("hidden", "");
+        });
+      }
+
+      document.querySelectorAll("[data-deploy-select]").forEach(select => {
+        const button = select.querySelector("[data-select-button]");
+        const menu = select.querySelector("[data-select-menu]");
+        const input = select.closest("label")?.querySelector("[data-select-value]");
+        button?.addEventListener("click", event => {
+          event.stopPropagation();
+          const open = menu?.hasAttribute("hidden");
+          closeSelects(select);
+          menu?.toggleAttribute("hidden", !open);
+        });
+        select.querySelectorAll("[data-select-option]").forEach(option => {
+          option.addEventListener("click", event => {
+            event.stopPropagation();
+            if (input) {
+              input.value = option.dataset.value || "";
+              input.dispatchEvent(new Event("change", {bubbles: true}));
+            }
+            if (button) button.textContent = option.textContent || "";
+            menu?.setAttribute("hidden", "");
+          });
+        });
+      });
+      document.addEventListener("click", () => closeSelects());
+      datasetInput?.addEventListener("change", syncDatasetName);
       syncDatasetName();
 
-      function openFooterConsole(text) {
+      document.querySelectorAll("[data-mode-segment]").forEach(segment => {
+        segment.querySelectorAll("label").forEach(label => {
+          label.addEventListener("click", () => {
+            const input = label.querySelector("input[name='mode']");
+            if (!input) return;
+            input.checked = true;
+            segment.dataset.mode = input.value;
+          });
+        });
+        segment.querySelectorAll("input[name='mode']").forEach(input => {
+          input.addEventListener("change", event => {
+            segment.dataset.mode = event.target.value;
+          });
+        });
+      });
+
+      function openFooterConsole(text, status = "", progress = 0) {
         const panel = document.querySelector("[data-footer-console]");
         const output = panel?.querySelector("pre");
         const toggle = document.querySelector("[data-footer-console-toggle]");
         if (!panel || !output) return;
-        output.textContent = text || "控制台暂无输出";
+        const header = status ? [`状态：${status}`, `进度：${progress || 0}%`, ""].join("\n") : "";
+        output.textContent = `${header}${text || "控制台暂无输出"}`;
         panel.hidden = false;
         toggle?.classList.add("active");
         output.scrollTop = output.scrollHeight;
@@ -178,13 +233,31 @@
           openFooterConsole(data.error || "部署日志读取失败");
           return;
         }
-        openFooterConsole(data.log || "暂无日志");
+        openFooterConsole(data.log || "暂无日志", data.status || "", data.progress || 0);
+        return data;
+      }
+
+      function watchTaskLog(button) {
+        if (activeLogTimer) {
+          clearInterval(activeLogTimer);
+          activeLogTimer = null;
+        }
+        loadTaskLog(button).then(data => {
+          if (!data || !activeStatuses.has(data.status)) return;
+          activeLogTimer = setInterval(async () => {
+            const latest = await loadTaskLog(button).catch(() => null);
+            if (latest && !activeStatuses.has(latest.status)) {
+              clearInterval(activeLogTimer);
+              activeLogTimer = null;
+            }
+          }, 1000);
+        }).catch(() => openFooterConsole("部署日志读取失败"));
       }
 
       document.querySelectorAll("[data-deploy-task]").forEach(card => {
         card.querySelector("[data-view-task-log]")?.addEventListener("click", event => {
           event.stopPropagation();
-          loadTaskLog(event.currentTarget).catch(() => openFooterConsole("部署日志读取失败"));
+          watchTaskLog(event.currentTarget);
         });
         const status = card.querySelector("[data-task-status]")?.textContent || "";
         if (activeStatuses.has(status)) {

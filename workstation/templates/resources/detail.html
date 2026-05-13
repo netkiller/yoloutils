@@ -331,6 +331,9 @@
         setText("[data-network-current]", formatRate(networkRx + networkTx));
       }
 
+      updateRates(previous, null);
+      updateCpu(previous, null);
+
       async function refreshMetrics() {
         try {
           const response = await fetch(root.dataset.metricsUrl, {cache: "no-store"});
