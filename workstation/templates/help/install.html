@@ -14,6 +14,36 @@
 
     <section class="help-grid single" aria-label="环境安装命令">
       <article class="help-card help-command-card">
+        <h2>本地环境</h2>
+        <p>工作站通过 SSH 管理远程算力，使用密码连接时需要本机安装 <code>sshpass</code>。</p>
+
+        <div class="help-command-group">
+          <h3>macOS</h3>
+          <pre class="help-command"><code>brew install hudochenkov/sshpass/sshpass</code></pre>
+        </div>
+
+        <div class="help-command-group">
+          <h3>Linux</h3>
+          <pre class="help-command"><code># Debian / Ubuntu
+sudo apt update
+sudo apt install -y sshpass
+
+# CentOS / Rocky / AlmaLinux
+sudo dnf install -y epel-release
+sudo dnf install -y sshpass</code></pre>
+        </div>
+
+        <div class="help-command-group">
+          <h3>Windows</h3>
+          <pre class="help-command"><code># 建议使用 WSL
+wsl --install
+wsl
+sudo apt update
+sudo apt install -y sshpass</code></pre>
+        </div>
+      </article>
+
+      <article class="help-card help-command-card">
         <h2>首次安装</h2>
         <pre class="help-command"><code>python3.14 -m venv /srv/python
 source /srv/python/bin/activate

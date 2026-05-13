@@ -556,6 +556,12 @@ main {
   font-size: 16px;
 }
 
+.help-card h3 {
+  margin: 0 0 8px;
+  color: #334e68;
+  font-size: 13px;
+}
+
 .help-card p {
   margin: 0;
   color: var(--muted);
@@ -592,6 +598,12 @@ main {
   font-size: 13px;
   line-height: 1.7;
   white-space: pre;
+}
+
+.help-command-group {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
 }
 
 .help-steps {
@@ -668,6 +680,22 @@ main {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #ffffff;
+}
+
+.resource-market-card {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.resource-market-actions {
+  justify-self: end;
+  align-self: end;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.resource-market-action {
+  min-width: 64px;
+  text-decoration: none;
 }
 
 .resource-list-card {

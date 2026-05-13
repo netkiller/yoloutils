@@ -3,7 +3,7 @@
 {% block title %}{% if current_project_name %}项目 {{ current_project_name }} 数据集{% else %}数据集{% endif %}{% endblock %}
 
 {% block styles %}
-  <link rel="stylesheet" href="/static/css/dataset.css?v=20260513-deploy">
+  <link rel="stylesheet" href="/static/css/dataset.css?v=20260513-deploy-buttons">
 {% endblock %}
 
 {% block content %}
@@ -16,7 +16,7 @@
       <div class="dataset-head-actions">
         <button class="project-link-button" id="openCreateDataset" type="button">新建数据集</button>
         {% if current_project %}
-          <a class="secondary-dataset-button" href="/dataset/{{ current_project }}/deploy">部署数据集</a>
+          <a class="project-link-button dataset-primary-link" href="/dataset/{{ current_project }}/deploy">部署数据集</a>
         {% endif %}
       </div>
     </section>
@@ -57,7 +57,7 @@
             <div class="dataset-footer">
               <a class="view-button" href="/dataset/{{ dataset.project_dir }}/{{ dataset.name }}">查看</a>
               <a class="download-button" href="/dataset/{{ dataset.project_dir }}/{{ dataset.name }}/download">下载</a>
-              <a class="deploy-button" href="/dataset/{{ dataset.project_dir }}/deploy/{{ dataset.name }}">部署</a>
+              <a class="download-button deploy-button" href="/dataset/{{ dataset.project_dir }}/deploy/{{ dataset.name }}">部署</a>
               <a class="train-button" href="/model/train/new/{{ dataset.project_dir }}?dataset={{ dataset.name }}">去训练</a>
             </div>
           </article>

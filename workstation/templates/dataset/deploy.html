@@ -3,7 +3,7 @@
 {% block title %}部署数据集{% endblock %}
 
 {% block styles %}
-  <link rel="stylesheet" href="/static/css/dataset.css?v=20260513-deploy">
+  <link rel="stylesheet" href="/static/css/dataset.css?v=20260513-deploy-console">
 {% endblock %}
 
 {% block content %}
@@ -11,7 +11,7 @@
     <section class="dataset-head" aria-labelledby="dataset-deploy-title">
       <div>
         <h1 id="dataset-deploy-title">部署数据集</h1>
-        <p class="dataset-description">将当前项目的数据集部署到本地目录或算力列表中的远程服务器。</p>
+        <p class="dataset-description">将当前项目的数据集部署到本地目录或算力服务器。</p>
       </div>
       <div class="dataset-head-actions">
         <a class="secondary-dataset-button" href="/dataset/{{ current_project }}">返回数据集</a>
@@ -23,7 +23,7 @@
         <div class="deploy-card-head">
           <div>
             <h2>添加部署任务</h2>
-            <p>使用 rsync 执行全量、增量或两端同步。</p>
+            <p>使用 rsync 执行全量或同步部署。</p>
           </div>
         </div>
 
@@ -36,40 +36,25 @@
           </select>
         </label>
 
-        <div class="deploy-form-row">
-          <label>
-            <span>目标</span>
-            <select name="target_type" data-target-type>
-              <option value="local">本地</option>
-              <option value="remote">远程</option>
-            </select>
-          </label>
-          <label data-resource-field hidden>
-            <span>远程服务器</span>
-            <select name="resource_id">
-              <option value="">选择算力服务器</option>
-              {% for item in resources %}
-                <option value="{{ item.id }}">{{ item.name }} · {{ item.address }}</option>
-              {% endfor %}
-            </select>
-          </label>
-        </div>
+        <label>
+          <span>算力服务器</span>
+          <select name="resource_id">
+            <option value="local">本地服务器</option>
+            {% for item in resources %}
+              <option value="{{ item.id }}">{{ item.name }} · {{ item.address }}</option>
+            {% endfor %}
+          </select>
+        </label>
 
         <label>
           <span>部署位置</span>
           <input name="target_path" type="text" value="~/datasets/{% if selected_dataset %}{{ selected_dataset.name }}{% endif %}" placeholder="~/datasets/dataset-name" required>
         </label>
 
-        <div class="deploy-methods" role="radiogroup" aria-label="部署方式">
+        <div class="deploy-methods deploy-mode-segment" role="radiogroup" aria-label="部署方式">
           <label><input type="radio" name="mode" value="full"> <span>全量</span></label>
-          <label><input type="radio" name="mode" value="incremental" checked> <span>增量</span></label>
-          <label><input type="radio" name="mode" value="sync"> <span>两端同步</span></label>
+          <label><input type="radio" name="mode" value="sync" checked> <span>同步</span></label>
         </div>
-
-        <label class="deploy-checkbox">
-          <input type="checkbox" name="overwrite">
-          <span>全量部署时，如果目标目录已存在，允许覆盖删除</span>
-        </label>
 
         <button class="project-link-button" type="submit" {% if not datasets %}disabled{% endif %}>开始部署</button>
       </form>
@@ -85,20 +70,43 @@
         {% if tasks %}
           <div class="deploy-task-list">
             {% for task in tasks %}
-              <a id="task-{{ task.id }}" class="deploy-task-card" href="/dataset/{{ current_project }}/deploy/tasks/{{ task.id }}">
-                <div class="deploy-task-title">
-                  <strong>{{ task.dataset }}</strong>
-                  <span>{{ task.status }}</span>
+              <article id="task-{{ task.id }}" class="deploy-task-card" data-deploy-task data-task-id="{{ task.id }}">
+                <button class="deploy-task-toggle" type="button" data-toggle-console>
+                  <span class="deploy-task-title">
+                    <strong>{{ task.dataset }}</strong>
+                    <span data-task-status>{{ task.status }}</span>
+                  </span>
+                  <span class="deploy-task-target">{{ task.target_type_label }} · {{ task.target_label }} · {{ task.target_path }}</span>
+                  <span class="deploy-progress" aria-label="部署进度 {{ task.progress }}%">
+                    <span data-progress-bar style="width: {{ task.progress }}%"></span>
+                  </span>
+                  <span class="deploy-task-meta">
+                    <span>{{ task.mode_label }}</span>
+                    <span>创建 {{ task.created_at }}</span>
+                    <span>{{ task.updated_at }}</span>
+                  </span>
+                </button>
+                <div class="deploy-task-actions">
+                  <button type="button" data-view-task-log data-log-url="/dataset/{{ current_project }}/deploy/tasks/{{ task.id }}/log">查看日志</button>
                 </div>
-                <p>{{ task.target_type_label }} · {{ task.target_label }} · {{ task.target_path }}</p>
-                <div class="deploy-progress" aria-label="部署进度 {{ task.progress }}%">
-                  <span style="width: {{ task.progress }}%"></span>
-                </div>
-                <div class="deploy-task-meta">
-                  <span>{{ task.mode_label }}</span>
-                  <span>{{ task.updated_at }}</span>
-                </div>
-              </a>
+                {% if task.error %}
+                  <p class="deploy-task-error" data-task-error>{{ task.error }}</p>
+                {% else %}
+                  <p class="deploy-task-error" data-task-error hidden></p>
+                {% endif %}
+                {% if task.needs_overwrite_confirm %}
+                  <form class="deploy-overwrite-form" method="post" action="/dataset/{{ current_project }}/deploy/tasks/{{ task.id }}/overwrite">
+                    <span>目标目录已存在。</span>
+                    <button type="submit">删除覆盖后继续</button>
+                  </form>
+                {% endif %}
+                {% if task.can_retry %}
+                  <form class="deploy-retry-form" method="post" action="/dataset/{{ current_project }}/deploy/tasks/{{ task.id }}/retry">
+                    <span>部署失败，可以重新执行该任务。</span>
+                    <button type="submit">失败重试</button>
+                  </form>
+                {% endif %}
+              </article>
             {% endfor %}
           </div>
         {% else %}
@@ -117,13 +125,7 @@
       const form = document.querySelector(".deploy-form");
       const datasetSelect = form?.elements.dataset;
       const targetPath = form?.elements.target_path;
-      const targetType = form?.querySelector("[data-target-type]");
-      const resourceField = form?.querySelector("[data-resource-field]");
-
-      function syncTargetType() {
-        if (!resourceField || !targetType) return;
-        resourceField.hidden = targetType.value !== "remote";
-      }
+      const activeStatuses = new Set(["排队中", "进行中"]);
 
       function syncDatasetName() {
         if (!datasetSelect || !targetPath) return;
@@ -133,10 +135,65 @@
         }
       }
 
-      targetType?.addEventListener("change", syncTargetType);
       datasetSelect?.addEventListener("change", syncDatasetName);
-      syncTargetType();
       syncDatasetName();
+
+      function openFooterConsole(text) {
+        const panel = document.querySelector("[data-footer-console]");
+        const output = panel?.querySelector("pre");
+        const toggle = document.querySelector("[data-footer-console-toggle]");
+        if (!panel || !output) return;
+        output.textContent = text || "控制台暂无输出";
+        panel.hidden = false;
+        toggle?.classList.add("active");
+        output.scrollTop = output.scrollHeight;
+      }
+
+      async function refreshTask(card) {
+        const taskId = card.dataset.taskId;
+        const statusNode = card.querySelector("[data-task-status]");
+        const progressBar = card.querySelector("[data-progress-bar]");
+        const errorNode = card.querySelector("[data-task-error]");
+        if (!taskId) return null;
+        const response = await fetch(`/dataset/{{ current_project }}/deploy/tasks/${taskId}/log`, {cache: "no-store"});
+        const data = await response.json();
+        if (!response.ok || !data.ok) return null;
+        if (statusNode) statusNode.textContent = data.status || "";
+        if (progressBar) progressBar.style.width = `${data.progress || 0}%`;
+        if (errorNode) {
+          errorNode.textContent = data.error || "";
+          errorNode.hidden = !data.error;
+        }
+        if ((data.status === "等待确认" && !card.querySelector(".deploy-overwrite-form")) || (data.status === "失败" && !card.querySelector(".deploy-retry-form"))) {
+          location.reload();
+          return data;
+        }
+        return data;
+      }
+
+      async function loadTaskLog(button) {
+        const response = await fetch(button.dataset.logUrl, {cache: "no-store"});
+        const data = await response.json();
+        if (!response.ok || !data.ok) {
+          openFooterConsole(data.error || "部署日志读取失败");
+          return;
+        }
+        openFooterConsole(data.log || "暂无日志");
+      }
+
+      document.querySelectorAll("[data-deploy-task]").forEach(card => {
+        card.querySelector("[data-view-task-log]")?.addEventListener("click", event => {
+          event.stopPropagation();
+          loadTaskLog(event.currentTarget).catch(() => openFooterConsole("部署日志读取失败"));
+        });
+        const status = card.querySelector("[data-task-status]")?.textContent || "";
+        if (activeStatuses.has(status)) {
+          const timer = setInterval(async () => {
+            const data = await refreshTask(card).catch(() => null);
+            if (data && !activeStatuses.has(data.status)) clearInterval(timer);
+          }, 1000);
+        }
+      });
     })();
   </script>
 {% endblock %}

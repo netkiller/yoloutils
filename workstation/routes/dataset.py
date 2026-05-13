@@ -26,7 +26,7 @@ templates = Jinja2Templates(directory=Path(__file__).resolve().parent.parent / "
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff", ".heic", ".heif"}
 DATASET_NAME_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
 ANNOTATE_DIR = "annotate"
-DEPLOY_MODES = {"full": "全量", "incremental": "增量", "sync": "两端同步"}
+DEPLOY_MODES = {"full": "全量", "sync": "同步", "diff": "同步", "incremental": "同步"}
 DEPLOY_TARGETS = {"local": "本地", "remote": "远程"}
 deploy_lock = threading.Lock()
 
@@ -216,6 +216,8 @@ def deploy_task_view(task: dict):
         "mode_label": DEPLOY_MODES.get(task.get("mode"), task.get("mode", "")),
         "target_label": deploy_target_label(task),
         "target_type_label": DEPLOY_TARGETS.get(task.get("target_type"), task.get("target_type", "")),
+        "needs_overwrite_confirm": task.get("status") == "等待确认" and task.get("mode") == "full",
+        "can_retry": task.get("status") == "失败",
     }
 
 
@@ -356,21 +358,14 @@ def build_rsync_commands(task: dict, source: Path, resource: dict | None, log_pa
             return [], temp_files, auth_error
         target_arg = remote_target(resource, target_path.rstrip("/") + "/")
         base = [*prefix, "rsync", "-az", "-e", rsync_ssh_args(resource, ssh_key)]
-        reverse_source = remote_target(resource, target_path.rstrip("/") + "/")
     else:
         target_arg = str(Path(target_path).expanduser()) + "/"
         base = ["rsync", "-az"]
-        reverse_source = target_arg
 
     if mode == "full":
         return [[*base, "--delete", source_arg, target_arg]], temp_files, ""
-    if mode == "incremental":
-        return [[*base, "--ignore-existing", source_arg, target_arg]], temp_files, ""
-    if mode == "sync":
-        return [
-            [*base, source_arg, target_arg],
-            [*base, reverse_source, source_arg],
-        ], temp_files, ""
+    if mode in {"sync", "diff", "incremental"}:
+        return [[*base, source_arg, target_arg]], temp_files, ""
     append_deploy_log(log_path, f"未知部署方式: {mode}")
     return [], temp_files, "未知部署方式"
 
@@ -395,7 +390,10 @@ def run_deploy_task(project_path: Path, task: dict):
             if error:
                 raise RuntimeError(error)
             if task["mode"] == "full" and exists and not task.get("overwrite"):
-                raise RuntimeError("目标目录已存在，请勾选覆盖删除后重新部署")
+                message = "目标目录已存在，不能执行全量部署。请确认是否删除覆盖。"
+                update_deploy_task(project_path, task_id, status="等待确认", progress=0, error=message)
+                append_deploy_log(log_path, message)
+                return
             prepare_error = remote_prepare(resource, task["target_path"], task["mode"] == "full" and bool(task.get("overwrite")))
             if prepare_error:
                 raise RuntimeError(prepare_error)
@@ -403,7 +401,10 @@ def run_deploy_task(project_path: Path, task: dict):
             target = Path(task["target_path"]).expanduser()
             if task["mode"] == "full" and target.exists():
                 if not task.get("overwrite"):
-                    raise RuntimeError("目标目录已存在，请勾选覆盖删除后重新部署")
+                    message = "目标目录已存在，不能执行全量部署。请确认是否删除覆盖。"
+                    update_deploy_task(project_path, task_id, status="等待确认", progress=0, error=message)
+                    append_deploy_log(log_path, message)
+                    return
                 shutil.rmtree(target)
             target.mkdir(parents=True, exist_ok=True)
 
@@ -428,13 +429,13 @@ def run_deploy_task(project_path: Path, task: dict):
 
 
 def create_deploy_task(project_path: Path, dataset_path: Path, dataset_name: str, form):
-    target_type = (form.get("target_type", "local") or "local").strip()
-    mode = (form.get("mode", "incremental") or "incremental").strip()
+    resource_id = (form.get("resource_id", "local") or "local").strip()
+    target_type = "local" if resource_id == "local" else "remote"
+    mode = (form.get("mode", "sync") or "sync").strip()
     if target_type not in DEPLOY_TARGETS:
         return None, "目标类型不正确"
     if mode not in DEPLOY_MODES:
         return None, "部署方式不正确"
-    resource_id = (form.get("resource_id", "") or "").strip()
     resource = find_resource(workspace_path(), resource_id) if target_type == "remote" else None
     if target_type == "remote" and resource is None:
         return None, "请选择远程服务器"
@@ -453,7 +454,7 @@ def create_deploy_task(project_path: Path, dataset_path: Path, dataset_name: str
         "resource_id": resource_id,
         "resource_name": resource.get("name", "") if resource else "",
         "mode": mode,
-        "overwrite": (form.get("overwrite", "") or "").lower() in {"1", "true", "yes", "on"},
+        "overwrite": False,
         "status": "排队中",
         "progress": 0,
         "error": "",
@@ -732,33 +733,62 @@ async def create_dataset_deploy(request: Request, project: str, name: str = ""):
     )
 
 
-@router.get("/dataset/{project}/deploy/tasks/{task_id}")
-def dataset_deploy_task(request: Request, project: str, task_id: str):
+@router.post("/dataset/{project}/deploy/tasks/{task_id}/overwrite")
+def dataset_deploy_task_overwrite(project: str, task_id: str):
     workspace = workspace_path()
     current_project_path = project_dir(workspace, project)
     if current_project_path is None or not current_project_path.is_dir():
         return JSONResponse({"ok": False, "error": "项目不存在"}, status_code=404)
-    task = next((item for item in read_deploy_tasks(current_project_path) if item.get("id") == task_id), None)
+    tasks = read_deploy_tasks(current_project_path)
+    task = next((item for item in tasks if item.get("id") == task_id), None)
     if task is None:
         return JSONResponse({"ok": False, "error": "部署任务不存在"}, status_code=404)
-    log_path = Path(task.get("log_path", ""))
-    log_text = log_path.read_text(encoding="utf-8", errors="replace") if log_path.is_file() else ""
-    response = templates.TemplateResponse(
-        request=request,
-        name="dataset/deploy_task.html",
-        context={
-            "request": request,
-            "workspace": workspace,
-            "task": deploy_task_view(task),
-            "log_text": log_text,
-            "active_page": "dataset",
-            "current_project": project,
-            "current_project_name": project_name(current_project_path),
-            **header_context(request, workspace),
-        },
-    )
-    response.set_cookie("current_project", project, httponly=True, samesite="lax")
-    return response
+    if task.get("status") != "等待确认" or task.get("mode") != "full":
+        return RedirectResponse(url=f"/dataset/{project}/deploy/{task.get('dataset', '')}", status_code=status.HTTP_303_SEE_OTHER)
+    task["overwrite"] = True
+    task["status"] = "排队中"
+    task["progress"] = 0
+    task["error"] = ""
+    task["updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with deploy_lock:
+        next_tasks = read_deploy_tasks(current_project_path)
+        for item in next_tasks:
+            if item.get("id") == task_id:
+                item.update(task)
+                break
+        write_deploy_tasks(current_project_path, next_tasks)
+    append_deploy_log(Path(task["log_path"]), "已确认删除覆盖，继续部署")
+    threading.Thread(target=run_deploy_task, args=(current_project_path, task), daemon=True, name=f"dataset-deploy-{task_id}").start()
+    return RedirectResponse(url=f"/dataset/{project}/deploy/{task.get('dataset', '')}#task-{task_id}", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/dataset/{project}/deploy/tasks/{task_id}/retry")
+def dataset_deploy_task_retry(project: str, task_id: str):
+    workspace = workspace_path()
+    current_project_path = project_dir(workspace, project)
+    if current_project_path is None or not current_project_path.is_dir():
+        return JSONResponse({"ok": False, "error": "项目不存在"}, status_code=404)
+    tasks = read_deploy_tasks(current_project_path)
+    task = next((item for item in tasks if item.get("id") == task_id), None)
+    if task is None:
+        return JSONResponse({"ok": False, "error": "部署任务不存在"}, status_code=404)
+    if task.get("status") != "失败":
+        return RedirectResponse(url=f"/dataset/{project}/deploy/{task.get('dataset', '')}#task-{task_id}", status_code=status.HTTP_303_SEE_OTHER)
+    task["status"] = "排队中"
+    task["progress"] = 0
+    task["error"] = ""
+    task["overwrite"] = False
+    task["updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with deploy_lock:
+        next_tasks = read_deploy_tasks(current_project_path)
+        for item in next_tasks:
+            if item.get("id") == task_id:
+                item.update(task)
+                break
+        write_deploy_tasks(current_project_path, next_tasks)
+    append_deploy_log(Path(task["log_path"]), "失败任务重试")
+    threading.Thread(target=run_deploy_task, args=(current_project_path, task), daemon=True, name=f"dataset-deploy-{task_id}").start()
+    return RedirectResponse(url=f"/dataset/{project}/deploy/{task.get('dataset', '')}#task-{task_id}", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.get("/dataset/{project}/deploy/tasks/{task_id}/log")
