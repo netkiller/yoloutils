@@ -31,11 +31,14 @@
           <span>数据集</span>
           <select name="dataset" required>
             {% for item in datasets %}
-              <option value="{{ item.name }}" {% if dataset and item.path == dataset.path %}selected{% endif %}>{{ item.name }}</option>
+              <option value="{{ item.key if remote_train else item.name }}" {% if dataset and item.path == dataset.path and (not remote_train or item.resource_id == dataset.resource_id) %}selected{% endif %}>{{ item.name }}{% if remote_train %} · {{ item.resource_name }}{% endif %}</option>
             {% endfor %}
           </select>
         </label>
-        <input type="hidden" name="project" value="{{ dataset.project if dataset else '' }}">
+        {% if not datasets %}
+          <p class="empty-train-dataset">{% if remote_train %}暂无已部署的数据集。请先在数据集部署页完成部署。{% else %}暂无本地数据集。{% endif %}</p>
+        {% endif %}
+        <input type="hidden" name="project" value="{{ dataset.project if dataset else current_project }}">
         <input type="hidden" name="train_scope" value="{{ 'remote' if remote_train else 'local' }}">
         {% if remote_train and dataset %}
           <input type="hidden" name="resource_id" value="{{ dataset.resource_id }}">
@@ -105,7 +108,7 @@
 
         <div class="dialog-actions">
           <a class="secondary-link" href="/dataset">放弃</a>
-          <button type="submit">开始</button>
+          <button type="submit" {% if not datasets %}disabled{% endif %}>开始</button>
         </div>
       </form>
     </dialog>

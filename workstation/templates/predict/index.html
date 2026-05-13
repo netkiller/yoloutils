@@ -13,10 +13,11 @@
         <h1 id="predict-title">{% if project_name %}项目 {{ project_name }} 预测{% else %}预测{% endif %}</h1>
         <p>{{ project_name or current_project or "未选择项目" }}</p>
       </div>
-      <span class="model-count">{{ models | length }} 个模型</span>
+      <div class="model-head-actions">
+        {% include "partials/model_nav.html" %}
+        <span class="model-count">{{ models | length }} 个模型</span>
+      </div>
     </section>
-
-    {% include "partials/model_nav.html" %}
 
     <form class="predict-workbench" method="post" action="{% if current_project %}/model/predict/{{ current_project }}{% else %}/model/predict{% endif %}" enctype="multipart/form-data" data-predict-form>
       <section class="tool-panel predict-model-panel" aria-labelledby="predict-model-title">

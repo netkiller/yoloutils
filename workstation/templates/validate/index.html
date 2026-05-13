@@ -13,10 +13,11 @@
         <h1 id="validate-title">{% if project_name %}项目 {{ project_name }} 验证{% else %}验证{% endif %}</h1>
         <p>{{ project_name or current_project or "未选择项目" }}</p>
       </div>
-      <span class="model-count">{{ models | length }} 个模型 / {{ datasets | length }} 个数据集</span>
+      <div class="model-head-actions">
+        {% include "partials/model_nav.html" %}
+        <span class="model-count">{{ models | length }} 个模型 / {{ datasets | length }} 个数据集</span>
+      </div>
     </section>
-
-    {% include "partials/model_nav.html" %}
 
     <section class="validate-workflow" aria-label="YOLO val">
       <form class="tool-panel validate-run-panel" method="post" action="/model/val/run">

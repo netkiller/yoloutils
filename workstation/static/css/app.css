@@ -474,6 +474,17 @@ main {
   color: var(--accent);
 }
 
+.model-head-actions {
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+}
+
+.model-head-actions .model-subnav {
+  justify-content: flex-end;
+  margin: 0;
+}
+
 .secondary-button,
 .dialog-close {
   height: 32px;

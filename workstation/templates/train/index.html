@@ -17,32 +17,41 @@
         {% endif %}
       </div>
       <div class="train-head-actions">
-        <a class="primary-link" href="/model/train/new{% if current_project %}/{{ current_project }}{% endif %}">本地训练</a>
-        <a class="secondary-link" href="/model/train/new{% if current_project %}/{{ current_project }}{% endif %}?remote=1">远程训练</a>
+        {% include "partials/model_nav.html" %}
       </div>
     </section>
 
-    {% include "partials/model_nav.html" %}
-
     <section class="train-overview" aria-label="训练概览">
-      <div>
-        <span>已完成模型</span>
-        <strong>{{ models | length }}</strong>
+      <div class="train-overview-card charted">
+        <span class="overview-pie" style="background: conic-gradient(#1667c7 0 {{ completed_percent }}%, #e2e8f0 {{ completed_percent }}% 100%)"><b>{{ models | length }}</b></span>
+        <div>
+          <span>已完成模型</span>
+          <strong>{{ completed_percent }}%</strong>
+        </div>
       </div>
-      <div>
-        <span>全部任务</span>
-        <strong>{{ tasks | length }}</strong>
+      <div class="train-overview-card charted">
+        <span class="overview-pie" style="background: conic-gradient(#1667c7 0 {{ completed_percent }}%, #f59e0b {{ completed_percent }}% 100%)"><b>{{ tasks | length }}</b></span>
+        <div>
+          <span>全部任务</span>
+          <strong>{{ completed_count }} 完成 / {{ active_count }} 未完成</strong>
+        </div>
       </div>
-      <div>
+      <div class="train-overview-card">
         <span>训练状态</span>
         <strong>{{ "演示模式" if demo_mode else "可运行" }}</strong>
       </div>
     </section>
 
-    <section class="queue-filter train-segmented" aria-label="训练队列筛选">
-      <a class="{% if queue_filter == 'all' %}active{% endif %}" href="/model/train{% if current_project %}/{{ current_project }}{% endif %}?queue=all">全部</a>
-      <a class="{% if queue_filter == 'active' %}active{% endif %}" href="/model/train{% if current_project %}/{{ current_project }}{% endif %}?queue=active">未完成</a>
-      <a class="{% if queue_filter == 'completed' %}active{% endif %}" href="/model/train{% if current_project %}/{{ current_project }}{% endif %}?queue=completed">已完成</a>
+    <section class="train-task-toolbar" aria-label="训练任务操作">
+      <div class="train-create-actions">
+        <a class="primary-link" href="/model/train/new{% if current_project %}/{{ current_project }}{% endif %}">本地训练</a>
+        <a class="secondary-link" href="/model/train/new{% if current_project %}/{{ current_project }}{% endif %}?remote=1">远程训练</a>
+      </div>
+      <nav class="queue-filter train-segmented" aria-label="训练队列筛选">
+        <a class="{% if queue_filter == 'all' %}active{% endif %}" href="/model/train{% if current_project %}/{{ current_project }}{% endif %}?queue=all">全部</a>
+        <a class="{% if queue_filter == 'active' %}active{% endif %}" href="/model/train{% if current_project %}/{{ current_project }}{% endif %}?queue=active">未完成</a>
+        <a class="{% if queue_filter == 'completed' %}active{% endif %}" href="/model/train{% if current_project %}/{{ current_project }}{% endif %}?queue=completed">已完成</a>
+      </nav>
     </section>
 
     <section class="train-tab-content">
@@ -56,7 +65,7 @@
               <div class="task-card-main">
                 <div class="task-card-title">
                   <div>
-                    <h2>{{ task.name }}</h2>
+                    <h2><span class="train-scope {{ 'remote' if task.is_remote else 'local' }}">{{ task.scope_label }}</span>{{ task.name }}</h2>
                     <p>创建时间 {{ task.display_created_at or task.created_at }}</p>
                   </div>
                   <span class="status" data-task-status>{{ task.status }}</span>
@@ -64,6 +73,17 @@
                 <div class="task-dataset">
                   <span>数据集</span>
                   <strong>{{ task.dataset }}</strong>
+                  {% if task.is_remote %}
+                    <span>算力</span>
+                    {% if task.resource_url %}
+                      <a class="task-resource-link" href="{{ task.resource_url }}">{{ task.resource_name }}</a>
+                    {% else %}
+                      <strong>{{ task.resource_name }}</strong>
+                    {% endif %}
+                    {% if task.remote_dataset_path %}
+                      <span class="task-remote-path">{{ task.remote_dataset_path }}</span>
+                    {% endif %}
+                  {% endif %}
                 </div>
                 <div class="task-params" aria-label="训练参数">
                   {% for param in task.params %}

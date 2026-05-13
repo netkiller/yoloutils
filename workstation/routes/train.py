@@ -2,10 +2,13 @@ import json
 import os
 import csv
 import base64
+import posixpath
 import shlex
 import shutil
+import stat as stat_module
 import subprocess
 import threading
+import time
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import parse_qs
@@ -17,6 +20,7 @@ from fastapi.templating import Jinja2Templates
 
 from routes.dataset import read_deploy_tasks
 from routes.project import header_context
+from routes.resources import find_resource, ssh_connect_kwargs
 
 
 router = APIRouter()
@@ -146,13 +150,16 @@ def remote_dataset_dirs(project: str = ""):
             dataset_name = str(task.get("dataset") or "")
             if not dataset_name:
                 continue
+            resource_id = str(task.get("resource_id") or "")
+            remote_path = str(task.get("target_path") or "")
             items.append(
                 {
+                    "key": f"{resource_id}:{dataset_name}:{remote_path}",
                     "project": project_dir.name,
                     "name": dataset_name,
                     "path": Path(str(task.get("source_path") or project_dir / "datasets" / dataset_name)),
-                    "remote_path": str(task.get("target_path") or ""),
-                    "resource_id": str(task.get("resource_id") or ""),
+                    "remote_path": remote_path,
+                    "resource_id": resource_id,
                     "resource_name": str(task.get("resource_name") or "算力服务器"),
                 }
             )
@@ -162,7 +169,7 @@ def remote_dataset_dirs(project: str = ""):
 def selected_remote_dataset(project: str, dataset: str):
     items = remote_dataset_dirs(project)
     for item in items:
-        if item["name"] == dataset:
+        if item["name"] == dataset or item.get("key") == dataset:
             return item
     return items[0] if items else None
 
@@ -180,23 +187,27 @@ def read_classes(project: str):
     return ["object"]
 
 
+def data_yaml_text(task, dataset_path: str):
+    classes = read_classes(task["project"])
+    names = "\n".join(f"  {index}: {name}" for index, name in enumerate(classes))
+    return "\n".join(
+        [
+            f"path: {dataset_path}",
+            "train: images/train",
+            "val: images/val",
+            "test: images/test",
+            "names:",
+            names,
+            "",
+        ]
+    )
+
+
 def write_data_yaml(task):
     dataset_path = Path(task["dataset_path"])
-    classes = read_classes(task["project"])
     yaml_path = queue_dir() / f"{task['id']}.yaml"
-    names = "\n".join(f"  {index}: {name}" for index, name in enumerate(classes))
     yaml_path.write_text(
-        "\n".join(
-            [
-                f"path: {dataset_path}",
-                "train: train",
-                "val: val",
-                "test: test",
-                "names:",
-                names,
-                "",
-            ]
-        ),
+        data_yaml_text(task, str(dataset_path)),
         encoding="utf-8",
     )
     return yaml_path
@@ -380,6 +391,9 @@ def task_progress(task: dict):
 
 def task_card_view(task: dict):
     progress = task_progress(task)
+    is_remote = task.get("train_scope") == "remote"
+    resource_id = str(task.get("resource_id") or "")
+    resource_url = f"/resources/{task.get('project', '')}/server/{resource_id}" if is_remote and resource_id else ""
     params = []
     for key, label in (
         ("model", "模型"),
@@ -404,6 +418,11 @@ def task_card_view(task: dict):
         "params": params,
         "is_active": task.get("status") in ACTIVE_STATUSES,
         "is_completed": task.get("status") == COMPLETE_STATUS,
+        "is_remote": is_remote,
+        "scope_label": "远程" if is_remote else "本地",
+        "resource_url": resource_url,
+        "resource_name": task.get("resource_name") or "算力服务器",
+        "remote_dataset_path": task.get("remote_dataset_path", ""),
     }
 
 
@@ -573,7 +592,146 @@ def train_command(task):
     return command
 
 
+def remote_train_command(task, remote_yaml: str, remote_runs_root: str):
+    command = [
+        "yolo",
+        "detect",
+        "train",
+        f"data={remote_yaml}",
+        f"model={task['model']}",
+        f"epochs={task['epochs']}",
+        f"project={remote_runs_root}",
+        f"name={task['name']}",
+        "exist_ok=True",
+    ]
+    for key in ("imgsz", "batch", "device", "workers", "amp"):
+        value = task.get(key)
+        if value not in (None, ""):
+            command.append(f"{key}={value}")
+    return command
+
+
+def sftp_mkdirs(sftp, path: str):
+    current = "/" if path.startswith("/") else "."
+    for part in [item for item in path.split("/") if item]:
+        current = posixpath.join(current, part) if current != "/" else f"/{part}"
+        try:
+            sftp.stat(current)
+        except OSError:
+            sftp.mkdir(current)
+
+
+def download_remote_tree(sftp, remote_path: str, local_path: Path):
+    local_path.mkdir(parents=True, exist_ok=True)
+    for item in sftp.listdir_attr(remote_path):
+        if item.filename in {".", ".."}:
+            continue
+        remote_child = posixpath.join(remote_path, item.filename)
+        local_child = local_path / item.filename
+        if stat_module.S_ISDIR(item.st_mode):
+            download_remote_tree(sftp, remote_child, local_child)
+        else:
+            local_child.parent.mkdir(parents=True, exist_ok=True)
+            sftp.get(remote_child, str(local_child))
+
+
+def append_channel_output(task_id: str, channel, stderr: bool = False):
+    chunks = []
+    recv_ready = channel.recv_stderr_ready if stderr else channel.recv_ready
+    recv = channel.recv_stderr if stderr else channel.recv
+    while recv_ready():
+        chunks.append(recv(4096))
+    if chunks:
+        append_log(task_id, b"".join(chunks).decode("utf-8", errors="replace"))
+
+
+def run_remote_task(task):
+    task_id = task["id"]
+    run_dir = expected_run_dir(task)
+    update_task(
+        task_id,
+        status="进行中",
+        run_path=str(run_dir),
+        started_at=datetime.now().isoformat(timespec="seconds"),
+    )
+    try:
+        import paramiko
+    except ImportError:
+        append_log(task_id, "远程训练需要 paramiko，请先安装 paramiko。\n")
+        update_task(task_id, status="失败", finished_at=datetime.now().isoformat(timespec="seconds"))
+        return
+
+    resource = find_resource(workspace_path(), str(task.get("resource_id") or ""))
+    if resource is None:
+        append_log(task_id, "算力服务器不存在，无法启动远程训练。\n")
+        update_task(task_id, status="失败", finished_at=datetime.now().isoformat(timespec="seconds"))
+        return
+    remote_dataset_path = str(task.get("remote_dataset_path") or "").strip()
+    if not remote_dataset_path:
+        append_log(task_id, "远程数据集路径为空，无法启动远程训练。\n")
+        update_task(task_id, status="失败", finished_at=datetime.now().isoformat(timespec="seconds"))
+        return
+
+    client = paramiko.SSHClient()
+    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    sftp = None
+    try:
+        append_log(task_id, f"连接算力服务器：{resource.get('name') or resource.get('host')}\n")
+        client.connect(
+            hostname=resource["host"],
+            port=int(resource.get("port") or 22),
+            username=resource.get("username") or None,
+            timeout=10,
+            **ssh_connect_kwargs(resource),
+        )
+        sftp = client.open_sftp()
+        sftp.chdir(".")
+        remote_home = sftp.normalize(".")
+        remote_work_dir = posixpath.join(remote_home, ".yoloutils", "train")
+        remote_runs_root = posixpath.join(remote_home, "runs", "yoloutils", task["project"])
+        remote_yaml = posixpath.join(remote_work_dir, f"{task_id}.yaml")
+        remote_run_dir = posixpath.join(remote_runs_root, task["name"])
+        sftp_mkdirs(sftp, remote_work_dir)
+        sftp_mkdirs(sftp, remote_runs_root)
+        with sftp.file(remote_yaml, "w") as handle:
+            handle.write(data_yaml_text(task, remote_dataset_path))
+        update_task(task_id, remote_run_path=remote_run_dir)
+
+        command = remote_train_command(task, remote_yaml, remote_runs_root)
+        shell_command = " ".join(shlex.quote(str(part)) for part in command)
+        append_log(task_id, f"远程数据集：{remote_dataset_path}\n")
+        append_log(task_id, "$ " + shell_command + "\n\n")
+        _, stdout, _ = client.exec_command(shell_command, get_pty=True)
+        channel = stdout.channel
+        while not channel.exit_status_ready():
+            append_channel_output(task_id, channel)
+            append_channel_output(task_id, channel, stderr=True)
+            time.sleep(0.2)
+        append_channel_output(task_id, channel)
+        append_channel_output(task_id, channel, stderr=True)
+        return_code = channel.recv_exit_status()
+        append_log(task_id, f"\n远程进程退出码: {return_code}\n")
+        if return_code != 0:
+            update_task(task_id, status="失败", finished_at=datetime.now().isoformat(timespec="seconds"))
+            return
+
+        append_log(task_id, f"下载远程 runs 目录：{remote_run_dir}\n")
+        download_remote_tree(sftp, remote_run_dir, run_dir)
+        append_log(task_id, f"已下载到本地：{run_dir}\n")
+        update_task(task_id, status=COMPLETE_STATUS, finished_at=datetime.now().isoformat(timespec="seconds"))
+    except Exception as error:
+        append_log(task_id, f"\n远程训练失败: {error}\n")
+        update_task(task_id, status="失败", finished_at=datetime.now().isoformat(timespec="seconds"))
+    finally:
+        if sftp is not None:
+            sftp.close()
+        client.close()
+
+
 def run_task(task):
+    if task.get("train_scope") == "remote":
+        run_remote_task(task)
+        return
     task_id = task["id"]
     run_dir = expected_run_dir(task)
     update_task(
@@ -653,6 +811,10 @@ def train(request: Request, tab: str = "", queue: str = "all"):
     if current_project:
         tasks = [task for task in tasks if task.get("project") == current_project]
     queue_filter = train_queue_filter(queue)
+    completed_count = sum(1 for task in tasks if task.get("status") == COMPLETE_STATUS)
+    active_count = len(tasks) - completed_count
+    completed_percent = round(completed_count / len(tasks) * 100) if tasks else 0
+    active_percent = round(active_count / len(tasks) * 100) if tasks else 0
     response = templates.TemplateResponse(
         request=request,
             name="train/index.html",
@@ -662,6 +824,10 @@ def train(request: Request, tab: str = "", queue: str = "all"):
             "tasks": tasks,
             "queue_tasks": [task_card_view(task) for task in filtered_queue_tasks(tasks, queue_filter)],
             "models": model_items(tasks, current_project),
+            "completed_count": completed_count,
+            "active_count": active_count,
+            "completed_percent": completed_percent,
+            "active_percent": active_percent,
             "queue_filter": queue_filter,
             "active_page": "model",
             "model_active": "train",
@@ -829,9 +995,12 @@ async def create_train(request: Request):
     form = await form_fields(request)
     project = form.get("project", [""])[0]
     dataset = form.get("dataset", [""])[0]
-    dataset_item = selected_dataset(project, dataset)
+    is_remote = form.get("train_scope", ["local"])[0] == "remote"
+    dataset_item = selected_remote_dataset(project, dataset) if is_remote else selected_dataset(project, dataset)
     if dataset_item is None:
-        return RedirectResponse(url="/model/train/new", status_code=status.HTTP_303_SEE_OTHER)
+        base_url = f"/model/train/new/{project}" if project else "/model/train/new"
+        suffix = "?remote=1" if is_remote else ""
+        return RedirectResponse(url=f"{base_url}{suffix}", status_code=status.HTTP_303_SEE_OTHER)
 
     model_version = clean_model_version(form.get("model_version", ["YOLO26"])[0])
     model_size = clean_model_size(form.get("model_size", ["N"])[0])
@@ -842,6 +1011,7 @@ async def create_train(request: Request):
         "project": dataset_item["project"],
         "dataset": dataset_item["name"],
         "dataset_path": str(dataset_item["path"]),
+        "train_scope": "remote" if is_remote else "local",
         "model_version": model_version,
         "model_size": model_size,
         "model": model_weight(model_version, model_size),
@@ -855,6 +1025,14 @@ async def create_train(request: Request):
         "status": "演示模式" if demo_mode_enabled() else "排队中",
         "created_at": datetime.now().isoformat(timespec="seconds"),
     }
+    if is_remote:
+        task.update(
+            {
+                "resource_id": dataset_item.get("resource_id", ""),
+                "resource_name": dataset_item.get("resource_name", "算力服务器"),
+                "remote_dataset_path": dataset_item.get("remote_path", ""),
+            }
+        )
     with queue_lock:
         tasks = load_tasks()
         tasks.append(task)
@@ -931,6 +1109,10 @@ def train_with_project(request: Request, project: str, tab: str = "", queue: str
     if current_project:
         tasks = [task for task in tasks if task.get("project") == current_project]
     queue_filter = train_queue_filter(queue)
+    completed_count = sum(1 for task in tasks if task.get("status") == COMPLETE_STATUS)
+    active_count = len(tasks) - completed_count
+    completed_percent = round(completed_count / len(tasks) * 100) if tasks else 0
+    active_percent = round(active_count / len(tasks) * 100) if tasks else 0
     response = templates.TemplateResponse(
         request=request,
             name="train/index.html",
@@ -940,6 +1122,10 @@ def train_with_project(request: Request, project: str, tab: str = "", queue: str
             "tasks": tasks,
             "queue_tasks": [task_card_view(task) for task in filtered_queue_tasks(tasks, queue_filter)],
             "models": model_items(tasks, current_project),
+            "completed_count": completed_count,
+            "active_count": active_count,
+            "completed_percent": completed_percent,
+            "active_percent": active_percent,
             "queue_filter": queue_filter,
             "active_page": "model",
             "model_active": "train",
