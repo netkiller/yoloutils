@@ -1862,7 +1862,7 @@ main {
   bottom: 0;
   z-index: 9;
   height: var(--public-console-height, 160px);
-  overflow: auto;
+  overflow: hidden;
   border-top: 1px solid #1f2937;
   background: #111827;
   color: #d1d5db;
@@ -1882,13 +1882,16 @@ body.public-console-resizing {
 }
 
 .footer-console-resizer {
-  position: sticky;
+  position: absolute;
   top: 0;
+  left: 0;
+  right: 0;
   z-index: 1;
-  height: 6px;
+  height: 10px;
   cursor: row-resize;
   border-bottom: 1px solid #1f2937;
   background: #263244;
+  touch-action: none;
 }
 
 .footer-console-resizer:hover,
@@ -1897,8 +1900,10 @@ body.public-console-resizing .footer-console-resizer {
 }
 
 .footer-console pre {
+  height: 100%;
   margin: 0;
-  padding: 10px 14px 14px;
+  padding: 16px 14px 14px;
+  overflow: auto;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12px;
   line-height: 1.45;
