@@ -1,6 +1,8 @@
 import hashlib
 import io
 import json
+import posixpath
+import stat as stat_module
 import time
 import asyncio
 import subprocess
@@ -748,6 +750,95 @@ def resource_ssh(resource_id: str, request: Request, project: str = ""):
             "current_project": current_project,
             "resources_base": resources_base(current_project),
             "resource": resource,
+            **header_context(request, workspace),
+        },
+    )
+    if current_project:
+        response.set_cookie("current_project", current_project, httponly=True, samesite="lax")
+    return response
+
+
+def sftp_items(resource: dict, requested_path: str):
+    import paramiko
+
+    client = paramiko.SSHClient()
+    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    connect_kwargs = ssh_connect_kwargs(resource)
+    client.connect(
+        hostname=resource["host"],
+        port=resource["port"],
+        username=resource["username"],
+        timeout=8,
+        banner_timeout=8,
+        auth_timeout=8,
+        look_for_keys=False,
+        allow_agent=False,
+        **connect_kwargs,
+    )
+    sftp = None
+    try:
+        sftp = client.open_sftp()
+        path = (requested_path or ".").strip() or "."
+        sftp.chdir(path)
+        current_path = sftp.normalize(".")
+        rows = []
+        for entry in sorted(sftp.listdir_attr("."), key=lambda item: (not stat_module.S_ISDIR(item.st_mode), item.filename.lower())):
+            is_dir = stat_module.S_ISDIR(entry.st_mode)
+            child_path = posixpath.join(current_path, entry.filename)
+            rows.append(
+                {
+                    "name": entry.filename,
+                    "path": child_path,
+                    "href": "?" + urlencode({"path": child_path}),
+                    "type": "目录" if is_dir else "文件",
+                    "is_dir": is_dir,
+                    "size": entry.st_size,
+                    "mtime": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(entry.st_mtime)),
+                }
+            )
+        parent_path = posixpath.dirname(current_path.rstrip("/")) or "/"
+        return {
+            "ok": True,
+            "path": current_path,
+            "parent_href": "?" + urlencode({"path": parent_path}),
+            "items": rows,
+            "error": "",
+        }
+    finally:
+        if sftp is not None:
+            try:
+                sftp.close()
+            except Exception:
+                pass
+        client.close()
+
+
+@router.get("/resources/server/{resource_id}/sftp")
+@router.get("/resources/{project}/server/{resource_id}/sftp")
+def resource_sftp(resource_id: str, request: Request, project: str = "", path: str = ""):
+    workspace = workspace_path()
+    login_response = require_team_login(request, workspace)
+    if login_response:
+        return login_response
+    current_project = current_project_from_request(request, workspace, project)
+    resource = find_resource(workspace, resource_id)
+    if resource is None:
+        return RedirectResponse(url=resources_base(current_project), status_code=status.HTTP_303_SEE_OTHER)
+    try:
+        listing = sftp_items(resource, path)
+    except Exception as error:
+        listing = {"ok": False, "path": path or ".", "parent_href": "", "items": [], "error": str(error)}
+    response = templates.TemplateResponse(
+        request=request,
+        name="resources/sftp.html",
+        context={
+            "request": request,
+            "workspace": workspace,
+            "active_page": "resources",
+            "current_project": current_project,
+            "resources_base": resources_base(current_project),
+            "resource": resource,
+            "listing": listing,
             **header_context(request, workspace),
         },
     )

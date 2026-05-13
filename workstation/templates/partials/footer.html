@@ -78,6 +78,7 @@
       if (!panel) return;
       const open = panel.hasAttribute("hidden");
       panel.toggleAttribute("hidden", !open);
+      document.body.classList.toggle("public-console-open", open);
       event.currentTarget.classList.toggle("active", open);
       if (open) loadConsole();
     });

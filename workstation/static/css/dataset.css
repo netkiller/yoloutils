@@ -62,8 +62,28 @@
 .card-title {
   display: flex;
   align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 6px;
+}
+
+.card-title .dataset-card-icon {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+  color: var(--accent);
+  font-size: 34px;
+  line-height: 1;
+}
+
+.card-title > div {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .card-title h2 {
@@ -72,10 +92,15 @@
 }
 
 .card-title p,
-.card-title span {
+.card-title > span:not(.dataset-card-icon) {
   margin: 4px 0 0;
   color: var(--muted);
   font-size: 13px;
+}
+
+.card-title > span:not(.dataset-card-icon) {
+  flex: 0 0 auto;
+  margin-left: 8px;
 }
 
 .dataset-chart {
@@ -156,6 +181,44 @@
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
+}
+
+.dataset-build-status {
+  display: grid;
+  gap: 8px;
+}
+
+.dataset-build-status > div:first-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.dataset-build-status strong {
+  color: var(--accent);
+}
+
+.dataset-build-progress {
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e2e8f0;
+}
+
+.dataset-build-progress span {
+  height: 100%;
+  display: block;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #1667c7, #16a34a);
+}
+
+.dataset-build-status p {
+  margin: 0;
+  color: #9a3412;
+  font-size: 12px;
 }
 
 .view-button,
@@ -414,29 +477,47 @@
   background: #f8fbff;
 }
 
-.deploy-task-toggle {
-  width: 100%;
-  display: grid;
-  gap: 8px;
-  padding: 12px;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  font: inherit;
-  text-align: left;
-}
-
-.deploy-task-title,
-.deploy-task-meta,
-.deploy-log-progress {
+.deploy-task-head {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 12px 0;
 }
 
-.deploy-task-title strong {
+.deploy-task-title-block {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.deploy-task-name {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.deploy-task-icon {
+  width: auto;
+  height: auto;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: 20px;
+  line-height: 1;
+}
+
+.deploy-task-name strong {
   min-width: 0;
   overflow: hidden;
   font-size: 16px;
@@ -444,8 +525,14 @@
   white-space: nowrap;
 }
 
-.deploy-task-title span {
+.deploy-task-time {
+  color: #52606d;
+  font-size: 12px;
+}
+
+.deploy-task-status {
   flex: 0 0 auto;
+  margin-left: auto;
   padding: 3px 8px;
   border-radius: 999px;
   background: #eef6ff;
@@ -454,11 +541,94 @@
   font-weight: 650;
 }
 
-.deploy-task-target,
-.deploy-task-meta {
-  margin: 0;
-  color: var(--muted);
+.deploy-task-head button {
+  flex: 0 0 auto;
+  height: 30px;
+  min-width: 54px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #ffffff;
+  color: #334e68;
+  cursor: pointer;
+  font: inherit;
   font-size: 12px;
+  font-weight: 650;
+}
+
+.deploy-task-head button:hover {
+  background: #e6f0ff;
+  color: #243b53;
+}
+
+.deploy-task-line {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px 0;
+  min-width: 0;
+}
+
+.deploy-detail {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #52606d;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.deploy-detail b {
+  flex: 0 0 auto;
+  color: #334e68;
+  font-weight: 700;
+}
+
+.deploy-target-path {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.deploy-mode-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #334e68;
+  font-weight: 650;
+}
+
+.deploy-mode-badge i {
+  width: auto;
+  height: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0;
+  background: transparent;
+  color: var(--accent);
+  font-style: normal;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.deploy-task-progress-row,
+.deploy-log-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.deploy-task-progress-row {
+  padding: 10px 12px 0;
+}
+
+.deploy-task-progress-row strong {
+  flex: 0 0 38px;
+  color: #334e68;
+  font-size: 12px;
+  text-align: right;
 }
 
 .deploy-task-error {
@@ -500,31 +670,9 @@
   font-weight: 650;
 }
 
-.deploy-task-actions {
-  display: flex;
-  justify-content: flex-end;
-  padding: 0 12px 12px;
-}
-
-.deploy-task-actions button {
-  height: 30px;
-  padding: 0 10px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: #ffffff;
-  color: #334e68;
-  cursor: pointer;
-  font: inherit;
-  font-size: 12px;
-  font-weight: 650;
-}
-
-.deploy-task-actions button:hover {
-  background: #e6f0ff;
-  color: #243b53;
-}
-
 .deploy-progress {
+  flex: 1 1 auto;
+  min-width: 0;
   height: 9px;
   overflow: hidden;
   border-radius: 999px;
@@ -983,7 +1131,7 @@
 }
 
 .dataset-dialog {
-  width: min(440px, calc(100vw - 32px));
+  width: min(620px, calc(100vw - 32px));
   padding: 0;
   border: 0;
   border-radius: 8px;
@@ -1020,6 +1168,66 @@
   font-size: 13px;
 }
 
+.dataset-name-row {
+  display: grid;
+  grid-template-columns: 62px minmax(0, 1fr);
+  gap: 6px;
+  align-items: end;
+}
+
+.dataset-name-field,
+.dataset-name-row .dataset-icon-random {
+  min-width: 0;
+}
+
+.dataset-icon-random {
+  display: grid;
+  gap: 8px;
+}
+
+.dataset-icon-random button {
+  width: 56px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.dataset-icon-random button:hover {
+  background: #e6f0ff;
+}
+
+.dataset-range-control {
+  display: grid;
+  gap: 8px;
+}
+
+.dataset-range-control span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dataset-range-control b {
+  color: var(--accent);
+}
+
+.dataset-range-control input[type="range"] {
+  width: 100%;
+  height: 10px;
+  padding: 0;
+  border: 0;
+  accent-color: var(--accent);
+}
+
 .dataset-dialog input,
 .dataset-dialog select {
   width: 100%;
@@ -1045,6 +1253,21 @@
   border-color: var(--accent);
   background: var(--accent);
   color: #ffffff;
+}
+
+.dataset-dialog .dataset-icon-random button {
+  width: 56px;
+  height: 44px;
+  padding: 0;
+  color: var(--accent);
+  font-size: 24px;
+}
+
+.dataset-dialog .dataset-range-control input[type="range"] {
+  height: 10px;
+  padding: 0;
+  border: 0;
+  accent-color: var(--accent);
 }
 
 .dataset-dialog-close {

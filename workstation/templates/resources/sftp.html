@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block title %}SFTP {{ resource.name }}{% endblock %}
+
+{% block content %}
+  <main class="resources-main sftp-main">
+    <section class="toolbar" aria-labelledby="resource-sftp-title">
+      <div>
+        <h1 id="resource-sftp-title">SFTP</h1>
+        <p class="project-description muted">{{ resource.name }} · {{ resource.address }}</p>
+      </div>
+      <div class="toolbar-actions">
+        <a class="resource-back-link" href="{{ resources_base }}/server/{{ resource.id }}/ssh">OpenSSH</a>
+        <a class="resource-back-link" href="{{ resources_base }}/server/{{ resource.id }}">返回详情</a>
+      </div>
+    </section>
+
+    <section class="resource-card sftp-card">
+      <div class="resource-card-head">
+        <div>
+          <h2>{{ listing["path"] }}</h2>
+          <p>远程文件浏览器</p>
+        </div>
+        {% if listing["ok"] and listing["path"] != "/" %}
+          <a class="secondary-button" href="{{ listing["parent_href"] }}">上级目录</a>
+        {% endif %}
+      </div>
+
+      {% if not listing["ok"] %}
+        <div class="resource-alert" role="alert">
+          <strong>SFTP 连接失败</strong>
+          <span>{{ listing["error"] }}</span>
+        </div>
+      {% elif listing["items"] %}
+        <div class="sftp-table-wrap">
+          <table class="sftp-table">
+            <thead>
+              <tr>
+                <th>名称</th>
+                <th>类型</th>
+                <th>大小</th>
+                <th>修改时间</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for item in listing["items"] %}
+                <tr>
+                  <td>
+                    {% if item.is_dir %}
+                      <a href="{{ item.href }}"><span aria-hidden="true">▣</span>{{ item.name }}</a>
+                    {% else %}
+                      <span><span aria-hidden="true">▤</span>{{ item.name }}</span>
+                    {% endif %}
+                  </td>
+                  <td>{{ item.type }}</td>
+                  <td>{{ item.size }}</td>
+                  <td>{{ item.mtime }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="empty compact">空目录</div>
+      {% endif %}
+    </section>
+  </main>
+
+  {% set footer_id = "resources" %}
+  {% set footer_left = workspace %}
+  {% include "partials/footer.html" %}
+{% endblock %}

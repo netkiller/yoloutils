@@ -1797,17 +1797,79 @@ main {
   outline-offset: 2px;
 }
 
+.sftp-main {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 16px;
+}
+
+.sftp-card {
+  min-height: 0;
+}
+
+.sftp-table-wrap {
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.sftp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.sftp-table th,
+.sftp-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #e2e8f0;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.sftp-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #f8fafc;
+  color: var(--muted);
+  font-weight: 750;
+}
+
+.sftp-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.sftp-table a,
+.sftp-table td > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #243b53;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.sftp-table a:hover {
+  color: var(--accent);
+}
+
 .footer-console {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: 40px;
+  bottom: 0;
   z-index: 9;
   height: 160px;
   overflow: auto;
   border-top: 1px solid #1f2937;
   background: #111827;
   color: #d1d5db;
+}
+
+body.public-console-open .site-footer {
+  bottom: 160px;
 }
 
 .footer-console[hidden] {

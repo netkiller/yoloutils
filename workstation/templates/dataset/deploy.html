@@ -3,7 +3,7 @@
 {% block title %}部署数据集{% endblock %}
 
 {% block styles %}
-  <link rel="stylesheet" href="/static/css/dataset.css?v=20260513-deploy-slider">
+  <link rel="stylesheet" href="/static/css/dataset.css?v=20260513-deploy-task-line">
 {% endblock %}
 
 {% block content %}
@@ -23,7 +23,7 @@
         <div class="deploy-card-head">
           <div>
             <h2>添加部署任务</h2>
-            <p>使用 rsync 执行全量或同步部署。</p>
+            <p>优先使用 rsync 执行全量或同步部署，缺失时自动使用 scp。</p>
           </div>
         </div>
 
@@ -79,24 +79,30 @@
           <div class="deploy-task-list">
             {% for task in tasks %}
               <article id="task-{{ task.id }}" class="deploy-task-card" data-deploy-task data-task-id="{{ task.id }}">
-                <button class="deploy-task-toggle" type="button" data-toggle-console>
-                  <span class="deploy-task-title">
-                    <strong>{{ task.dataset }}</strong>
-                    <span data-task-status>{{ task.status }}</span>
-                  </span>
-                  <span class="deploy-task-target">{{ task.target_type_label }} · {{ task.target_label }} · {{ task.target_path }}</span>
-                  <span class="deploy-progress" aria-label="部署进度 {{ task.progress }}%">
-                    <span data-progress-bar style="width: {{ task.progress }}%"></span>
-                  </span>
-                  <span class="deploy-task-meta">
-                    <span>{{ task.mode_label }}</span>
-                    <span>创建 {{ task.created_at }}</span>
-                    <span>{{ task.updated_at }}</span>
-                  </span>
-                </button>
-                <div class="deploy-task-actions">
-                  <button type="button" data-view-task-log data-log-url="/dataset/{{ current_project }}/deploy/tasks/{{ task.id }}/log">查看日志</button>
+                <div class="deploy-task-head">
+                  <div class="deploy-task-title-block">
+                    <div class="deploy-task-name">
+                      <span class="deploy-task-icon" aria-hidden="true">{{ task.icon }}</span>
+                      <strong>{{ task.dataset }}</strong>
+                    </div>
+                    <span class="deploy-task-time">时间 {{ task.created_at }}</span>
+                  </div>
+                  <button type="button" data-view-task-log data-log-url="/dataset/{{ current_project }}/deploy/tasks/{{ task.id }}/log">查看</button>
                 </div>
+                <div class="deploy-task-line">
+                  <span class="deploy-detail deploy-mode-badge"><i aria-hidden="true">{{ task.mode_icon }}</i><b>{{ task.mode_label }}</b></span>
+                  <span class="deploy-detail"><b>目标</b>{{ task.target_type_label }} · {{ task.target_label }}</span>
+                  <span class="deploy-detail deploy-target-path"><b>位置</b>{{ task.target_path }}</span>
+                  <span class="deploy-task-status" data-task-status>{{ task.status }}</span>
+                </div>
+                {% if not task.completed %}
+                  <div class="deploy-task-progress-row">
+                    <span class="deploy-progress" aria-label="部署进度 {{ task.progress }}%">
+                      <span data-progress-bar style="width: {{ task.progress }}%"></span>
+                    </span>
+                    <strong>{{ task.progress }}%</strong>
+                  </div>
+                {% endif %}
                 {% if task.error %}
                   <p class="deploy-task-error" data-task-error>{{ task.error }}</p>
                 {% else %}
@@ -200,6 +206,7 @@
         const header = status ? [`状态：${status}`, `进度：${progress || 0}%`, ""].join("\n") : "";
         output.textContent = `${header}${text || "控制台暂无输出"}`;
         panel.hidden = false;
+        document.body.classList.add("public-console-open");
         toggle?.classList.add("active");
         output.scrollTop = output.scrollHeight;
       }

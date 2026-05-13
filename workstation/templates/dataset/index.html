@@ -3,7 +3,7 @@
 {% block title %}{% if current_project_name %}项目 {{ current_project_name }} 数据集{% else %}数据集{% endif %}{% endblock %}
 
 {% block styles %}
-  <link rel="stylesheet" href="/static/css/dataset.css?v=20260513-deploy-buttons">
+  <link rel="stylesheet" href="/static/css/dataset.css?v=20260513-dataset-icon-size">
 {% endblock %}
 
 {% block content %}
@@ -24,8 +24,9 @@
     {% if datasets %}
       <section class="dataset-grid" aria-label="数据集列表">
         {% for dataset in datasets %}
-          <article class="dataset-card">
+          <article class="dataset-card"{% if dataset.building %} data-building="true"{% endif %}>
             <div class="card-title">
+              <span class="dataset-card-icon" aria-hidden="true">{{ dataset.icon }}</span>
               <div>
                 <h2>{{ dataset.name }}</h2>
                 <p>{{ dataset.project }}</p>
@@ -54,12 +55,22 @@
               </div>
             </div>
 
-            <div class="dataset-footer">
-              <a class="view-button" href="/dataset/{{ dataset.project_dir }}/{{ dataset.name }}">查看</a>
-              <a class="download-button" href="/dataset/{{ dataset.project_dir }}/{{ dataset.name }}/download">下载</a>
-              <a class="download-button deploy-button" href="/dataset/{{ dataset.project_dir }}/deploy/{{ dataset.name }}">部署</a>
-              <a class="train-button" href="/model/train/new/{{ dataset.project_dir }}?dataset={{ dataset.name }}">去训练</a>
-            </div>
+            {% if dataset.building %}
+              <div class="dataset-build-status">
+                <div>
+                  <span>{{ dataset.build_status }}</span>
+                  <strong>{{ dataset.build_progress }}%</strong>
+                </div>
+                <div class="dataset-build-progress"><span style="width: {{ dataset.build_progress }}%"></span></div>
+                {% if dataset.build_error %}<p>{{ dataset.build_error }}</p>{% endif %}
+              </div>
+            {% else %}
+              <div class="dataset-footer">
+                <a class="view-button" href="/dataset/{{ dataset.project_dir }}/{{ dataset.name }}">查看</a>
+                <a class="download-button" href="/dataset/{{ dataset.project_dir }}/{{ dataset.name }}/download">下载</a>
+                <a class="download-button deploy-button" href="/dataset/{{ dataset.project_dir }}/deploy/{{ dataset.name }}">部署</a>
+              </div>
+            {% endif %}
           </article>
         {% endfor %}
       </section>
@@ -82,9 +93,22 @@
         <span>当前项目</span>
         <input type="text" value="{{ current_project or '未选择项目' }}" disabled>
       </label>
-      <label><span>数据集名称</span><input name="name" type="text" autocomplete="off" required></label>
-      <label><span>val 数量（百分比）</span><input name="val_percent" type="number" min="0" max="100" step="1" value="20" required></label>
-      <label><span>test 数量（百分比）</span><input name="test_percent" type="number" min="0" max="100" step="1" value="0" required></label>
+      <div class="dataset-name-row">
+        <label class="dataset-icon-random">
+          <span>图标</span>
+          <input name="icon" type="hidden" value="{{ dataset_icons[0] if dataset_icons else '▦' }}" data-dataset-icon-value>
+          <button type="button" data-random-dataset-icon aria-label="随机更换图标">{{ dataset_icons[0] if dataset_icons else '▦' }}</button>
+        </label>
+        <label class="dataset-name-field"><span>数据集名称</span><input name="name" type="text" autocomplete="off" required></label>
+      </div>
+      <label class="dataset-range-control">
+        <span>val 数据 <b data-range-value="val_percent">20%</b></span>
+        <input name="val_percent" type="range" min="0" max="80" step="5" value="20" required data-range-input="val_percent">
+      </label>
+      <label class="dataset-range-control">
+        <span>test 数据 <b data-range-value="test_percent">0%</b></span>
+        <input name="test_percent" type="range" min="0" max="80" step="5" value="0" required data-range-input="test_percent">
+      </label>
       <div class="dataset-dialog-actions">
         <button type="button" id="cancelDatasetDialog">取消</button>
         <button type="submit">确认</button>
@@ -97,8 +121,29 @@
       const dialog = document.getElementById("datasetDialog");
       const openButton = document.getElementById("openCreateDataset");
       const form = document.getElementById("datasetForm");
+      const datasetIcons = {{ dataset_icons | list | tojson }};
+      const iconInput = document.querySelector("[data-dataset-icon-value]");
+      const iconButton = document.querySelector("[data-random-dataset-icon]");
       const close = () => dialog?.close();
-      openButton?.addEventListener("click", () => dialog?.showModal());
+      function randomIcon() {
+        if (!iconInput || !iconButton || !datasetIcons.length) return;
+        const next = datasetIcons[Math.floor(Math.random() * datasetIcons.length)];
+        iconInput.value = next;
+        iconButton.textContent = next;
+      }
+      function syncRange(input) {
+        const output = document.querySelector(`[data-range-value="${input.dataset.rangeInput}"]`);
+        if (output) output.textContent = `${input.value}%`;
+      }
+      document.querySelectorAll("[data-range-input]").forEach(input => {
+        input.addEventListener("input", () => syncRange(input));
+        syncRange(input);
+      });
+      iconButton?.addEventListener("click", randomIcon);
+      openButton?.addEventListener("click", () => {
+        randomIcon();
+        dialog?.showModal();
+      });
       document.getElementById("closeDatasetDialog")?.addEventListener("click", close);
       document.getElementById("cancelDatasetDialog")?.addEventListener("click", close);
       form?.addEventListener("submit", async event => {
@@ -116,6 +161,9 @@
         }
         location.href = "/dataset{% if current_project %}/{{ current_project }}{% endif %}";
       });
+      if (document.querySelector("[data-building='true']")) {
+        setTimeout(() => location.reload(), 1200);
+      }
     })();
   </script>
 {% endblock %}
