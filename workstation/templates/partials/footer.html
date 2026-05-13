@@ -25,6 +25,7 @@
   </div>
 </div>
 <section class="footer-console" data-footer-console{% if footer_console_url %} data-footer-console-url="{{ footer_console_url }}"{% endif %} hidden>
+  <div class="footer-console-resizer" data-footer-console-resizer title="拖动调整控制台高度" aria-hidden="true"></div>
   <pre>控制台暂无输出</pre>
 </section>
 <script>
@@ -53,6 +54,13 @@
     const toggle = document.querySelector("[data-footer-console-toggle]");
     const panel = document.querySelector("[data-footer-console]");
     const output = panel?.querySelector("pre");
+    const resizer = panel?.querySelector("[data-footer-console-resizer]");
+    const minHeight = 120;
+    const maxHeight = () => Math.max(180, Math.floor(window.innerHeight * 0.72));
+    function setConsoleHeight(height) {
+      const nextHeight = Math.max(minHeight, Math.min(maxHeight(), Math.round(height)));
+      document.documentElement.style.setProperty("--public-console-height", `${nextHeight}px`);
+    }
     async function loadConsole() {
       if (!panel || !output || !panel.dataset.footerConsoleUrl) {
         return;
@@ -81,6 +89,24 @@
       document.body.classList.toggle("public-console-open", open);
       event.currentTarget.classList.toggle("active", open);
       if (open) loadConsole();
+    });
+    resizer?.addEventListener("pointerdown", (event) => {
+      if (!panel || panel.hidden) return;
+      event.preventDefault();
+      resizer.setPointerCapture?.(event.pointerId);
+      const startY = event.clientY;
+      const startHeight = panel.getBoundingClientRect().height;
+      document.body.classList.add("public-console-resizing");
+      function onMove(moveEvent) {
+        setConsoleHeight(startHeight + startY - moveEvent.clientY);
+      }
+      function onUp() {
+        document.body.classList.remove("public-console-resizing");
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+      }
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp, {once: true});
     });
   })();
 </script>

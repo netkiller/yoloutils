@@ -11,7 +11,7 @@
     <section class="dataset-head" aria-labelledby="dataset-deploy-title">
       <div>
         <h1 id="dataset-deploy-title">部署数据集</h1>
-        <p class="dataset-description">将当前项目的数据集部署到本地目录或算力服务器。</p>
+        <p class="dataset-description">将当前项目的数据集部署到算力服务器。</p>
       </div>
       <div class="dataset-head-actions">
         <a class="secondary-dataset-button" href="/dataset/{{ current_project }}">返回数据集</a>
@@ -42,11 +42,10 @@
 
         <label>
           <span>算力服务器</span>
-          <input type="hidden" name="resource_id" value="local" data-select-value="resource_id">
+          <input type="hidden" name="resource_id" value="{% if resources %}{{ resources[0].id }}{% endif %}" data-select-value="resource_id">
           <div class="deploy-select" data-deploy-select>
-            <button type="button" data-select-button>本地服务器</button>
+            <button type="button" data-select-button>{% if resources %}{{ resources[0].name }}{% else %}暂无算力服务器{% endif %}</button>
             <div class="deploy-select-menu" data-select-menu hidden>
-              <button type="button" data-select-option data-value="local">本地服务器</button>
             {% for item in resources %}
               <button type="button" data-select-option data-value="{{ item.id }}">{{ item.name }}</button>
             {% endfor %}
@@ -64,7 +63,7 @@
           <label><input type="radio" name="mode" value="sync" checked> <span>同步</span></label>
         </div>
 
-        <button class="project-link-button" type="submit" {% if not datasets %}disabled{% endif %}>开始部署</button>
+        <button class="project-link-button" type="submit" {% if not datasets or not resources %}disabled{% endif %}>开始部署</button>
       </form>
 
       <section class="deploy-card deploy-task-panel" aria-labelledby="deploy-task-title">
@@ -88,6 +87,9 @@
                     <span class="deploy-task-time">时间 {{ task.created_at }}</span>
                   </div>
                   <button type="button" data-view-task-log data-log-url="/dataset/{{ current_project }}/deploy/tasks/{{ task.id }}/log">查看</button>
+                  {% if task.completed %}
+                    <a href="/model/train/new/{{ current_project }}?dataset={{ task.dataset }}">开始训练</a>
+                  {% endif %}
                 </div>
                 <div class="deploy-task-line">
                   <span class="deploy-detail deploy-mode-badge"><i aria-hidden="true">{{ task.mode_icon }}</i><b>{{ task.mode_label }}</b></span>
@@ -100,7 +102,7 @@
                     <span class="deploy-progress" aria-label="部署进度 {{ task.progress }}%">
                       <span data-progress-bar style="width: {{ task.progress }}%"></span>
                     </span>
-                    <strong>{{ task.progress }}%</strong>
+                    <strong data-progress-text>{{ task.progress }}%</strong>
                   </div>
                 {% endif %}
                 {% if task.error %}
@@ -214,14 +216,23 @@
       async function refreshTask(card) {
         const taskId = card.dataset.taskId;
         const statusNode = card.querySelector("[data-task-status]");
+        const progressRow = card.querySelector(".deploy-task-progress-row");
         const progressBar = card.querySelector("[data-progress-bar]");
+        const progressText = card.querySelector("[data-progress-text]");
         const errorNode = card.querySelector("[data-task-error]");
         if (!taskId) return null;
         const response = await fetch(`/dataset/{{ current_project }}/deploy/tasks/${taskId}/log`, {cache: "no-store"});
         const data = await response.json();
         if (!response.ok || !data.ok) return null;
-        if (statusNode) statusNode.textContent = data.status || "";
-        if (progressBar) progressBar.style.width = `${data.progress || 0}%`;
+        const status = data.status || "";
+        const progress = status === "完成" ? 100 : Number(data.progress || 0);
+        if (statusNode) statusNode.textContent = status;
+        if (progressBar) {
+          progressBar.style.width = `${progress}%`;
+          progressBar.parentElement?.setAttribute("aria-label", `部署进度 ${progress}%`);
+        }
+        if (progressText) progressText.textContent = `${progress}%`;
+        if (status === "完成" && progressRow) progressRow.remove();
         if (errorNode) {
           errorNode.textContent = data.error || "";
           errorNode.hidden = !data.error;

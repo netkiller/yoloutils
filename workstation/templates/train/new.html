@@ -1,22 +1,25 @@
 {% extends "base.html" %}
 
-{% block title %}新建训练{% endblock %}
+{% block title %}{% if remote_train %}远程训练{% else %}本地训练{% endif %}{% endblock %}
 
 {% block styles %}
-  <link rel="stylesheet" href="/static/css/train.css?v=20260505-demo-mode">
+  <link rel="stylesheet" href="/static/css/train.css?v=20260513-remote-train">
 {% endblock %}
 
 {% block content %}
-  <main>
+  <main class="train-new-main">
     {% include "partials/model_nav.html" %}
     <dialog class="train-dialog" open>
       <form method="post" action="/model/train">
         <div class="dialog-head">
-          <h1>新建训练任务</h1>
+          <h1>{% if remote_train %}远程训练{% else %}本地训练{% endif %}</h1>
           <a href="/dataset" aria-label="关闭">×</a>
         </div>
         {% if demo_mode %}
           <p class="demo-note">当前为演示模式，不会启动训练。</p>
+        {% endif %}
+        {% if remote_train %}
+          <p class="remote-train-note">使用已部署的数据集，通过 SSH 在算力服务器上执行 YOLO 训练命令。</p>
         {% endif %}
 
         <label>
@@ -28,16 +31,20 @@
           <span>数据集</span>
           <select name="dataset" required>
             {% for item in datasets %}
-              <option value="{{ item.name }}" {% if dataset and item.path == dataset.path %}selected{% endif %}>{{ item.project }} / {{ item.name }}</option>
+              <option value="{{ item.name }}" {% if dataset and item.path == dataset.path %}selected{% endif %}>{{ item.name }}</option>
             {% endfor %}
           </select>
         </label>
         <input type="hidden" name="project" value="{{ dataset.project if dataset else '' }}">
-
-        <label>
-          <span>项目名称</span>
-          <input class="readonly-field" type="text" value="{{ dataset.project if dataset else current_project }}" readonly>
-        </label>
+        <input type="hidden" name="train_scope" value="{{ 'remote' if remote_train else 'local' }}">
+        {% if remote_train and dataset %}
+          <input type="hidden" name="resource_id" value="{{ dataset.resource_id }}">
+          <input type="hidden" name="remote_dataset_path" value="{{ dataset.remote_path }}">
+          <div class="remote-train-target">
+            <span>算力服务器</span><strong>{{ dataset.resource_name }}</strong>
+            <span>部署数据集</span><strong>{{ dataset.remote_path }}</strong>
+          </div>
+        {% endif %}
 
         <div class="form-grid">
           <label>

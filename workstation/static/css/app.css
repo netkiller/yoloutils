@@ -1861,7 +1861,7 @@ main {
   right: 0;
   bottom: 0;
   z-index: 9;
-  height: 160px;
+  height: var(--public-console-height, 160px);
   overflow: auto;
   border-top: 1px solid #1f2937;
   background: #111827;
@@ -1869,16 +1869,36 @@ main {
 }
 
 body.public-console-open .site-footer {
-  bottom: 160px;
+  bottom: var(--public-console-height, 160px);
+}
+
+body.public-console-resizing {
+  cursor: row-resize;
+  user-select: none;
 }
 
 .footer-console[hidden] {
   display: none;
 }
 
+.footer-console-resizer {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  height: 6px;
+  cursor: row-resize;
+  border-bottom: 1px solid #1f2937;
+  background: #263244;
+}
+
+.footer-console-resizer:hover,
+body.public-console-resizing .footer-console-resizer {
+  background: #3b4a61;
+}
+
 .footer-console pre {
   margin: 0;
-  padding: 10px 14px;
+  padding: 10px 14px 14px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12px;
   line-height: 1.45;

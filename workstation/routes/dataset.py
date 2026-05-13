@@ -667,16 +667,14 @@ def run_deploy_task(project_path: Path, task: dict):
 
 
 def create_deploy_task(project_path: Path, dataset_path: Path, dataset_name: str, form):
-    resource_id = (form.get("resource_id", "local") or "local").strip()
-    target_type = "local" if resource_id == "local" else "remote"
+    resource_id = (form.get("resource_id", "") or "").strip()
+    target_type = "remote"
     mode = (form.get("mode", "sync") or "sync").strip()
-    if target_type not in DEPLOY_TARGETS:
-        return None, "目标类型不正确"
     if mode not in DEPLOY_MODES:
         return None, "部署方式不正确"
-    resource = find_resource(workspace_path(), resource_id) if target_type == "remote" else None
-    if target_type == "remote" and resource is None:
-        return None, "请选择远程服务器"
+    resource = find_resource(workspace_path(), resource_id)
+    if resource is None:
+        return None, "请选择算力服务器"
     target_path = (form.get("target_path", "") or "").strip() or f"~/datasets/{dataset_name}"
     if "\n" in target_path or "\r" in target_path:
         return None, "部署位置不能包含换行"
@@ -1078,10 +1076,12 @@ def dataset_deploy_task_log(project: str, task_id: str):
         return JSONResponse({"ok": False, "error": "部署任务不存在"}, status_code=404)
     log_path = Path(task.get("log_path", ""))
     log_text = log_path.read_text(encoding="utf-8", errors="replace") if log_path.is_file() else ""
+    task_status = task.get("status", "")
+    task_progress = 100 if task_status == "完成" else task.get("progress", 0)
     return {
         "ok": True,
-        "status": task.get("status", ""),
-        "progress": task.get("progress", 0),
+        "status": task_status,
+        "progress": task_progress,
         "error": task.get("error", ""),
         "log": log_text,
     }

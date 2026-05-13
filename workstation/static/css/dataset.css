@@ -541,10 +541,14 @@
   font-weight: 650;
 }
 
-.deploy-task-head button {
+.deploy-task-head button,
+.deploy-task-head a {
   flex: 0 0 auto;
   height: 30px;
   min-width: 54px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   padding: 0 10px;
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -554,9 +558,11 @@
   font: inherit;
   font-size: 12px;
   font-weight: 650;
+  text-decoration: none;
 }
 
-.deploy-task-head button:hover {
+.deploy-task-head button:hover,
+.deploy-task-head a:hover {
   background: #e6f0ff;
   color: #243b53;
 }

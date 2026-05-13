@@ -15,6 +15,7 @@ from fastapi import APIRouter, Request, status
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+from routes.dataset import read_deploy_tasks
 from routes.project import header_context
 
 
@@ -131,6 +132,38 @@ def selected_dataset(project: str, dataset: str):
         if item["name"] == dataset:
             return item
     items = dataset_dirs(project)
+    return items[0] if items else None
+
+
+def remote_dataset_dirs(project: str = ""):
+    items = []
+    for project_dir in project_dirs():
+        if project and project_dir.name != project:
+            continue
+        for task in read_deploy_tasks(project_dir):
+            if task.get("status") != COMPLETE_STATUS:
+                continue
+            dataset_name = str(task.get("dataset") or "")
+            if not dataset_name:
+                continue
+            items.append(
+                {
+                    "project": project_dir.name,
+                    "name": dataset_name,
+                    "path": Path(str(task.get("source_path") or project_dir / "datasets" / dataset_name)),
+                    "remote_path": str(task.get("target_path") or ""),
+                    "resource_id": str(task.get("resource_id") or ""),
+                    "resource_name": str(task.get("resource_name") or "算力服务器"),
+                }
+            )
+    return items
+
+
+def selected_remote_dataset(project: str, dataset: str):
+    items = remote_dataset_dirs(project)
+    for item in items:
+        if item["name"] == dataset:
+            return item
     return items[0] if items else None
 
 
@@ -326,7 +359,52 @@ def filtered_queue_tasks(tasks, queue_filter: str):
 
 
 def train_queue_filter(queue: str):
-    return queue if queue in {"completed", "active"} else "completed"
+    return queue if queue in {"all", "active", "completed"} else "all"
+
+
+def task_progress(task: dict):
+    if task.get("progress") is not None:
+        try:
+            return max(0, min(int(task.get("progress") or 0), 100))
+        except (TypeError, ValueError):
+            pass
+    status_value = task.get("status", "")
+    if status_value == COMPLETE_STATUS:
+        return 100
+    if status_value == "进行中":
+        return 50
+    if status_value in {"失败", "取消", "演示模式"}:
+        return 100
+    return 0
+
+
+def task_card_view(task: dict):
+    progress = task_progress(task)
+    params = []
+    for key, label in (
+        ("model", "模型"),
+        ("epochs", "轮数"),
+        ("model_version", "版本"),
+        ("model_size", "尺寸"),
+        ("imgsz", "imgsz"),
+        ("batch", "batch"),
+        ("device", "device"),
+        ("workers", "workers"),
+        ("amp", "amp"),
+        ("data", "data"),
+    ):
+        value = task.get(key)
+        if value is not None and value != "":
+            params.append({"label": label, "value": value})
+    return {
+        **task,
+        "display_created_at": display_datetime(task.get("created_at", "")),
+        "progress": progress,
+        "progress_style": f"conic-gradient(#1667c7 0 {progress}%, #e2e8f0 {progress}% 100%)",
+        "params": params,
+        "is_active": task.get("status") in ACTIVE_STATUSES,
+        "is_completed": task.get("status") == COMPLETE_STATUS,
+    }
 
 
 def read_text_file(path: Path, max_chars: int = 12000):
@@ -558,12 +636,12 @@ async def form_fields(request: Request):
 
 @router.get("/model/train")
 @router.get("/train")
-def train(request: Request, tab: str = "", queue: str = "completed"):
+def train(request: Request, tab: str = "", queue: str = "all"):
     project = request.query_params.get("project", "")
     if project:
         url = f"/model/train/{project}"
         params = []
-        if queue != "completed":
+        if queue != "all":
             params.append(f"queue={queue}")
         if params:
             url += "?" + "&".join(params)
@@ -582,7 +660,7 @@ def train(request: Request, tab: str = "", queue: str = "completed"):
             "request": request,
             "workspace": workspace,
             "tasks": tasks,
-            "queue_tasks": filtered_queue_tasks(tasks, queue_filter),
+            "queue_tasks": [task_card_view(task) for task in filtered_queue_tasks(tasks, queue_filter)],
             "models": model_items(tasks, current_project),
             "queue_filter": queue_filter,
             "active_page": "model",
@@ -673,14 +751,21 @@ def train_model_file(task_id: str, file_path: str):
 @router.get("/train/new")
 def new_train(request: Request, dataset: str = ""):
     project = request.query_params.get("project", "")
+    is_remote = request.query_params.get("remote") == "1"
     if project:
         url = f"/model/train/new/{project}"
+        params = []
         if dataset:
-            url += f"?dataset={dataset}"
+            params.append(f"dataset={dataset}")
+        if is_remote:
+            params.append("remote=1")
+        if params:
+            url += "?" + "&".join(params)
         return RedirectResponse(url=url, status_code=status.HTTP_303_SEE_OTHER)
     workspace = workspace_path()
     current_project = request.cookies.get("current_project", "")
-    dataset_item = selected_dataset(current_project, dataset)
+    dataset_item = selected_remote_dataset(current_project, dataset) if is_remote else selected_dataset(current_project, dataset)
+    dataset_options = remote_dataset_dirs(current_project) if is_remote else dataset_dirs(current_project)
     response = templates.TemplateResponse(
         request=request,
         name="train/new.html",
@@ -688,7 +773,8 @@ def new_train(request: Request, dataset: str = ""):
             "request": request,
             "workspace": workspace,
             "dataset": dataset_item,
-            "datasets": dataset_dirs(current_project),
+            "datasets": dataset_options,
+            "remote_train": is_remote,
             "model_versions": MODEL_VERSIONS,
             "model_sizes": MODEL_SIZES,
             "default_model_version": "YOLO26",
@@ -710,7 +796,9 @@ def new_train(request: Request, dataset: str = ""):
 def new_train_with_project(request: Request, project: str, dataset: str = ""):
     workspace = workspace_path()
     current_project = project
-    dataset_item = selected_dataset(project, dataset)
+    is_remote = request.query_params.get("remote") == "1"
+    dataset_item = selected_remote_dataset(project, dataset) if is_remote else selected_dataset(project, dataset)
+    dataset_options = remote_dataset_dirs(project) if is_remote else dataset_dirs(project)
     response = templates.TemplateResponse(
         request=request,
         name="train/new.html",
@@ -718,7 +806,8 @@ def new_train_with_project(request: Request, project: str, dataset: str = ""):
             "request": request,
             "workspace": workspace,
             "dataset": dataset_item,
-            "datasets": dataset_dirs(project),
+            "datasets": dataset_options,
+            "remote_train": is_remote,
             "model_versions": MODEL_VERSIONS,
             "model_sizes": MODEL_SIZES,
             "default_model_version": "YOLO26",
@@ -815,7 +904,7 @@ def train_task_logs(task_id: str):
     log = path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
     return {
         "ok": True,
-        "task": task,
+        "task": task_card_view(task),
         "log": log,
         "size": path.stat().st_size if path.is_file() else 0,
     }
@@ -834,7 +923,7 @@ def cancel_task(task_id: str):
 
 @router.get("/model/train/{project}")
 @router.get("/train/{project}")
-def train_with_project(request: Request, project: str, tab: str = "", queue: str = "completed"):
+def train_with_project(request: Request, project: str, tab: str = "", queue: str = "all"):
     workspace = workspace_path()
     current_project = project
     with queue_lock:
@@ -849,7 +938,7 @@ def train_with_project(request: Request, project: str, tab: str = "", queue: str
             "request": request,
             "workspace": workspace,
             "tasks": tasks,
-            "queue_tasks": filtered_queue_tasks(tasks, queue_filter),
+            "queue_tasks": [task_card_view(task) for task in filtered_queue_tasks(tasks, queue_filter)],
             "models": model_items(tasks, current_project),
             "queue_filter": queue_filter,
             "active_page": "model",

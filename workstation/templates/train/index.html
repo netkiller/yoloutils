@@ -3,7 +3,7 @@
 {% block title %}{% if current_project_name %}项目 {{ current_project_name }} 训练{% else %}训练{% endif %}{% endblock %}
 
 {% block styles %}
-  <link rel="stylesheet" href="/static/css/train.css?v=20260512-redesign">
+  <link rel="stylesheet" href="/static/css/train.css?v=20260513-task-cards">
 {% endblock %}
 
 {% block content %}
@@ -16,7 +16,10 @@
           <p class="demo-note">当前为演示模式，不会启动训练。</p>
         {% endif %}
       </div>
-      <a class="primary-link" href="/model/train/new{% if current_project %}/{{ current_project }}{% endif %}">新建训练</a>
+      <div class="train-head-actions">
+        <a class="primary-link" href="/model/train/new{% if current_project %}/{{ current_project }}{% endif %}">本地训练</a>
+        <a class="secondary-link" href="/model/train/new{% if current_project %}/{{ current_project }}{% endif %}?remote=1">远程训练</a>
+      </div>
     </section>
 
     {% include "partials/model_nav.html" %}
@@ -37,98 +40,53 @@
     </section>
 
     <section class="queue-filter train-segmented" aria-label="训练队列筛选">
-      <a class="{% if queue_filter == 'completed' %}active{% endif %}" href="/model/train{% if current_project %}/{{ current_project }}{% endif %}?queue=completed">已完成</a>
+      <a class="{% if queue_filter == 'all' %}active{% endif %}" href="/model/train{% if current_project %}/{{ current_project }}{% endif %}?queue=all">全部</a>
       <a class="{% if queue_filter == 'active' %}active{% endif %}" href="/model/train{% if current_project %}/{{ current_project }}{% endif %}?queue=active">未完成</a>
+      <a class="{% if queue_filter == 'completed' %}active{% endif %}" href="/model/train{% if current_project %}/{{ current_project }}{% endif %}?queue=completed">已完成</a>
     </section>
 
     <section class="train-tab-content">
-      {% if queue_filter == "completed" %}
-        {% if models %}
-          <section class="model-list" aria-label="已训练模型">
-            {% for item in models %}
-              {% set task = item.task %}
-              <article class="model-card">
-                <a class="model-card-link" href="/model/train/models/{{ task.id }}">
-                  <div class="model-card-main">
-                    <h2>模型 {{ task.name }}</h2>
-                    <p>{{ task.project }} / {{ task.dataset }}</p>
-                    {% if item.metrics %}
-                      <div class="model-metrics">
-                        {% for metric in item.metrics %}
-                          <span><b>{{ metric.label }}</b>{{ metric.value }}</span>
-                        {% endfor %}
-                      </div>
-                    {% elif item.summary %}
-                      <p>{{ item.summary }}</p>
-                    {% endif %}
-                  </div>
-                  {% if item.results_image %}
-                    <div class="model-card-preview">
-                      <img src="{{ item.results_image }}" alt="{{ task.name }} results" loading="lazy">
-                    </div>
-                  {% endif %}
-                  <div class="task-meta">
-                    {% if task.model %}<span>{{ task.model }}</span>{% endif %}
-                    {% if task.epochs %}<span>epochs {{ task.epochs }}</span>{% endif %}
-                    {% if task.get("model_version") %}<span>{{ task.model_version }}</span>{% endif %}
-                    {% if task.get("model_size") %}<span>size {{ task.model_size }}</span>{% endif %}
-                    <span>{{ item.display_time }}</span>
-                  </div>
-                </a>
-                <div class="task-actions">
-                  {% if item.has_best %}
-                    <a href="/model/train/models/{{ task.id }}/weights/best.pt">下载 best.pt</a>
-                  {% else %}
-                    <span class="disabled-action">best.pt</span>
-                  {% endif %}
-                  {% if item.has_last %}
-                    <a href="/model/train/models/{{ task.id }}/weights/last.pt">下载 last.pt</a>
-                  {% else %}
-                    <span class="disabled-action">last.pt</span>
-                  {% endif %}
-                </div>
-              </article>
-            {% endfor %}
-          </section>
-        {% else %}
-          <section class="empty">暂无训练完成的模型</section>
-        {% endif %}
-      {% else %}
-        {% if queue_tasks %}
-          <section class="task-list" aria-label="训练任务">
-            {% for task in queue_tasks %}
-              <article class="task-card">
+      {% if queue_tasks %}
+        <section class="task-list" aria-label="训练任务">
+          {% for task in queue_tasks %}
+            <article class="task-card" data-train-task data-task-id="{{ task.id }}">
+              <div class="task-progress-pie" style="background: {{ task.progress_style }}" aria-label="训练进度 {{ task.progress }}%">
+                <span data-task-progress-text>{{ task.progress }}%</span>
+              </div>
+              <div class="task-card-main">
                 <div class="task-card-title">
-                  <h2>{{ task.name }}</h2>
-                  <p>{{ task.project }} / {{ task.dataset }}</p>
+                  <div>
+                    <h2>{{ task.name }}</h2>
+                    <p>创建时间 {{ task.display_created_at or task.created_at }}</p>
+                  </div>
+                  <span class="status" data-task-status>{{ task.status }}</span>
                 </div>
-                <span class="status">{{ task.status }}</span>
-                <div class="task-meta">
-                  <span>{{ task.model }}</span>
-                  <span>epochs {{ task.epochs }}</span>
-                  {% if task.get("model_version") %}<span>{{ task.model_version }}</span>{% endif %}
-                  {% if task.get("model_size") %}<span>size {{ task.model_size }}</span>{% endif %}
-                  {% if task.get("imgsz") %}<span>imgsz {{ task.imgsz }}</span>{% endif %}
-                  {% if task.get("batch") %}<span>batch {{ task.batch }}</span>{% endif %}
-                  {% if task.get("device") %}<span>device {{ task.device }}</span>{% endif %}
-                  {% if task.get("workers") is not none %}<span>workers {{ task.workers }}</span>{% endif %}
-                  {% if task.get("amp") %}<span>amp {{ task.amp }}</span>{% endif %}
-                  {% if task.get("data") %}<span>data {{ task.data }}</span>{% endif %}
+                <div class="task-dataset">
+                  <span>数据集</span>
+                  <strong>{{ task.dataset }}</strong>
                 </div>
-                <div class="task-actions">
-                  <a href="/model/train/tasks/{{ task.id }}">查看日志</a>
-                  {% if task.status in ["排队中", "进行中"] %}
-                    <form method="post" action="/model/train/tasks/{{ task.id }}/cancel">
-                      <button type="submit">取消</button>
-                    </form>
-                  {% endif %}
+                <div class="task-params" aria-label="训练参数">
+                  {% for param in task.params %}
+                    <span><b>{{ param.label }}</b>{{ param.value }}</span>
+                  {% endfor %}
                 </div>
-              </article>
-            {% endfor %}
-          </section>
-        {% else %}
-          <section class="empty">暂无训练任务</section>
-        {% endif %}
+              </div>
+              <div class="task-actions">
+                <button type="button" data-view-train-log data-log-url="/model/train/tasks/{{ task.id }}/logs">查看</button>
+                {% if task.is_completed %}
+                  <a href="/model/train/models/{{ task.id }}">模型</a>
+                {% endif %}
+                {% if task.is_active %}
+                  <form method="post" action="/model/train/tasks/{{ task.id }}/cancel">
+                    <button type="submit">取消</button>
+                  </form>
+                {% endif %}
+              </div>
+            </article>
+          {% endfor %}
+        </section>
+      {% else %}
+        <section class="empty">暂无训练任务</section>
       {% endif %}
     </section>
   </main>
@@ -136,4 +94,67 @@
   {% set footer_id = "stats" %}
   {% set footer_left = workspace %}
   {% include "partials/footer.html" %}
+  <script>
+    (() => {
+      const activeStatuses = new Set(["排队中", "进行中"]);
+      let activeLogTimer = null;
+      function openFooterConsole(text, status = "", progress = 0) {
+        const panel = document.querySelector("[data-footer-console]");
+        const output = panel?.querySelector("pre");
+        const toggle = document.querySelector("[data-footer-console-toggle]");
+        if (!panel || !output) return;
+        const header = status ? [`状态：${status}`, `进度：${progress || 0}%`, ""].join("\n") : "";
+        output.textContent = `${header}${text || "控制台暂无输出"}`;
+        panel.hidden = false;
+        document.body.classList.add("public-console-open");
+        toggle?.classList.add("active");
+        output.scrollTop = output.scrollHeight;
+      }
+      function paintProgress(card, progress) {
+        const pie = card.querySelector(".task-progress-pie");
+        const text = card.querySelector("[data-task-progress-text]");
+        if (pie) {
+          pie.style.background = `conic-gradient(#1667c7 0 ${progress}%, #e2e8f0 ${progress}% 100%)`;
+          pie.setAttribute("aria-label", `训练进度 ${progress}%`);
+        }
+        if (text) text.textContent = `${progress}%`;
+      }
+      async function loadTaskLog(button) {
+        const response = await fetch(button.dataset.logUrl, {cache: "no-store"});
+        const data = await response.json();
+        if (!response.ok || !data.ok) {
+          openFooterConsole(data.error || "训练日志读取失败");
+          return null;
+        }
+        const task = data.task || {};
+        openFooterConsole(data.log || "暂无日志", task.status || "", task.progress || 0);
+        const card = button.closest("[data-train-task]");
+        if (card) {
+          const statusNode = card.querySelector("[data-task-status]");
+          if (statusNode) statusNode.textContent = task.status || "";
+          paintProgress(card, task.progress || 0);
+        }
+        return data;
+      }
+      function watchTaskLog(button) {
+        if (activeLogTimer) clearInterval(activeLogTimer);
+        activeLogTimer = null;
+        loadTaskLog(button).then(data => {
+          const status = data?.task?.status || "";
+          if (!activeStatuses.has(status)) return;
+          activeLogTimer = setInterval(async () => {
+            const latest = await loadTaskLog(button).catch(() => null);
+            const latestStatus = latest?.task?.status || "";
+            if (latestStatus && !activeStatuses.has(latestStatus)) {
+              clearInterval(activeLogTimer);
+              activeLogTimer = null;
+            }
+          }, 1000);
+        }).catch(() => openFooterConsole("训练日志读取失败"));
+      }
+      document.querySelectorAll("[data-view-train-log]").forEach(button => {
+        button.addEventListener("click", () => watchTaskLog(button));
+      });
+    })();
+  </script>
 {% endblock %}
