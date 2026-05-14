@@ -27,7 +27,7 @@
 
 .validate-workflow {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
 }
 
@@ -85,6 +85,10 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
+}
+
+.validate-name-field {
+  max-width: none;
 }
 
 .validate-run-panel code {

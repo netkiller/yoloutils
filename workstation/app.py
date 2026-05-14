@@ -27,7 +27,7 @@ from routes.project import (
 from routes.predict import router as predict_router
 from routes.resources import router as resources_router
 from routes.train import router as train_router
-from routes.validate import router as validate_router
+from routes.val import router as validate_router
 
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"

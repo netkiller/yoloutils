@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from routes.project import header_context
-from routes.validate import model_items, project_path, read_project_name, workspace_path
+from routes.val import model_items, project_path, read_project_name, workspace_path
 
 
 router = APIRouter()

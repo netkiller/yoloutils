@@ -20,6 +20,7 @@ from routes.project import header_context
 router = APIRouter()
 templates = Jinja2Templates(directory=Path(__file__).resolve().parent.parent / "templates")
 MODEL_EXTS = {".pt", ".onnx", ".engine", ".torchscript", ".tflite", ".mlmodel"}
+IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff", ".heic", ".heif"}
 queue_lock = threading.Lock()
 worker_thread = None
 running_processes = {}
@@ -67,6 +68,26 @@ def dataset_items(path: Path):
         for item in sorted(datasets_dir.iterdir(), key=lambda dataset: dataset.name.lower())
         if item.is_dir()
     ]
+
+
+def has_images(path: Path):
+    return path.is_dir() and any(
+        item.is_file() and item.suffix.lower() in IMAGE_EXTS
+        for item in path.rglob("*")
+    )
+
+
+def testset_items(path: Path):
+    test_dir = path / "test"
+    if not test_dir.is_dir():
+        return []
+    items = []
+    if has_images(test_dir):
+        items.append({"name": "test", "path": test_dir, "relative_path": "test"})
+    for item in sorted(test_dir.iterdir(), key=lambda testset: testset.name.lower()):
+        if item.is_dir() and has_images(item):
+            items.append({"name": item.name, "path": item, "relative_path": item.relative_to(path).as_posix()})
+    return items
 
 
 def queue_dir():
@@ -190,6 +211,34 @@ def model_items(path: Path):
     return sorted(models, key=lambda item: item["path"].stat().st_mtime, reverse=True)
 
 
+def run_model_items(path: Path):
+    runs_dir = path / "runs"
+    if not runs_dir.is_dir():
+        return []
+    models = []
+    for run_dir in sorted((item for item in runs_dir.iterdir() if item.is_dir()), key=lambda item: item.name.lower()):
+        weights_dir = run_dir / "weights"
+        model_file = weights_dir / "best.pt"
+        if not model_file.is_file():
+            model_file = weights_dir / "last.pt"
+        if not model_file.is_file():
+            continue
+        stat = model_file.stat()
+        models.append(
+            {
+                "name": run_dir.name,
+                "filename": model_file.name,
+                "path": model_file,
+                "relative_path": model_file.relative_to(path).as_posix(),
+                "run": run_dir.name,
+                "size_mb": round(stat.st_size / 1024 / 1024, 2),
+                "modified": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M"),
+                "metrics": read_metrics(run_dir),
+            }
+        )
+    return sorted(models, key=lambda item: item["path"].stat().st_mtime, reverse=True)
+
+
 def read_classes(path: Path):
     candidates = [path / "annotate" / "classes.txt", path / "classes.txt", workspace_path() / "classes.txt"]
     for file in candidates:
@@ -202,17 +251,18 @@ def read_classes(path: Path):
 
 def write_data_yaml(task):
     project = project_path(workspace_path(), task["project"])
-    dataset_path = project / "datasets" / task["dataset"]
+    testset_path = (project / task["testset"]).resolve()
+    relative_testset = testset_path.relative_to(project).as_posix()
     classes = read_classes(project)
     yaml_path = queue_dir() / f"{task['id']}.yaml"
     names = "\n".join(f"  {index}: {name}" for index, name in enumerate(classes))
     yaml_path.write_text(
         "\n".join(
             [
-                f"path: {dataset_path}",
-                "train: train",
-                "val: val",
-                "test: test",
+                f"path: {project}",
+                f"train: {relative_testset}",
+                f"val: {relative_testset}",
+                f"test: {relative_testset}",
                 "names:",
                 names,
                 "",
@@ -323,8 +373,8 @@ def validate(request: Request):
     workspace = workspace_path()
     current_project = request.cookies.get("current_project", "")
     path = project_path(workspace, current_project)
-    models = model_items(path) if path else []
-    datasets = dataset_items(path) if path else []
+    models = run_model_items(path) if path else []
+    testsets = testset_items(path) if path else []
     tasks = project_tasks(current_project) if current_project else []
     response = templates.TemplateResponse(
         request=request,
@@ -337,7 +387,7 @@ def validate(request: Request):
             "current_project": current_project,
             "project_name": read_project_name(path) if path else "",
             "models": models,
-            "datasets": datasets,
+            "testsets": testsets,
             "tasks": tasks,
             **header_context(request, workspace),
         },
@@ -356,8 +406,8 @@ def validate_with_project(request: Request, project: str):
     workspace = workspace_path()
     current_project = project
     path = project_path(workspace, current_project)
-    models = model_items(path) if path else []
-    datasets = dataset_items(path) if path else []
+    models = run_model_items(path) if path else []
+    testsets = testset_items(path) if path else []
     tasks = project_tasks(current_project) if current_project else []
     response = templates.TemplateResponse(
         request=request,
@@ -370,7 +420,7 @@ def validate_with_project(request: Request, project: str):
             "current_project": current_project,
             "project_name": read_project_name(path) if path else "",
             "models": models,
-            "datasets": datasets,
+            "testsets": testsets,
             "tasks": tasks,
             **header_context(request, workspace),
         },
@@ -389,25 +439,26 @@ async def create_validate_task(request: Request):
         return RedirectResponse(url="/project", status_code=status.HTTP_303_SEE_OTHER)
 
     model = form.get("model", [""])[0]
-    dataset = form.get("dataset", [""])[0]
+    testset = form.get("testset", [""])[0]
     split = form.get("split", ["val"])[0]
     if split not in {"val", "test"}:
-        split = "val"
+        split = "test"
     model_path = (path / model).resolve()
-    dataset_path = (path / "datasets" / dataset).resolve()
-    datasets_root = (path / "datasets").resolve()
+    testset_path = (path / testset).resolve()
+    test_root = (path / "test").resolve()
     if (
         not model
-        or not dataset
+        or not testset
         or not is_inside(model_path, path)
         or not model_path.is_file()
-        or dataset_path == datasets_root
-        or not is_inside(dataset_path, datasets_root)
-        or not dataset_path.is_dir()
+        or not is_inside(testset_path, test_root)
+        or not testset_path.is_dir()
+        or not has_images(testset_path)
     ):
         return RedirectResponse(url=f"/model/{project}/val", status_code=status.HTTP_303_SEE_OTHER)
 
-    default_name = f"{split}-{dataset}-{model_path.stem}-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    testset_name = "test" if testset_path == test_root else testset_path.name
+    default_name = f"{split}-{testset_name}-{model_path.parent.parent.name}-{datetime.now().strftime('%Y%m%d%H%M%S')}"
     try:
         imgsz = int(form.get("imgsz", ["640"])[0] or 640)
     except ValueError:
@@ -416,7 +467,8 @@ async def create_validate_task(request: Request):
         "id": uuid4().hex[:12],
         "name": form.get("name", [default_name])[0].strip() or default_name,
         "project": project,
-        "dataset": dataset,
+        "dataset": testset_name,
+        "testset": testset,
         "model": model,
         "split": split,
         "mode": "测试" if split == "test" else "检验",

@@ -3,7 +3,7 @@
 {% block title %}{% if project_name %}项目 {{ project_name }} 验证{% else %}验证{% endif %}{% endblock %}
 
 {% block styles %}
-  <link rel="stylesheet" href="/static/css/validate.css?v=20260512-val">
+  <link rel="stylesheet" href="/static/css/val.css?v=20260514-val-form">
 {% endblock %}
 
 {% block content %}
@@ -15,7 +15,7 @@
       </div>
       <div class="model-head-actions">
         {% include "partials/model_nav.html" %}
-        <span class="model-count">{{ models | length }} 个模型 / {{ datasets | length }} 个数据集</span>
+        <span class="model-count">{{ models | length }} 个模型 / {{ testsets | length }} 个测试集</span>
       </div>
     </section>
 
@@ -24,31 +24,36 @@
         <input type="hidden" name="project" value="{{ current_project }}">
         <div>
           <h2>YOLO Val</h2>
-          <p>选择模型、数据集和 split，后台执行 <code>yolo detect val</code>。</p>
+          <p>选择模型、测试集和 split，后台执行 <code>yolo detect val</code>。</p>
         </div>
+
+        <label class="validate-name-field">
+          <span>任务名称</span>
+          <input name="name" type="text" placeholder="留空自动生成">
+        </label>
 
         <div class="validate-form-grid">
           <label>
             <span>模型</span>
             <select name="model" data-model-select required {% if not models %}disabled{% endif %}>
               {% for model in models %}
-                <option value="{{ model.relative_path }}">{{ model.filename }} · {{ model.source }}</option>
+                <option value="{{ model.relative_path }}">{{ model.name }}</option>
               {% endfor %}
             </select>
           </label>
           <label>
-            <span>数据集</span>
-            <select name="dataset" required {% if not datasets %}disabled{% endif %}>
-              {% for dataset in datasets %}
-                <option value="{{ dataset.name }}">{{ dataset.name }}</option>
+            <span>测试集</span>
+            <select name="testset" required {% if not testsets %}disabled{% endif %}>
+              {% for testset in testsets %}
+                <option value="{{ testset.relative_path }}">{{ testset.name }}</option>
               {% endfor %}
             </select>
           </label>
           <label>
             <span>Split</span>
             <select name="split">
-              <option value="val">val 检验</option>
               <option value="test">test 测试</option>
+              <option value="val">val 检验</option>
             </select>
           </label>
           <label>
@@ -59,33 +64,18 @@
             <span>设备</span>
             <input name="device" type="text" placeholder="cpu / 0 / 0,1">
           </label>
-          <label>
-            <span>任务名称</span>
-            <input name="name" type="text" placeholder="留空自动生成">
-          </label>
         </div>
 
-        <button type="submit" {% if not current_project or not models or not datasets %}disabled{% endif %}>开始验证</button>
+        <button type="submit" {% if not current_project or not models or not testsets %}disabled{% endif %}>开始验证</button>
       </form>
-
-      <article class="tool-panel compare-panel">
-        <div>
-          <h2>模型对比</h2>
-          <p>从模型卡片中加入对比，查看 mAP、Precision、Recall。</p>
-        </div>
-        <div class="compare-targets" id="compareTargets">
-          <span>请选择模型</span>
-        </div>
-        <button type="button" id="clearCompare">清空</button>
-      </article>
     </section>
 
     {% if not current_project %}
       <section class="empty">请先打开项目。</section>
     {% elif not models %}
       <section class="empty">当前项目没有可验证的模型，请先训练或上传模型。</section>
-    {% elif not datasets %}
-      <section class="empty">当前项目没有数据集，请先生成数据集。</section>
+    {% elif not testsets %}
+      <section class="empty">当前项目 test 目录没有测试集。</section>
     {% endif %}
 
     {% if tasks %}
@@ -115,61 +105,6 @@
         {% endfor %}
       </section>
     {% endif %}
-
-    {% if models %}
-      <section class="model-grid" aria-label="模型列表">
-        {% for model in models %}
-          <article
-            class="model-card"
-            data-model-card
-            data-name="{{ model.filename }}"
-            data-path="{{ model.relative_path }}"
-            data-map50="{{ model.metrics.get('map50') if model.metrics.get('map50') is not none else '' }}"
-            data-map5095="{{ model.metrics.get('map5095') if model.metrics.get('map5095') is not none else '' }}"
-            data-precision="{{ model.metrics.get('precision') if model.metrics.get('precision') is not none else '' }}"
-            data-recall="{{ model.metrics.get('recall') if model.metrics.get('recall') is not none else '' }}"
-          >
-            <div class="model-title">
-              <div>
-                <h2>{{ model.filename }}</h2>
-                <p>{{ model.relative_path }}</p>
-              </div>
-              <span>{{ model.source }}</span>
-            </div>
-
-            <dl class="metric-grid">
-              <div>
-                <dt>mAP50</dt>
-                <dd>{{ model.metrics.get('map50') if model.metrics.get('map50') is not none else "-" }}</dd>
-              </div>
-              <div>
-                <dt>mAP50-95</dt>
-                <dd>{{ model.metrics.get('map5095') if model.metrics.get('map5095') is not none else "-" }}</dd>
-              </div>
-              <div>
-                <dt>Precision</dt>
-                <dd>{{ model.metrics.get('precision') if model.metrics.get('precision') is not none else "-" }}</dd>
-              </div>
-              <div>
-                <dt>Recall</dt>
-                <dd>{{ model.metrics.get('recall') if model.metrics.get('recall') is not none else "-" }}</dd>
-              </div>
-            </dl>
-
-            <div class="model-meta">
-              {% if model.run %}<span>run: {{ model.run }}</span>{% endif %}
-              <span>{{ model.size_mb }} MB</span>
-              <span>{{ model.modified }}</span>
-            </div>
-
-            <div class="model-actions">
-              <button type="button" data-select-model="{{ model.relative_path }}">选择</button>
-              <button type="button" data-compare-model>加入对比</button>
-            </div>
-          </article>
-        {% endfor %}
-      </section>
-    {% endif %}
   </main>
 
   {% set footer_id = "stats" %}
@@ -178,62 +113,13 @@
 
   <script>
     (() => {
-      const compareTargets = document.getElementById("compareTargets");
-      const selected = new Map();
-
-      function renderCompare() {
-        if (!compareTargets) return;
-        if (!selected.size) {
-          compareTargets.innerHTML = "<span>请选择模型</span>";
-          return;
-        }
-        const rows = [...selected.values()].map(model => `
-          <div class="compare-row">
-            <strong>${model.name}</strong>
-            <span>mAP50 ${model.map50 || "-"}</span>
-            <span>mAP50-95 ${model.map5095 || "-"}</span>
-            <span>P ${model.precision || "-"}</span>
-            <span>R ${model.recall || "-"}</span>
-          </div>
-        `).join("");
-        compareTargets.innerHTML = rows;
-      }
-
-      document.querySelectorAll("[data-select-model]").forEach(button => {
-        button.addEventListener("click", () => {
-          document.querySelectorAll("[data-model-select]").forEach(select => {
-            select.value = button.dataset.selectModel;
-          });
-        });
-      });
-
-      document.querySelectorAll("[data-compare-model]").forEach(button => {
-        button.addEventListener("click", () => {
-          const card = button.closest("[data-model-card]");
-          if (!card) return;
-          selected.set(card.dataset.path, {
-            name: card.dataset.name,
-            map50: card.dataset.map50,
-            map5095: card.dataset.map5095,
-            precision: card.dataset.precision,
-            recall: card.dataset.recall,
-          });
-          renderCompare();
-        });
-      });
-
-      document.getElementById("clearCompare")?.addEventListener("click", () => {
-        selected.clear();
-        renderCompare();
-      });
-
       document.querySelector(".validate-run-panel")?.addEventListener("submit", event => {
         const form = event.currentTarget;
         const model = form.querySelector("[data-model-select]")?.value || "";
-        const dataset = form.querySelector("select[name='dataset']")?.value || "";
-        if (!model || !dataset) {
+        const testset = form.querySelector("select[name='testset']")?.value || "";
+        if (!model || !testset) {
           event.preventDefault();
-          alert("请选择模型和数据集");
+          alert("请选择模型和测试集");
         }
       });
     })();

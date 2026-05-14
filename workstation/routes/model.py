@@ -6,7 +6,7 @@ from fastapi.templating import Jinja2Templates
 
 from routes.project import header_context
 from routes.train import load_tasks as load_train_tasks, model_items as run_model_items
-from routes.validate import dataset_items, project_path, read_project_name, workspace_path
+from routes.val import dataset_items, project_path, read_project_name, workspace_path
 
 
 router = APIRouter()
