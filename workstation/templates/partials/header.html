@@ -29,8 +29,8 @@
     {% if current_project %}
       <a{% if active_page == "annotate" %} class="active"{% endif %} href="/annotate/{{ current_project }}"><span class="nav-icon">▧</span><span>标注</span></a>
       <a{% if active_page == "dataset" %} class="active"{% endif %} href="/dataset{% if current_project %}/{{ current_project }}{% endif %}"><span class="nav-icon">▦</span><span>数据集</span></a>
+      <a{% if active_page == "model" %} class="active"{% endif %} href="/model/{{ current_project }}"><span class="nav-icon">◎</span><span>模型</span></a>
     {% endif %}
-    <a{% if active_page == "model" %} class="active"{% endif %} href="/model{% if current_project %}/{{ current_project }}{% endif %}"><span class="nav-icon">◎</span><span>模型</span></a>
   </nav>
   <div class="header-actions">
     {% if is_team_mode %}
