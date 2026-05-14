@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{% block title %}操作手册{% endblock %}
+
+{% block content %}
+  <main class="help-main">
+    <section class="toolbar help-head" aria-labelledby="manual-title">
+      <div>
+        <h1 id="manual-title">操作手册</h1>
+        <p class="project-description muted">YOLO 工作站完整流程：项目管理、标注、数据集、模型、算力和团队协作。</p>
+      </div>
+      <a class="resource-back-link" href="/help">返回帮助</a>
+    </section>
+
+    <section class="help-grid single" aria-label="操作手册">
+      <article class="help-card">
+        <h2>1. 启动与登录</h2>
+        <p>普通模式进入工作站后可直接使用项目、算力和帮助功能；使用 <code>--team</code> 启动后，首次访问会进入登录页，输入用户名后进入团队页。</p>
+        <p>Header 中只有打开项目后才显示标注、数据集和模型。关闭项目后回到项目列表，工作区功能回到团队、项目、算力和帮助。</p>
+      </article>
+
+      <article class="help-card">
+        <h2>2. 项目</h2>
+        <p>项目页展示工作目录、项目列表和刷新按钮。项目卡片展示图像、数据集、模型资源比例。打开项目后进入当前项目页。</p>
+        <p>当前项目页包含 Dashboard、上传图片、测试图片、classes.txt、上传模型、SFTP 和 Rsync 上传命令。刷新按钮会重新扫描项目资源，适合手动通过 SFTP 或 rsync 上传文件后使用。</p>
+        <p>项目目录约定：标注图片放在 <code>annotate</code>，测试图片放在 <code>test</code>，数据集放在 <code>datasets</code>，模型文件放在 <code>models</code>。</p>
+      </article>
+
+      <article class="help-card">
+        <h2>3. 标注</h2>
+        <p>标注页围绕当前项目工作。左侧目录和文件栏支持折叠，折叠后空间让给图片区域。模型、协作、标签、直方图和信息区域可折叠或拖动改变高度。</p>
+        <p>目录和文件右键菜单支持删除目录、删除 txt、创建负样本 txt、重命名、文件名大小写转换和分享等操作。</p>
+        <dl class="help-shortcuts">
+          <dt>⌘S</dt><dd>保存当前标注，未画 box 也会保存空 txt</dd>
+          <dt>⌘D</dt><dd>删除当前标注</dd>
+          <dt>⌘R</dt><dd>重置当前操作</dd>
+          <dt>⌘M</dt><dd>切换 box 遮罩</dd>
+          <dt>⌘0-9</dt><dd>选择对应索引标签，⌘` 或 ⌘· 对应 0</dd>
+          <dt>← / →</dt><dd>切换上一张 / 下一张图片</dd>
+        </dl>
+      </article>
+
+      <article class="help-card">
+        <h2>4. 数据集</h2>
+        <p>数据集页用于从当前项目的 <code>annotate</code> 目录生成 YOLO 数据集。创建前必须存在 <code>annotate/classes.txt</code>。</p>
+        <p>新建数据集时可设置图标、名称、val 和 test 比例。val 默认 20%，test 默认 0%，滑块最大 80%，步进 5%。数据集生成时保留 positive、hard_negative 等子目录结构。</p>
+        <p>数据集卡片展示 train、val、test 比例和生成进度。生成完成后可查看、部署和训练。删除和下载放在数据集查看页中。</p>
+      </article>
+
+      <article class="help-card">
+        <h2>5. 数据集部署</h2>
+        <p>部署数据集用于把当前项目数据集同步到算力服务器。部署目标来自算力列表，不再提供本地部署入口。</p>
+        <p>部署方式包括全量和同步。全量部署会先检查目标目录是否存在，已存在时会要求确认删除覆盖；同步部署用于补齐差异文件。</p>
+        <p>任务卡片展示数据集图标、创建时间、目标服务器、部署位置、部署方式、状态和进度。点击查看会打开底部控制台实时显示日志；失败任务可重试或删除。</p>
+      </article>
+
+      <article class="help-card">
+        <h2>6. 模型</h2>
+        <p>模型页集中管理训练结果，展示 <code>runs</code> 下存在权重文件的训练目录。模型卡片展示结果图、指标和下载入口。</p>
+        <p>模型指标页展示 results.png、labels、曲线、confusion、args.yaml 和 results.csv。指标页提供导出模型卡片，可选择 ONNX、TorchScript、OpenVINO、TensorRT、CoreML、TFLite 或 NCNN，并可下载 best.pt、last.pt。</p>
+      </article>
+
+      <article class="help-card">
+        <h2>7. 训练</h2>
+        <p>训练页包含全部、未完成、已完成筛选。本地训练和远程训练使用同一个训练入口：从数据集点击训练会锁定数据集；从模型训练入口进入可自由选择数据集。</p>
+        <p>训练任务卡片展示本地或远程标识、创建时间、训练参数、数据分布、数据集位置、进度条和操作按钮。操作包括查看日志、监控远程算力、停止、重跑和删除。</p>
+        <p>YOLO 训练通过 <code>tmux</code> 启动，防止终端或 SSH 断开导致训练退出。本机或远程服务器未安装 tmux 时，任务会失败并在日志中提示。</p>
+      </article>
+
+      <article class="help-card">
+        <h2>8. 验证与预测</h2>
+        <p>验证页执行 YOLO Val。用户上传 <code>*.pt</code> 模型，选择数据集和 split，运行后可在底部控制台查看实时进度。</p>
+        <p>预测页展示训练得到的模型列表。选择模型后可上传多张图片、视频，也可使用摄像头拍照或录制视频进行预测。</p>
+      </article>
+
+      <article class="help-card">
+        <h2>9. 算力</h2>
+        <p>算力页用于添加和管理 SSH 服务器。添加算力时填写主机、端口、用户、密码，也支持勾选私钥证书并粘贴或上传私钥。</p>
+        <p>添加或编辑算力会读取并保存服务器信息到 <code>.resources.json</code>，算力列表卡片展示主机名、系统、处理器、内存、磁盘、显卡和显存等核心信息。</p>
+        <p>服务器详情页通过 SSH 获取实时指标，包括 CPU、内存、磁盘、磁盘 IO、网络和 GPU。OpenSSH 提供 Web 终端，SFTP 提供 Web 文件管理。</p>
+        <p>算力检查页可检查 CUDA、YOLO、netkiller-yoloutils 等工具是否安装、版本是否可用，并提供一键安装入口。</p>
+      </article>
+
+      <article class="help-card">
+        <h2>10. 团队与日志</h2>
+        <p>团队模式下，团队页左侧展示在线用户，右侧是聊天。在线用户会显示当前打开的项目。项目页展示正在打开该项目的用户列表。</p>
+        <p>项目上传、数据集部署、训练、验证等操作都会写入日志。页面底部控制台可展开查看日志，并支持拖动调整高度。</p>
+      </article>
+    </section>
+  </main>
+
+  {% set footer_id = "stats" %}
+  {% set footer_left = workspace %}
+  {% include "partials/footer.html" %}
+{% endblock %}
