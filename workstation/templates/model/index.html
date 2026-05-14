@@ -4,7 +4,7 @@
 
 {% block styles %}
   <link rel="stylesheet" href="/static/css/val.css?v=20260514-model">
-  <link rel="stylesheet" href="/static/css/train.css?v=20260514-model-overview">
+  <link rel="stylesheet" href="/static/css/train.css?v=20260514-model-card-theme">
 {% endblock %}
 
 {% block content %}
@@ -12,11 +12,10 @@
     <section class="validate-head" aria-labelledby="model-title">
       <div>
         <h1 id="model-title">{% if project_name %}项目 {{ project_name }} 模型{% else %}模型{% endif %}</h1>
-        <p>{{ project_name or current_project or "未选择项目" }}</p>
+        <p>集中管理训练结果，查看模型指标，并进入训练、评估和预测流程。</p>
       </div>
       <div class="model-head-actions">
         {% include "partials/model_nav.html" %}
-        <span class="model-count">{{ models | length }} 个训练结果 / {{ datasets | length }} 个数据集</span>
       </div>
     </section>
 
@@ -52,9 +51,6 @@
               <div class="model-card-main">
                 <h2>{{ model.task.name }}</h2>
                 <p>{{ model.display_time }}</p>
-                {% if model.summary %}
-                  <p>{{ model.summary }}</p>
-                {% endif %}
                 {% if model.metrics %}
                   <div class="model-metrics" aria-label="训练指标">
                     {% for metric in model.metrics %}

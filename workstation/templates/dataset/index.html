@@ -3,7 +3,7 @@
 {% block title %}{% if current_project_name %}项目 {{ current_project_name }} 数据集{% else %}数据集{% endif %}{% endblock %}
 
 {% block styles %}
-  <link rel="stylesheet" href="/static/css/dataset.css?v=20260514-dataset-created-sort-dialog-up">
+  <link rel="stylesheet" href="/static/css/dataset.css?v=20260514-classes-required">
 {% endblock %}
 
 {% block content %}
@@ -73,13 +73,18 @@
                   <div class="dataset-build-progress"><span style="width: {{ dataset.deploy_progress }}%"></span></div>
                   {% if dataset.deploy_error %}<p>{{ dataset.deploy_error }}</p>{% endif %}
                 </div>
+              {% elif dataset.deploy_failed %}
+                <div class="dataset-footer dataset-failed-footer">
+                  <button class="delete-button" type="button" data-delete-deploy-task data-project="{{ dataset.project_dir }}" data-task-id="{{ dataset.deploy_task_id }}">删除</button>
+                  <button class="download-button deploy-log-button" type="button" data-view-deploy-log data-log-url="/dataset/{{ dataset.project_dir }}/deploy/tasks/{{ dataset.deploy_task_id }}/log">日志</button>
+                </div>
               {% else %}
                 <div class="dataset-footer">
                   <button class="delete-button" type="button" data-delete-dataset data-project="{{ dataset.project_dir }}" data-name="{{ dataset.name }}" data-has-remote="{{ '1' if dataset.location_label and dataset.location_label != '本地' else '0' }}">删除</button>
                   <a class="view-button" href="/dataset/{{ dataset.project_dir }}/{{ dataset.name }}">查看</a>
                   <a class="download-button" href="/dataset/{{ dataset.project_dir }}/{{ dataset.name }}/download">下载</a>
-                  <a class="download-button train-button" href="/model/{{ dataset.project_dir }}/train/new?dataset={{ dataset.name }}">本地训练</a>
-                  <a class="download-button deploy-button" href="/dataset/{{ dataset.project_dir }}/deploy/{{ dataset.name }}">部署</a>
+                  <button class="download-button deploy-button" type="button" data-run-deploy data-project="{{ dataset.project_dir }}" data-name="{{ dataset.name }}">部署</button>
+                  <a class="download-button train-button" href="/model/{{ dataset.project_dir }}/train/new?dataset={{ dataset.name }}{% if dataset.location_label and dataset.location_label != '本地' %}&remote=1{% endif %}">训练</a>
                 </div>
               {% endif %}
             </article>
@@ -109,6 +114,23 @@
         </label>
         <label class="dataset-name-field"><span>数据集名称</span><input name="name" type="text" autocomplete="off" required></label>
       </div>
+      <section class="dataset-classes-box{% if not project_classes.exists %} missing{% endif %}" aria-label="classes.txt">
+        <div>
+          <strong>{{ project_classes.path }}</strong>
+          {% if project_classes.exists %}
+            <span>{{ project_classes["items"] | length }} 个标签</span>
+          {% else %}
+            <span>文件不存在，不能创建数据集</span>
+          {% endif %}
+        </div>
+        {% if project_classes["items"] %}
+          <ol>
+            {% for class_name in project_classes["items"] %}
+              <li>{{ class_name }}</li>
+            {% endfor %}
+          </ol>
+        {% endif %}
+      </section>
       <div class="dataset-split-row">
         <label class="dataset-range-control">
           <span>val 数据 <b data-range-value="val_percent">20%</b></span>
@@ -146,7 +168,7 @@
       </section>
       <div class="dataset-dialog-actions">
         <button type="button" id="cancelDatasetDialog">取消</button>
-        <button type="submit">确认</button>
+        <button type="submit" {% if not project_classes.exists %}disabled{% endif %}>确认</button>
       </div>
     </form>
   </dialog>
@@ -230,6 +252,28 @@
       function hasActiveDatasetTasks() {
         return Boolean(document.querySelector("[data-building='true'], [data-deploying='true']"));
       }
+      function openFooterConsole(text, status = "", progress = 0) {
+        const panel = document.querySelector("[data-footer-console]");
+        const output = panel?.querySelector("pre");
+        const toggle = document.querySelector("[data-footer-console-toggle]");
+        if (!panel || !output) return;
+        const header = status ? [`状态：${status}`, `进度：${progress || 0}%`, ""].join("\n") : "";
+        output.textContent = `${header}${text || "控制台暂无输出"}`;
+        panel.hidden = false;
+        document.body.classList.add("public-console-open");
+        toggle?.classList.add("active");
+        output.scrollTop = output.scrollHeight;
+      }
+      async function loadDeployLog(url) {
+        const response = await fetch(url, {cache: "no-store"});
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.ok) {
+          openFooterConsole(data.error || "部署日志读取失败");
+          return null;
+        }
+        openFooterConsole(data.log || data.error || "暂无日志", data.status || "", data.progress || 0);
+        return data;
+      }
       function scheduleDatasetRefresh() {
         if (datasetPollTimer) clearTimeout(datasetPollTimer);
         if (hasActiveDatasetTasks()) {
@@ -274,6 +318,41 @@
         if (deleteRemoteInput) deleteRemoteInput.checked = false;
         if (deleteRemoteRow) deleteRemoteRow.hidden = !deleteTarget.hasRemote;
         deleteDialog?.showModal();
+      });
+      document.addEventListener("click", async event => {
+        const button = event.target.closest("[data-run-deploy]");
+        if (!button) return;
+        button.disabled = true;
+        button.textContent = "部署中";
+        const response = await fetch(`/dataset/${encodeURIComponent(button.dataset.project || "")}/${encodeURIComponent(button.dataset.name || "")}/deploy/run`, {
+          method: "POST",
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || !payload.ok) {
+          alert(payload.error || "部署失败");
+          button.disabled = false;
+          button.textContent = "部署";
+          return;
+        }
+        await refreshDatasetList();
+      });
+      document.addEventListener("click", event => {
+        const button = event.target.closest("[data-view-deploy-log]");
+        if (!button) return;
+        loadDeployLog(button.dataset.logUrl || "").catch(() => openFooterConsole("部署日志读取失败"));
+      });
+      document.addEventListener("click", async event => {
+        const button = event.target.closest("[data-delete-deploy-task]");
+        if (!button) return;
+        const response = await fetch(`/dataset/${encodeURIComponent(button.dataset.project || "")}/deploy/tasks/${encodeURIComponent(button.dataset.taskId || "")}/delete`, {
+          method: "POST",
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || !payload.ok) {
+          alert(payload.error || "删除部署记录失败");
+          return;
+        }
+        await refreshDatasetList();
       });
       document.querySelectorAll("[data-cancel-delete-dataset]").forEach(button => {
         button.addEventListener("click", () => {

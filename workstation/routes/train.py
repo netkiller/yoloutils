@@ -7,8 +7,10 @@ import shlex
 import shutil
 import stat as stat_module
 import subprocess
+import tempfile
 import threading
 import time
+import zipfile
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import parse_qs, urlencode
@@ -17,8 +19,9 @@ from uuid import uuid4
 from fastapi import APIRouter, Request, status
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from starlette.background import BackgroundTask
 
-from routes.dataset import read_deploy_tasks
+from routes.dataset import count_dataset_split, read_deploy_tasks
 from routes.project import header_context
 from routes.resources import find_resource, ssh_connect_kwargs
 
@@ -34,6 +37,58 @@ COMPLETE_STATUS = "完成"
 ACTIVE_STATUSES = {"排队中", "进行中"}
 WEIGHT_FILES = {"best.pt", "last.pt"}
 RESULT_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
+MODEL_EXPORT_FORMATS = {
+    "onnx": "ONNX",
+    "torchscript": "TorchScript",
+    "openvino": "OpenVINO",
+    "engine": "TensorRT",
+    "coreml": "CoreML",
+    "tflite": "TFLite",
+    "ncnn": "NCNN",
+}
+YOLO_OPTION_KEYS = (
+    "imgsz",
+    "batch",
+    "device",
+    "workers",
+    "amp",
+    "data",
+    "patience",
+    "optimizer",
+    "lr0",
+    "lrf",
+    "momentum",
+    "weight_decay",
+    "warmup_epochs",
+    "cos_lr",
+    "close_mosaic",
+    "cache",
+    "rect",
+    "resume",
+    "pretrained",
+    "seed",
+    "deterministic",
+    "single_cls",
+    "plots",
+    "save_period",
+    "freeze",
+    "dropout",
+    "hsv_h",
+    "hsv_s",
+    "hsv_v",
+    "degrees",
+    "translate",
+    "scale",
+    "shear",
+    "perspective",
+    "flipud",
+    "fliplr",
+    "mosaic",
+    "mixup",
+    "copy_paste",
+    "erasing",
+    "crop_fraction",
+)
 
 
 def clean_model_version(value: str):
@@ -57,6 +112,11 @@ def model_weight(version: str, size: str):
 def optional_int(value: str):
     value = (value or "").strip()
     return int(value) if value else None
+
+
+def optional_value(value: str):
+    value = (value or "").strip()
+    return value if value else None
 
 
 def display_datetime(value: str):
@@ -139,6 +199,16 @@ def selected_dataset(project: str, dataset: str):
     return items[0] if items else None
 
 
+def matched_dataset(project: str, dataset: str):
+    dataset = (dataset or "").strip()
+    if not dataset:
+        return None
+    for item in dataset_dirs(project):
+        if item["name"] == dataset:
+            return item
+    return None
+
+
 def remote_dataset_dirs(project: str = ""):
     items = []
     for project_dir in project_dirs():
@@ -176,6 +246,16 @@ def selected_remote_dataset(project: str, dataset: str):
         if item["name"] == dataset or item.get("key") == dataset:
             return item
     return items[0] if items else None
+
+
+def matched_remote_dataset(project: str, dataset: str):
+    dataset = (dataset or "").strip()
+    if not dataset:
+        return None
+    for item in remote_dataset_dirs(project):
+        if item["name"] == dataset or item.get("key") == dataset:
+            return item
+    return None
 
 
 def read_classes(project: str):
@@ -406,35 +486,100 @@ def task_card_view(task: dict):
     is_remote = task.get("train_scope") == "remote"
     resource_id = str(task.get("resource_id") or "")
     resource_url = f"/resources/{task.get('project', '')}/server/{resource_id}" if is_remote and resource_id else ""
+    status_value = str(task.get("status") or "")
+    dataset_distribution = task_dataset_distribution(task)
     params = []
     for key, label in (
         ("model", "模型"),
         ("epochs", "轮数"),
         ("model_version", "版本"),
         ("model_size", "尺寸"),
-        ("imgsz", "imgsz"),
         ("batch", "batch"),
         ("device", "device"),
         ("workers", "workers"),
-        ("amp", "amp"),
-        ("data", "data"),
     ):
         value = task.get(key)
         if value is not None and value != "":
             params.append({"label": label, "value": value})
+    for key in YOLO_OPTION_KEYS:
+        if key in {"batch", "device", "workers"}:
+            continue
+        value = task.get(key)
+        if value is not None and value != "":
+            params.append({"label": key, "value": value})
     return {
         **task,
         "display_created_at": display_datetime(task.get("created_at", "")),
         "progress": progress,
         "progress_style": f"conic-gradient(#1667c7 0 {progress}%, #e2e8f0 {progress}% 100%)",
         "params": params,
-        "is_active": task.get("status") in ACTIVE_STATUSES,
-        "is_completed": task.get("status") == COMPLETE_STATUS,
+        "is_active": status_value in ACTIVE_STATUSES,
+        "is_completed": status_value == COMPLETE_STATUS,
+        "status_class": {
+            COMPLETE_STATUS: "completed",
+            "失败": "failed",
+            "取消": "cancelled",
+            "进行中": "running",
+            "排队中": "queued",
+            "演示模式": "demo",
+        }.get(status_value, "default"),
         "is_remote": is_remote,
         "scope_label": "远程" if is_remote else "本地",
         "resource_url": resource_url,
         "resource_name": task.get("resource_name") or "算力服务器",
         "remote_dataset_path": task.get("remote_dataset_path", ""),
+        "dataset_distribution": dataset_distribution,
+    }
+
+
+def task_dataset_distribution(task: dict):
+    dataset_path = Path(str(task.get("dataset_path") or "")).expanduser()
+    splits = []
+    total = 0
+    for name, label, color in (
+        ("train", "train", "#1667c7"),
+        ("val", "val", "#16a34a"),
+        ("test", "test", "#f59e0b"),
+    ):
+        count = count_dataset_split(dataset_path, name)["images"] if dataset_path.is_dir() else 0
+        total += count
+        splits.append({"name": name, "label": label, "count": count, "color": color})
+    cursor = 0
+    gradient = []
+    for split in splits:
+        percent = round(split["count"] / total * 100) if total else 0
+        split["percent"] = percent
+        start = cursor
+        cursor += percent
+        gradient.append(f"{split['color']} {start}% {cursor}%")
+    if total and cursor < 100:
+        gradient.append(f"{splits[-1]['color']} {cursor}% 100%")
+    return {
+        "total": total,
+        "splits": splits,
+        "chart_style": f"conic-gradient({', '.join(gradient)})" if total else "conic-gradient(#e2e8f0 0 100%)",
+    }
+
+
+def train_overview(tasks: list[dict]):
+    total = len(tasks)
+    completed = sum(1 for task in tasks if task.get("status") == COMPLETE_STATUS)
+    failed = sum(1 for task in tasks if task.get("status") == "失败")
+    active = sum(1 for task in tasks if task.get("status") in ACTIVE_STATUSES)
+    remote = sum(1 for task in tasks if task.get("train_scope") == "remote")
+    local = total - remote
+    return {
+        "total_count": total,
+        "completed_count": completed,
+        "active_count": total - completed,
+        "running_count": active,
+        "failed_count": failed,
+        "remote_count": remote,
+        "local_count": local,
+        "completed_percent": round(completed / total * 100) if total else 0,
+        "failed_percent": round(failed / total * 100) if total else 0,
+        "remote_percent": round(remote / total * 100) if total else 0,
+        "local_percent": round(local / total * 100) if total else 0,
     }
 
 
@@ -597,7 +742,9 @@ def train_command(task):
         f"project={project_runs_dir(task['project'])}",
         f"name={task['name']}",
     ]
-    for key in ("imgsz", "batch", "device", "workers", "amp"):
+    for key in YOLO_OPTION_KEYS:
+        if key == "data":
+            continue
         value = task.get(key)
         if value not in (None, ""):
             command.append(f"{key}={value}")
@@ -616,11 +763,50 @@ def remote_train_command(task, remote_yaml: str, remote_runs_root: str):
         f"name={task['name']}",
         "exist_ok=True",
     ]
-    for key in ("imgsz", "batch", "device", "workers", "amp"):
+    for key in YOLO_OPTION_KEYS:
+        if key == "data":
+            continue
         value = task.get(key)
         if value not in (None, ""):
             command.append(f"{key}={value}")
     return command
+
+
+def tmux_session_name(task_id: str):
+    return f"yoloutils_{task_id}"
+
+
+def shell_join(command: list[str]):
+    return " ".join(shlex.quote(str(part)) for part in command)
+
+
+def tmux_wrap_command(command: str, log_path: str, exit_path: str, cwd: str = ""):
+    prefix = f"cd {shlex.quote(cwd)} && " if cwd else ""
+    return f"{prefix}{command} >> {shlex.quote(log_path)} 2>&1; printf %s $? > {shlex.quote(exit_path)}"
+
+
+def local_tmux_available():
+    return shutil.which("tmux") is not None
+
+
+def remote_command_output(client, command: str):
+    _, stdout, stderr = client.exec_command(command, timeout=10)
+    output = stdout.read().decode("utf-8", errors="replace")
+    error = stderr.read().decode("utf-8", errors="replace")
+    return stdout.channel.recv_exit_status(), output, error
+
+
+def remote_tmux_available(client):
+    code, _, _ = remote_command_output(client, "command -v tmux >/dev/null 2>&1")
+    return code == 0
+
+
+def read_remote_text(sftp, path: str):
+    try:
+        with sftp.file(path, "r") as handle:
+            return handle.read().decode("utf-8", errors="replace")
+    except OSError:
+        return ""
 
 
 def sftp_mkdirs(sftp, path: str):
@@ -631,6 +817,26 @@ def sftp_mkdirs(sftp, path: str):
             sftp.stat(current)
         except OSError:
             sftp.mkdir(current)
+
+
+def remote_home_dir(client, sftp):
+    try:
+        _, stdout, _ = client.exec_command("printf %s \"$HOME\"", timeout=10)
+        home = stdout.read().decode("utf-8", errors="replace").strip()
+        if home:
+            return home
+    except Exception:
+        pass
+    return sftp.normalize(".")
+
+
+def expand_remote_path(path: str, remote_home: str):
+    path = (path or "").strip()
+    if path == "~":
+        return remote_home
+    if path.startswith("~/"):
+        return posixpath.join(remote_home, path[2:])
+    return path
 
 
 def download_remote_tree(sftp, remote_path: str, local_path: Path):
@@ -694,34 +900,69 @@ def run_remote_task(task):
             port=int(resource.get("port") or 22),
             username=resource.get("username") or None,
             timeout=10,
+            banner_timeout=10,
+            auth_timeout=10,
+            look_for_keys=False,
+            allow_agent=False,
             **ssh_connect_kwargs(resource),
         )
+        append_log(task_id, "SSH 连接成功，打开 SFTP...\n")
         sftp = client.open_sftp()
-        sftp.chdir(".")
-        remote_home = sftp.normalize(".")
-        remote_work_dir = posixpath.join(remote_home, ".yoloutils", "train")
-        remote_runs_root = posixpath.join(remote_home, "runs", "yoloutils", task["project"])
+        remote_home = remote_home_dir(client, sftp)
+        append_log(task_id, f"远程 Home：{remote_home}\n")
+        if not remote_tmux_available(client):
+            append_log(task_id, "远程服务器未安装 tmux，无法启动持久训练。请先安装 tmux。\n")
+            update_task(task_id, status="失败", finished_at=datetime.now().isoformat(timespec="seconds"))
+            return
+        remote_dataset_path = expand_remote_path(remote_dataset_path, remote_home)
+        remote_base_dir = posixpath.join(remote_home, ".yoloutils")
+        remote_work_dir = posixpath.join(remote_base_dir, "train")
+        remote_runs_root = posixpath.join(remote_base_dir, "runs", task["project"])
         remote_yaml = posixpath.join(remote_work_dir, f"{task_id}.yaml")
+        remote_log = posixpath.join(remote_work_dir, f"{task_id}.log")
+        remote_exit = posixpath.join(remote_work_dir, f"{task_id}.exit")
         remote_run_dir = posixpath.join(remote_runs_root, task["name"])
+        append_log(task_id, f"准备远程工作目录：{remote_work_dir}\n")
         sftp_mkdirs(sftp, remote_work_dir)
+        append_log(task_id, f"准备远程 runs 目录：{remote_runs_root}\n")
         sftp_mkdirs(sftp, remote_runs_root)
+        append_log(task_id, f"写入远程 data.yaml：{remote_yaml}\n")
         with sftp.file(remote_yaml, "w") as handle:
             handle.write(data_yaml_text(task, remote_dataset_path))
         update_task(task_id, remote_run_path=remote_run_dir)
 
         command = remote_train_command(task, remote_yaml, remote_runs_root)
-        shell_command = " ".join(shlex.quote(str(part)) for part in command)
+        shell_command = shell_join(command)
+        session = tmux_session_name(task_id)
+        tmux_command = tmux_wrap_command(shell_command, remote_log, remote_exit, remote_work_dir)
+        start_command = f"tmux new-session -d -s {shlex.quote(session)} {shlex.quote(tmux_command)}"
         append_log(task_id, f"远程数据集：{remote_dataset_path}\n")
-        append_log(task_id, "$ " + shell_command + "\n\n")
-        _, stdout, _ = client.exec_command(shell_command, get_pty=True)
-        channel = stdout.channel
-        while not channel.exit_status_ready():
-            append_channel_output(task_id, channel)
-            append_channel_output(task_id, channel, stderr=True)
-            time.sleep(0.2)
-        append_channel_output(task_id, channel)
-        append_channel_output(task_id, channel, stderr=True)
-        return_code = channel.recv_exit_status()
+        append_log(task_id, "$ " + start_command + "\n\n")
+        code, output, error = remote_command_output(client, start_command)
+        if code != 0:
+            append_log(task_id, (output + error).strip() + "\n")
+            append_log(task_id, f"tmux 启动失败，退出码: {code}\n")
+            update_task(task_id, status="失败", finished_at=datetime.now().isoformat(timespec="seconds"))
+            return
+        running_processes[task_id] = {"type": "remote-tmux", "client": client, "session": session}
+        remote_log_offset = 0
+        try:
+            while True:
+                text = read_remote_text(sftp, remote_log)
+                if len(text) > remote_log_offset:
+                    append_log(task_id, text[remote_log_offset:])
+                    remote_log_offset = len(text)
+                code, _, _ = remote_command_output(client, f"tmux has-session -t {shlex.quote(session)} >/dev/null 2>&1")
+                if code != 0:
+                    break
+                time.sleep(1)
+            text = read_remote_text(sftp, remote_log)
+            if len(text) > remote_log_offset:
+                append_log(task_id, text[remote_log_offset:])
+            exit_text = read_remote_text(sftp, remote_exit).strip()
+            return_code = int(exit_text) if exit_text.isdigit() else 1
+        finally:
+            running_processes.pop(task_id, None)
         append_log(task_id, f"\n远程进程退出码: {return_code}\n")
         if return_code != 0:
             update_task(task_id, status="失败", finished_at=datetime.now().isoformat(timespec="seconds"))
@@ -753,28 +994,42 @@ def run_task(task):
         started_at=datetime.now().isoformat(timespec="seconds"),
     )
     command = train_command(task)
-    append_log(task_id, "$ " + " ".join(str(part) for part in command) + "\n\n")
+    append_log(task_id, "$ " + shell_join(command) + "\n\n")
     if shutil.which("yolo") is None:
         append_log(task_id, "yolo 命令不存在，请先安装 ultralytics 或确认虚拟环境 PATH。\n")
         update_task(task_id, status="失败", finished_at=datetime.now().isoformat(timespec="seconds"))
         return
+    if not local_tmux_available():
+        append_log(task_id, "本机未安装 tmux，无法启动持久训练。请先安装 tmux。\n")
+        update_task(task_id, status="失败", finished_at=datetime.now().isoformat(timespec="seconds"))
+        return
+    session = tmux_session_name(task_id)
+    exit_path = log_file(task_id).with_suffix(".exit")
+    exit_path.unlink(missing_ok=True)
+    tmux_command = tmux_wrap_command(shell_join(command), str(log_file(task_id)), str(exit_path), str(workspace_path()))
+    start_command = ["tmux", "new-session", "-d", "-s", session, tmux_command]
     try:
-        with log_file(task_id).open("a", encoding="utf-8") as output:
-            process = subprocess.Popen(
-                command,
-                stdout=output,
-                stderr=subprocess.STDOUT,
-                cwd=workspace_path(),
-                text=True,
-            )
-            running_processes[task_id] = process
-            return_code = process.wait()
+        append_log(task_id, "$ " + shell_join(start_command) + "\n\n")
+        started = subprocess.run(start_command, cwd=workspace_path(), text=True, capture_output=True)
+        if started.returncode != 0:
+            append_log(task_id, (started.stdout + started.stderr).strip() + "\n")
+            append_log(task_id, f"tmux 启动失败，退出码: {started.returncode}\n")
+            update_task(task_id, status="失败", finished_at=datetime.now().isoformat(timespec="seconds"))
+            return
+        running_processes[task_id] = {"type": "local-tmux", "session": session}
+        while subprocess.run(["tmux", "has-session", "-t", session], capture_output=True).returncode == 0:
+            time.sleep(1)
+        try:
+            return_code = int(exit_path.read_text(encoding="utf-8", errors="replace").strip())
+        except (OSError, ValueError):
+            return_code = 1
     except Exception as error:
         append_log(task_id, f"\n训练启动失败: {error}\n")
         update_task(task_id, status="失败", finished_at=datetime.now().isoformat(timespec="seconds"))
         return
     finally:
         running_processes.pop(task_id, None)
+        exit_path.unlink(missing_ok=True)
 
     status_text = "完成" if return_code == 0 else "失败"
     append_log(task_id, f"\n进程退出码: {return_code}\n")
@@ -823,23 +1078,17 @@ def train(request: Request, tab: str = "", queue: str = "all"):
     if current_project:
         tasks = [task for task in tasks if task.get("project") == current_project]
     queue_filter = train_queue_filter(queue)
-    completed_count = sum(1 for task in tasks if task.get("status") == COMPLETE_STATUS)
-    active_count = len(tasks) - completed_count
-    completed_percent = round(completed_count / len(tasks) * 100) if tasks else 0
-    active_percent = round(active_count / len(tasks) * 100) if tasks else 0
+    overview = train_overview(tasks)
     response = templates.TemplateResponse(
         request=request,
-            name="train/index.html",
+        name="train/index.html",
         context={
             "request": request,
             "workspace": workspace,
             "tasks": tasks,
             "queue_tasks": [task_card_view(task) for task in filtered_queue_tasks(tasks, queue_filter)],
             "models": model_items(tasks, current_project),
-            "completed_count": completed_count,
-            "active_count": active_count,
-            "completed_percent": completed_percent,
-            "active_percent": active_percent,
+            **overview,
             "queue_filter": queue_filter,
             "active_page": "model",
             "model_active": "train",
@@ -915,12 +1164,85 @@ def train_model_metrics(request: Request, project: str, task_id: str):
             "workspace": workspace,
             "task": task,
             "assets": assets,
+            "export_formats": MODEL_EXPORT_FORMATS,
             "active_page": "model",
             "model_active": "overview",
             "current_project": project,
             **header_context(request, workspace),
         },
     )
+
+
+def zip_export_artifact(path: Path):
+    temp = tempfile.NamedTemporaryFile(prefix=f"{path.name}-", suffix=".zip", delete=False)
+    temp_path = Path(temp.name)
+    temp.close()
+    with zipfile.ZipFile(temp_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for item in sorted(path.rglob("*"), key=lambda child: child.relative_to(path).as_posix()):
+            if item.is_file():
+                archive.write(item, item.relative_to(path).as_posix())
+    return temp_path
+
+
+def exported_artifact(weights_dir: Path, started_at: float):
+    candidates = []
+    for path in weights_dir.iterdir():
+        if path.name in WEIGHT_FILES:
+            continue
+        if not path.name.startswith("best"):
+            continue
+        try:
+            modified = path.stat().st_mtime
+        except OSError:
+            continue
+        if modified + 1 >= started_at:
+            candidates.append((modified, path))
+    return max(candidates, default=(0, None))[1]
+
+
+@router.post("/model/{project}/metrics/{task_id}/export")
+def export_model(project: str, task_id: str, request: Request):
+    return JSONResponse({"ok": False, "error": "请使用表单提交导出格式"}, status_code=400)
+
+
+@router.get("/model/{project}/metrics/{task_id}/export")
+def export_model_download(project: str, task_id: str, format: str = "onnx"):
+    export_format = (format or "onnx").strip().lower()
+    if export_format not in MODEL_EXPORT_FORMATS:
+        return JSONResponse({"ok": False, "error": "不支持的导出格式"}, status_code=400)
+    task = resolve_model_task(task_id)
+    if task is None or task.get("project") != project:
+        return JSONResponse({"ok": False, "error": "模型不存在"}, status_code=404)
+    run_dir = task_run_dir(task)
+    weights_dir = run_dir / "weights"
+    best_path = weights_dir / "best.pt"
+    if not best_path.is_file():
+        return JSONResponse({"ok": False, "error": "best.pt 不存在，无法导出"}, status_code=404)
+    if shutil.which("yolo") is None:
+        return JSONResponse({"ok": False, "error": "yolo 命令不存在，请先安装 ultralytics"}, status_code=500)
+    started_at = time.time()
+    result = subprocess.run(
+        ["yolo", "export", f"model={best_path}", f"format={export_format}"],
+        cwd=weights_dir,
+        text=True,
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        return JSONResponse(
+            {"ok": False, "error": result.stderr or result.stdout or "模型导出失败"},
+            status_code=500,
+        )
+    artifact = exported_artifact(weights_dir, started_at)
+    if artifact is None:
+        return JSONResponse({"ok": False, "error": "导出完成，但没有找到导出文件"}, status_code=500)
+    if artifact.is_dir():
+        zip_path = zip_export_artifact(artifact)
+        return FileResponse(
+            zip_path,
+            filename=f"{task['name']}-{export_format}.zip",
+            background=BackgroundTask(lambda: zip_path.unlink(missing_ok=True)),
+        )
+    return FileResponse(artifact, filename=f"{task['name']}-{artifact.name}")
 
 
 @router.get("/model/{project}/metrics/{task_id}/weights/{weight_name}")
@@ -957,20 +1279,26 @@ def train_model_file(task_id: str, file_path: str, project: str = ""):
 def new_train(request: Request, dataset: str = ""):
     project = request.query_params.get("project", "")
     is_remote = request.query_params.get("remote") == "1"
+    requested_dataset = (dataset or "").strip()
     if project:
         url = f"/model/{project}/train/new"
         params = []
-        if dataset:
-            params.append(f"dataset={dataset}")
+        if requested_dataset:
+            params.append(("dataset", requested_dataset))
         if is_remote:
-            params.append("remote=1")
+            params.append(("remote", "1"))
         if params:
-            url += "?" + "&".join(params)
+            url += "?" + urlencode(params)
         return RedirectResponse(url=url, status_code=status.HTTP_303_SEE_OTHER)
     workspace = workspace_path()
     current_project = request.cookies.get("current_project", "")
-    dataset_item = selected_remote_dataset(current_project, dataset) if is_remote else selected_dataset(current_project, dataset)
     dataset_options = remote_dataset_dirs(current_project) if is_remote else dataset_dirs(current_project)
+    locked_dataset = (
+        matched_remote_dataset(current_project, requested_dataset)
+        if is_remote
+        else matched_dataset(current_project, requested_dataset)
+    )
+    dataset_item = locked_dataset or (dataset_options[0] if dataset_options else None)
     response = templates.TemplateResponse(
         request=request,
         name="train/new.html",
@@ -979,6 +1307,7 @@ def new_train(request: Request, dataset: str = ""):
             "workspace": workspace,
             "dataset": dataset_item,
             "datasets": dataset_options,
+            "dataset_locked": locked_dataset is not None,
             "remote_train": is_remote,
             "model_versions": MODEL_VERSIONS,
             "model_sizes": MODEL_SIZES,
@@ -1000,10 +1329,11 @@ def new_train(request: Request, dataset: str = ""):
 @router.get("/model/train/new/{project}")
 @router.get("/train/new/{project}")
 def new_train_with_project(request: Request, project: str, dataset: str = ""):
+    requested_dataset = (dataset or "").strip()
     if request.url.path.startswith("/model/train/new/"):
         params = []
-        if dataset:
-            params.append(("dataset", dataset))
+        if requested_dataset:
+            params.append(("dataset", requested_dataset))
         if request.query_params.get("remote") == "1":
             params.append(("remote", "1"))
         suffix = "?" + urlencode(params) if params else ""
@@ -1011,8 +1341,13 @@ def new_train_with_project(request: Request, project: str, dataset: str = ""):
     workspace = workspace_path()
     current_project = project
     is_remote = request.query_params.get("remote") == "1"
-    dataset_item = selected_remote_dataset(project, dataset) if is_remote else selected_dataset(project, dataset)
     dataset_options = remote_dataset_dirs(project) if is_remote else dataset_dirs(project)
+    locked_dataset = (
+        matched_remote_dataset(project, requested_dataset)
+        if is_remote
+        else matched_dataset(project, requested_dataset)
+    )
+    dataset_item = locked_dataset or (dataset_options[0] if dataset_options else None)
     response = templates.TemplateResponse(
         request=request,
         name="train/new.html",
@@ -1021,6 +1356,7 @@ def new_train_with_project(request: Request, project: str, dataset: str = ""):
             "workspace": workspace,
             "dataset": dataset_item,
             "datasets": dataset_options,
+            "dataset_locked": locked_dataset is not None,
             "remote_train": is_remote,
             "model_versions": MODEL_VERSIONS,
             "model_sizes": MODEL_SIZES,
@@ -1053,6 +1389,8 @@ async def create_train(request: Request):
     model_version = clean_model_version(form.get("model_version", ["YOLO26"])[0])
     model_size = clean_model_size(form.get("model_size", ["N"])[0])
     data_value = form.get("data", [""])[0].strip()
+    yolo_options = {key: optional_value(form.get(key, [""])[0]) for key in YOLO_OPTION_KEYS}
+    yolo_options["data"] = data_value
     task = {
         "id": uuid4().hex[:12],
         "name": form.get("name", ["train"])[0].strip() or "train",
@@ -1064,14 +1402,12 @@ async def create_train(request: Request):
         "model_size": model_size,
         "model": model_weight(model_version, model_size),
         "epochs": int(form.get("epochs", ["200"])[0] or 200),
-        "imgsz": optional_int(form.get("imgsz", [""])[0]),
         "batch": optional_int(form.get("batch", [""])[0]),
-        "device": form.get("device", [""])[0].strip(),
+        "device": yolo_options.get("device") or "",
         "workers": optional_int(form.get("workers", [""])[0]),
-        "amp": form.get("amp", [""])[0].strip(),
-        "data": data_value,
         "status": "演示模式" if demo_mode_enabled() else "排队中",
         "created_at": datetime.now().isoformat(timespec="seconds"),
+        **{key: value for key, value in yolo_options.items() if key not in {"batch", "device", "workers"}},
     }
     if is_remote:
         task.update(
@@ -1140,11 +1476,57 @@ def train_task_logs(task_id: str):
 @router.post("/train/tasks/{task_id}/cancel")
 def cancel_task(task_id: str):
     process = running_processes.get(task_id)
-    if process and process.poll() is None:
-        process.terminate()
+    if process:
+        if isinstance(process, dict) and process.get("type") == "local-tmux":
+            subprocess.run(["tmux", "kill-session", "-t", str(process.get("session") or "")], capture_output=True)
+        elif isinstance(process, dict) and process.get("type") == "remote-tmux":
+            client = process.get("client")
+            session = str(process.get("session") or "")
+            if client and session:
+                client.exec_command(f"tmux kill-session -t {shlex.quote(session)} >/dev/null 2>&1")
+        elif hasattr(process, "poll") and process.poll() is None:
+            process.terminate()
+        elif hasattr(process, "close"):
+            process.close()
     update_task(task_id, status="取消", finished_at=datetime.now().isoformat(timespec="seconds"))
     append_log(task_id, "\n任务已取消。\n")
     return RedirectResponse(url="/model/train", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/model/train/tasks/{task_id}/delete")
+@router.post("/train/tasks/{task_id}/delete")
+def delete_task(task_id: str):
+    with queue_lock:
+        tasks = load_tasks()
+        task = next((item for item in tasks if item.get("id") == task_id), None)
+        if task and task.get("status") in ACTIVE_STATUSES:
+            return RedirectResponse(url=f"/model/{task.get('project', '')}/train", status_code=status.HTTP_303_SEE_OTHER)
+        save_tasks([item for item in tasks if item.get("id") != task_id])
+    if task:
+        log_file(task_id).unlink(missing_ok=True)
+        return RedirectResponse(url=f"/model/{task.get('project', '')}/train", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url="/model/train", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/model/train/tasks/{task_id}/rerun")
+@router.post("/train/tasks/{task_id}/rerun")
+def rerun_task(task_id: str):
+    with queue_lock:
+        tasks = load_tasks()
+        task = next((item for item in tasks if item.get("id") == task_id), None)
+        if task is None:
+            return RedirectResponse(url="/model/train", status_code=status.HTTP_303_SEE_OTHER)
+        if task.get("status") in ACTIVE_STATUSES:
+            return RedirectResponse(url=f"/model/{task.get('project', '')}/train", status_code=status.HTTP_303_SEE_OTHER)
+        task["status"] = "排队中"
+        task["created_at"] = datetime.now().isoformat(timespec="seconds")
+        for key in ("started_at", "finished_at", "run_path", "remote_run_path", "progress"):
+            task.pop(key, None)
+        save_tasks(tasks)
+    log_file(task_id).unlink(missing_ok=True)
+    append_log(task_id, f"任务已重跑: {task['created_at']}\n")
+    ensure_worker()
+    return RedirectResponse(url=f"/model/{task.get('project', '')}/train", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.get("/model/train/{project}")
@@ -1161,23 +1543,17 @@ def train_with_project(request: Request, project: str, tab: str = "", queue: str
     if current_project:
         tasks = [task for task in tasks if task.get("project") == current_project]
     queue_filter = train_queue_filter(queue)
-    completed_count = sum(1 for task in tasks if task.get("status") == COMPLETE_STATUS)
-    active_count = len(tasks) - completed_count
-    completed_percent = round(completed_count / len(tasks) * 100) if tasks else 0
-    active_percent = round(active_count / len(tasks) * 100) if tasks else 0
+    overview = train_overview(tasks)
     response = templates.TemplateResponse(
         request=request,
-            name="train/index.html",
+        name="train/index.html",
         context={
             "request": request,
             "workspace": workspace,
             "tasks": tasks,
             "queue_tasks": [task_card_view(task) for task in filtered_queue_tasks(tasks, queue_filter)],
             "models": model_items(tasks, current_project),
-            "completed_count": completed_count,
-            "active_count": active_count,
-            "completed_percent": completed_percent,
-            "active_percent": active_percent,
+            **overview,
             "queue_filter": queue_filter,
             "active_page": "model",
             "model_active": "train",

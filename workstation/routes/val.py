@@ -454,9 +454,9 @@ async def create_validate_task(request: Request):
         return RedirectResponse(url="/project", status_code=status.HTTP_303_SEE_OTHER)
 
     dataset = str(form.get("dataset") or "")
-    split = str(form.get("split") or "test")
+    split = str(form.get("split") or "val")
     if split not in {"val", "test"}:
-        split = "test"
+        split = "val"
     dataset_path = (path / "datasets" / dataset).resolve()
     datasets_root = (path / "datasets").resolve()
     if (

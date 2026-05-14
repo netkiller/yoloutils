@@ -14,8 +14,7 @@
         <p>{{ project_name or current_project or "未选择项目" }}</p>
       </div>
       <div class="model-head-actions">
-        {% include "partials/model_nav.html" %}
-        <span class="model-count">{{ models | length }} 个模型</span>
+        <a class="secondary-button" href="/model{% if current_project %}/{{ current_project }}{% endif %}">返回模型</a>
       </div>
     </section>
 

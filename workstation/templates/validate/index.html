@@ -3,7 +3,7 @@
 {% block title %}{% if project_name %}项目 {{ project_name }} 验证{% else %}验证{% endif %}{% endblock %}
 
 {% block styles %}
-  <link rel="stylesheet" href="/static/css/val.css?v=20260514-val-upload">
+  <link rel="stylesheet" href="/static/css/val.css?v=20260514-split-val-default">
 {% endblock %}
 
 {% block content %}
@@ -14,8 +14,7 @@
         <p>{{ project_name or current_project or "未选择项目" }}</p>
       </div>
       <div class="model-head-actions">
-        {% include "partials/model_nav.html" %}
-        <span class="model-count">{{ datasets | length }} 个数据集</span>
+        <a class="secondary-button" href="/model{% if current_project %}/{{ current_project }}{% endif %}">返回模型</a>
       </div>
     </section>
 
@@ -52,8 +51,8 @@
           <label>
             <span>Split</span>
             <select name="split">
+              <option value="val" selected>val 检验</option>
               <option value="test">test 测试</option>
-              <option value="val">val 检验</option>
             </select>
           </label>
           <label>

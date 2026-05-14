@@ -3,7 +3,7 @@
 {% block title %}{% if current_project_name %}项目 {{ current_project_name }} 训练{% else %}训练{% endif %}{% endblock %}
 
 {% block styles %}
-  <link rel="stylesheet" href="/static/css/train.css?v=20260513-task-cards">
+  <link rel="stylesheet" href="/static/css/train.css?v=20260514-task-card-theme">
 {% endblock %}
 
 {% block content %}
@@ -17,28 +17,52 @@
         {% endif %}
       </div>
       <div class="train-head-actions">
-        {% include "partials/model_nav.html" %}
+        <a class="secondary-button" href="/model{% if current_project %}/{{ current_project }}{% endif %}">返回模型</a>
       </div>
     </section>
 
     <section class="train-overview" aria-label="训练概览">
-      <div class="train-overview-card charted">
-        <span class="overview-pie" style="background: conic-gradient(#1667c7 0 {{ completed_percent }}%, #e2e8f0 {{ completed_percent }}% 100%)"><b>{{ models | length }}</b></span>
-        <div>
-          <span>已完成模型</span>
-          <strong>{{ completed_percent }}%</strong>
+      <div class="train-overview-card">
+        <div class="overview-card-head">
+          <span>训练结果</span>
+          <strong>{{ models | length }}</strong>
         </div>
-      </div>
-      <div class="train-overview-card charted">
-        <span class="overview-pie" style="background: conic-gradient(#1667c7 0 {{ completed_percent }}%, #f59e0b {{ completed_percent }}% 100%)"><b>{{ tasks | length }}</b></span>
+        <div class="overview-bar"><span style="width: {{ completed_percent }}%"></span></div>
         <div>
-          <span>全部任务</span>
-          <strong>{{ completed_count }} 完成 / {{ active_count }} 未完成</strong>
+          <b>{{ completed_count }} 个完成任务</b>
+          <small>已生成 {{ models | length }} 个可查看模型</small>
         </div>
       </div>
       <div class="train-overview-card">
-        <span>训练状态</span>
-        <strong>{{ "演示模式" if demo_mode else "可运行" }}</strong>
+        <div class="overview-card-head">
+          <span>任务队列</span>
+          <strong>{{ total_count }}</strong>
+        </div>
+        <div class="overview-pie-layout">
+          <span class="overview-pie queue" style="background: conic-gradient(#16a34a 0 {{ completed_percent }}%, #ef4444 {{ completed_percent }}% {{ completed_percent + failed_percent }}%, #f59e0b {{ completed_percent + failed_percent }}% 100%)"><b>{{ completed_percent }}%</b></span>
+          <div>
+            <small class="overview-legend vertical">
+              <span><i class="legend-dot done"></i>完成 {{ completed_count }}</span>
+              <span><i class="legend-dot active"></i>运行 {{ running_count }}</span>
+              <span><i class="legend-dot failed"></i>失败 {{ failed_count }}</span>
+            </small>
+          </div>
+        </div>
+      </div>
+      <div class="train-overview-card">
+        <div class="overview-card-head">
+          <span>执行位置</span>
+          <strong>{{ "演示" if demo_mode else "可运行" }}</strong>
+        </div>
+        <div class="overview-pie-layout">
+          <span class="overview-pie scope" style="background: conic-gradient(#1667c7 0 {{ local_percent }}%, #16a34a {{ local_percent }}% 100%)"><b>{{ remote_percent }}%</b></span>
+          <div>
+            <small class="overview-legend vertical">
+              <span><i class="legend-dot local"></i>本地训练 {{ local_count }}</span>
+              <span><i class="legend-dot remote"></i>远程训练 {{ remote_count }}</span>
+            </small>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -58,47 +82,78 @@
       {% if queue_tasks %}
         <section class="task-list" aria-label="训练任务">
           {% for task in queue_tasks %}
-            <article class="task-card" data-train-task data-task-id="{{ task.id }}">
-              <div class="task-progress-pie" style="background: {{ task.progress_style }}" aria-label="训练进度 {{ task.progress }}%">
-                <span data-task-progress-text>{{ task.progress }}%</span>
-              </div>
+            <article class="task-card {{ 'remote-task' if task.is_remote else 'local-task' }}" data-train-task data-task-id="{{ task.id }}">
               <div class="task-card-main">
                 <div class="task-card-title">
                   <div>
                     <h2><span class="train-scope {{ 'remote' if task.is_remote else 'local' }}">{{ task.scope_label }}</span>{{ task.name }}</h2>
                     <p>创建时间 {{ task.display_created_at or task.created_at }}</p>
                   </div>
-                  <span class="status" data-task-status>{{ task.status }}</span>
-                </div>
-                <div class="task-dataset">
-                  <span>数据集</span>
-                  <strong>{{ task.dataset }}</strong>
-                  {% if task.is_remote %}
-                    <span>算力</span>
-                    {% if task.resource_url %}
-                      <a class="task-resource-link" href="{{ task.resource_url }}">{{ task.resource_name }}</a>
-                    {% else %}
-                      <strong>{{ task.resource_name }}</strong>
-                    {% endif %}
-                    {% if task.remote_dataset_path %}
-                      <span class="task-remote-path">{{ task.remote_dataset_path }}</span>
-                    {% endif %}
-                  {% endif %}
+                  <span class="status {{ task.status_class }}" data-task-status>{{ task.status }}</span>
                 </div>
                 <div class="task-params" aria-label="训练参数">
                   {% for param in task.params %}
                     <span><b>{{ param.label }}</b>{{ param.value }}</span>
                   {% endfor %}
                 </div>
+                <div class="task-info-grid">
+                  <div class="task-data-distribution" aria-label="数据分布">
+                    <strong>数据分布</strong>
+                    <span class="task-data-pie" style="background: {{ task.dataset_distribution.chart_style }}"><b>{{ task.dataset_distribution.total }}</b></span>
+                    <small>
+                      {% for split in task.dataset_distribution.splits %}
+                        <span><i class="legend-dot split-{{ split.name }}"></i>{{ split.label }} {{ split.count }}</span>
+                      {% endfor %}
+                    </small>
+                  </div>
+                  <div class="task-dataset-card" aria-label="训练数据集">
+                    <div>
+                      <span>数据集</span>
+                      <strong>{{ task.dataset }}</strong>
+                    </div>
+                    {% if task.is_remote %}
+                      <div>
+                        <span>算力</span>
+                        {% if task.resource_url %}
+                          <a class="task-resource-link" href="{{ task.resource_url }}">{{ task.resource_name }}</a>
+                        {% else %}
+                          <strong>{{ task.resource_name }}</strong>
+                        {% endif %}
+                      </div>
+                      {% if task.remote_dataset_path %}
+                        <p>{{ task.remote_dataset_path }}</p>
+                      {% endif %}
+                    {% else %}
+                      <div>
+                        <span>位置</span>
+                        <strong>本地</strong>
+                      </div>
+                    {% endif %}
+                  </div>
+                </div>
+                <div class="task-progress-row" aria-label="训练进度 {{ task.progress }}%">
+                  <div class="task-progress-track"><span data-task-progress-bar style="width: {{ task.progress }}%"></span></div>
+                  <strong data-task-progress-text>{{ task.progress }}%</strong>
+                </div>
               </div>
               <div class="task-actions">
+                {% if task.is_active and task.is_remote and task.resource_url %}
+                  <a href="{{ task.resource_url }}">监控</a>
+                {% endif %}
                 <button type="button" data-view-train-log data-log-url="/model/train/tasks/{{ task.id }}/logs">查看</button>
                 {% if task.is_completed %}
                   <a href="/model/train/models/{{ task.id }}">模型</a>
                 {% endif %}
                 {% if task.is_active %}
                   <form method="post" action="/model/train/tasks/{{ task.id }}/cancel">
-                    <button type="submit">取消</button>
+                    <button type="submit">停止</button>
+                  </form>
+                {% else %}
+                  <form method="post" action="/model/train/tasks/{{ task.id }}/rerun">
+                    <button type="submit">重跑</button>
+                  </form>
+                  <form method="post" action="/model/train/tasks/{{ task.id }}/delete">
+                    <button type="submit">删除</button>
                   </form>
                 {% endif %}
               </div>
@@ -118,6 +173,10 @@
     (() => {
       const activeStatuses = new Set(["排队中", "进行中"]);
       let activeLogTimer = null;
+      function stopLogFollow() {
+        if (activeLogTimer) clearInterval(activeLogTimer);
+        activeLogTimer = null;
+      }
       function openFooterConsole(text, status = "", progress = 0) {
         const panel = document.querySelector("[data-footer-console]");
         const output = panel?.querySelector("pre");
@@ -131,23 +190,33 @@
         output.scrollTop = output.scrollHeight;
       }
       function paintProgress(card, progress) {
-        const pie = card.querySelector(".task-progress-pie");
+        const bar = card.querySelector("[data-task-progress-bar]");
         const text = card.querySelector("[data-task-progress-text]");
-        if (pie) {
-          pie.style.background = `conic-gradient(#1667c7 0 ${progress}%, #e2e8f0 ${progress}% 100%)`;
-          pie.setAttribute("aria-label", `训练进度 ${progress}%`);
-        }
+        if (bar) bar.style.width = `${progress}%`;
         if (text) text.textContent = `${progress}%`;
+        card.querySelector(".task-progress-row")?.setAttribute("aria-label", `训练进度 ${progress}%`);
       }
-      async function loadTaskLog(button) {
+      function updateFooterConsole(text, status = "", progress = 0) {
+        const panel = document.querySelector("[data-footer-console]");
+        const output = panel?.querySelector("pre");
+        if (!panel || !output || panel.hidden) return;
+        const header = status ? [`状态：${status}`, `进度：${progress || 0}%`, ""].join("\n") : "";
+        output.textContent = `${header}${text || "控制台暂无输出"}`;
+        output.scrollTop = output.scrollHeight;
+      }
+      async function loadTaskLog(button, openConsole = true) {
         const response = await fetch(button.dataset.logUrl, {cache: "no-store"});
         const data = await response.json();
         if (!response.ok || !data.ok) {
-          openFooterConsole(data.error || "训练日志读取失败");
+          if (openConsole) openFooterConsole(data.error || "训练日志读取失败");
           return null;
         }
         const task = data.task || {};
-        openFooterConsole(data.log || "暂无日志", task.status || "", task.progress || 0);
+        if (openConsole) {
+          openFooterConsole(data.log || "暂无日志", task.status || "", task.progress || 0);
+        } else {
+          updateFooterConsole(data.log || "暂无日志", task.status || "", task.progress || 0);
+        }
         const card = button.closest("[data-train-task]");
         if (card) {
           const statusNode = card.querySelector("[data-task-status]");
@@ -157,23 +226,32 @@
         return data;
       }
       function watchTaskLog(button) {
-        if (activeLogTimer) clearInterval(activeLogTimer);
-        activeLogTimer = null;
+        stopLogFollow();
         loadTaskLog(button).then(data => {
           const status = data?.task?.status || "";
           if (!activeStatuses.has(status)) return;
           activeLogTimer = setInterval(async () => {
-            const latest = await loadTaskLog(button).catch(() => null);
+            const panel = document.querySelector("[data-footer-console]");
+            if (!panel || panel.hidden) {
+              stopLogFollow();
+              return;
+            }
+            const latest = await loadTaskLog(button, false).catch(() => null);
             const latestStatus = latest?.task?.status || "";
             if (latestStatus && !activeStatuses.has(latestStatus)) {
-              clearInterval(activeLogTimer);
-              activeLogTimer = null;
+              stopLogFollow();
             }
           }, 1000);
         }).catch(() => openFooterConsole("训练日志读取失败"));
       }
       document.querySelectorAll("[data-view-train-log]").forEach(button => {
         button.addEventListener("click", () => watchTaskLog(button));
+      });
+      document.querySelector("[data-footer-console-toggle]")?.addEventListener("click", () => {
+        setTimeout(() => {
+          const panel = document.querySelector("[data-footer-console]");
+          if (!panel || panel.hidden) stopLogFollow();
+        }, 0);
       });
     })();
   </script>

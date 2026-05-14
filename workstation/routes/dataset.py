@@ -39,6 +39,7 @@ _UNICODE_SYMBOLS = tuple(
 DATASET_ICONS = (DEFAULT_DATASET_ICON,) + tuple(symbol for symbol in _UNICODE_SYMBOLS if symbol != DEFAULT_DATASET_ICON)
 deploy_lock = threading.Lock()
 build_lock = threading.Lock()
+ACTIVE_DEPLOY_STATUSES = {"排队中", "进行中", "等待确认"}
 
 
 def workspace_path():
@@ -128,8 +129,22 @@ def copy_image_to_dataset(source: Path, source_root: Path, image_root: Path, lab
 
 
 def project_classes_file(project_path: Path):
-    candidates = [project_path / "classes.txt", project_path / ANNOTATE_DIR / "classes.txt"]
-    return next((candidate for candidate in candidates if candidate.is_file()), None)
+    path = project_path / ANNOTATE_DIR / "classes.txt"
+    return path if path.is_file() else None
+
+
+def project_classes_preview(project_path: Path | None):
+    if project_path is None or not project_path.is_dir():
+        return {"path": f"{ANNOTATE_DIR}/classes.txt", "exists": False, "items": []}
+    path = project_path / ANNOTATE_DIR / "classes.txt"
+    items = []
+    if path.is_file():
+        items = [
+            line.strip()
+            for line in path.read_text(encoding="utf-8", errors="replace").splitlines()
+            if line.strip()
+        ]
+    return {"path": f"{ANNOTATE_DIR}/classes.txt", "exists": path.is_file(), "items": items}
 
 
 def dataset_icon(value: str):
@@ -226,6 +241,24 @@ def latest_dataset_deploy_task(project_path: Path, dataset_name: str):
     return tasks[0] if tasks else None
 
 
+def dataset_deploy_defaults(project_path: Path, dataset_name: str):
+    latest = latest_dataset_deploy_task(project_path, dataset_name)
+    if latest:
+        return {
+            "resource_id": str(latest.get("resource_id") or ""),
+            "mode": "sync",
+            "target_path": str(latest.get("target_path") or f"~/datasets/{dataset_name}"),
+        }
+    resources = read_resources(workspace_path())
+    if not resources:
+        return None
+    return {
+        "resource_id": str(resources[0].get("id") or ""),
+        "mode": "sync",
+        "target_path": f"~/datasets/{dataset_name}",
+    }
+
+
 def deploy_mode_icon(mode: str):
     return "↻" if mode in {"sync", "diff", "incremental"} else "⬢"
 
@@ -245,6 +278,9 @@ def build_dataset(workspace: Path, project: str, name: str, val_percent: int, te
     dataset_dir = project_path / "datasets" / name
     if dataset_dir.exists():
         return None, "数据集已存在"
+    classes_file = project_classes_file(project_path)
+    if classes_file is None:
+        return None, f"缺少 {ANNOTATE_DIR}/classes.txt，不能创建数据集"
 
     files = image_files(images_root)
     total = len(files)
@@ -262,9 +298,7 @@ def build_dataset(workspace: Path, project: str, name: str, val_percent: int, te
         for source in split_files:
             copy_image_to_dataset(source, images_root, images_dir, labels_dir)
 
-    classes_file = project_classes_file(project_path)
-    if classes_file:
-        shutil.copy2(classes_file, dataset_dir / "classes.txt")
+    shutil.copy2(classes_file, dataset_dir / "classes.txt")
     write_dataset_meta(dataset_dir, icon)
 
     return {
@@ -293,6 +327,9 @@ def run_build_dataset_task(project_path: Path, task: dict):
             raise RuntimeError("数据集已存在")
         if val_percent < 0 or test_percent < 0 or val_percent + test_percent > 100:
             raise RuntimeError("val 和 test 百分比之和不能超过 100")
+        classes_file = project_classes_file(project_path)
+        if classes_file is None:
+            raise RuntimeError(f"缺少 {ANNOTATE_DIR}/classes.txt，不能创建数据集")
         test_count = round(total * test_percent / 100)
         val_count = round(total * val_percent / 100)
         split_groups = (
@@ -312,9 +349,7 @@ def run_build_dataset_task(project_path: Path, task: dict):
                 if copied == total or copied % 10 == 0:
                     progress = 5 + round((copied / total) * 90) if total else 95
                     update_build_task(project_path, task_id, progress=min(progress, 95))
-        classes_file = project_classes_file(project_path)
-        if classes_file:
-            shutil.copy2(classes_file, dataset_path / "classes.txt")
+        shutil.copy2(classes_file, dataset_path / "classes.txt")
         write_dataset_meta(dataset_path, icon, str(task.get("created_at") or ""))
         update_build_task(project_path, task_id, status="完成", progress=100, error="")
         if task.get("deploy_enabled"):
@@ -352,6 +387,8 @@ def create_build_task(
         return None, "数据集已存在"
     if any(task.get("name") == name and task.get("status") in {"排队中", "创建中"} for task in read_build_tasks(project_path)):
         return None, "数据集正在创建"
+    if project_classes_file(project_path) is None:
+        return None, f"缺少 {ANNOTATE_DIR}/classes.txt，不能创建数据集"
     if deploy_enabled:
         if deploy_mode not in {"full", "sync"}:
             return None, "部署方式不正确"
@@ -956,7 +993,8 @@ def dataset_items(workspace: Path, project: str = ""):
             deploy_task = latest_dataset_deploy_task(project_dir, dataset_dir.name)
             deploy_status = str(deploy_task.get("status") or "") if deploy_task else ""
             deploy_progress = int(deploy_task.get("progress") or 0) if deploy_task else 0
-            deploying = bool(deploy_task) and deploy_status != "完成"
+            deploying = bool(deploy_task) and deploy_status in ACTIVE_DEPLOY_STATUSES
+            deploy_failed = bool(deploy_task) and deploy_status == "失败"
             location_label = str(deploy_task.get("resource_name") or "算力服务器") if deploy_task else "本地"
             chart_style = (
                 f"conic-gradient(#1667c7 0 {train_end:.2f}%, "
@@ -989,6 +1027,8 @@ def dataset_items(workspace: Path, project: str = ""):
                     "building": False,
                     "build_progress": 100,
                     "deploying": deploying,
+                    "deploy_failed": deploy_failed,
+                    "deploy_task_id": deploy_task.get("id", "") if deploy_task else "",
                     "deploy_progress": 100 if deploy_status == "完成" else deploy_progress,
                     "deploy_status": deploy_status,
                     "deploy_error": deploy_task.get("error", "") if deploy_task else "",
@@ -1037,6 +1077,7 @@ def dataset(request: Request, project: str = ""):
             "current_project": "",
             "current_project_name": "",
             "dataset_icons": DATASET_ICONS,
+            "project_classes": project_classes_preview(None),
             "resources": read_resources(workspace),
             **header_context(request, workspace),
         },
@@ -1059,6 +1100,7 @@ def dataset_with_project(request: Request, project: str):
             "current_project": project,
             "current_project_name": project_name(current_project_path) if current_project_path and current_project_path.is_dir() else project,
             "dataset_icons": DATASET_ICONS,
+            "project_classes": project_classes_preview(current_project_path),
             "resources": read_resources(workspace),
             **header_context(request, workspace),
         },
@@ -1120,6 +1162,28 @@ async def create_dataset_deploy(request: Request, project: str, name: str = ""):
     )
 
 
+@router.post("/dataset/{project}/{name}/deploy/run")
+def run_dataset_deploy_from_card(project: str, name: str):
+    workspace = workspace_path()
+    current_project_path = project_dir(workspace, project)
+    if current_project_path is None or not current_project_path.is_dir():
+        return JSONResponse({"ok": False, "error": "项目不存在"}, status_code=404)
+    path = dataset_dir(workspace, project, name)
+    if path is None:
+        return JSONResponse({"ok": False, "error": "数据集不存在"}, status_code=404)
+    deploy_form = dataset_deploy_defaults(current_project_path, name)
+    if deploy_form is None or not deploy_form.get("resource_id"):
+        return JSONResponse({"ok": False, "error": "暂无算力服务器，请先在算力页添加。"}, status_code=400)
+    task, error = create_deploy_task(current_project_path, path, name, deploy_form)
+    if error:
+        return JSONResponse({"ok": False, "error": error}, status_code=400)
+    return {
+        "ok": True,
+        "task_id": task["id"],
+        "log_url": f"/dataset/{project}/deploy/tasks/{task['id']}/log",
+    }
+
+
 @router.post("/dataset/{project}/deploy/tasks/{task_id}/overwrite")
 def dataset_deploy_task_overwrite(project: str, task_id: str):
     workspace = workspace_path()
@@ -1176,6 +1240,24 @@ def dataset_deploy_task_retry(project: str, task_id: str):
     append_deploy_log(Path(task["log_path"]), "失败任务重试")
     threading.Thread(target=run_deploy_task, args=(current_project_path, task), daemon=True, name=f"dataset-deploy-{task_id}").start()
     return RedirectResponse(url=f"/dataset/{project}/deploy/{task.get('dataset', '')}#task-{task_id}", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/dataset/{project}/deploy/tasks/{task_id}/delete")
+def dataset_deploy_task_delete(project: str, task_id: str):
+    workspace = workspace_path()
+    current_project_path = project_dir(workspace, project)
+    if current_project_path is None or not current_project_path.is_dir():
+        return JSONResponse({"ok": False, "error": "项目不存在"}, status_code=404)
+    tasks = read_deploy_tasks(current_project_path)
+    task = next((item for item in tasks if item.get("id") == task_id), None)
+    if task is None:
+        return JSONResponse({"ok": False, "error": "部署任务不存在"}, status_code=404)
+    if task.get("status") in ACTIVE_DEPLOY_STATUSES:
+        return JSONResponse({"ok": False, "error": "部署任务仍在进行，不能删除。"}, status_code=400)
+    with deploy_lock:
+        next_tasks = [item for item in read_deploy_tasks(current_project_path) if item.get("id") != task_id]
+        write_deploy_tasks(current_project_path, next_tasks)
+    return {"ok": True}
 
 
 @router.get("/dataset/{project}/deploy/tasks/{task_id}/log")

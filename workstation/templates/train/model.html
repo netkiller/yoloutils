@@ -3,12 +3,11 @@
 {% block title %}模型 {{ task.name }} 指标{% endblock %}
 
 {% block styles %}
-  <link rel="stylesheet" href="/static/css/train.css?v=20260514-metrics-tabs">
+  <link rel="stylesheet" href="/static/css/train.css?v=20260514-metrics-export">
 {% endblock %}
 
 {% block content %}
   <main class="model-detail-main">
-    {% include "partials/model_nav.html" %}
     <section class="train-head model-detail-head">
       <div>
         <h1>模型 {{ task.name }} 指标</h1>
@@ -21,13 +20,32 @@
         {% endif %}
       </div>
       <div class="task-actions model-downloads">
+        <a href="/model{% if current_project %}/{{ current_project }}{% endif %}">返回模型</a>
+      </div>
+    </section>
+
+    <section class="model-export-card" aria-label="导出模型">
+      <div>
+        <h2>导出模型</h2>
+        <p>选择导出格式，使用 best.pt 生成可部署模型。</p>
+      </div>
+      <form method="get" action="/model/{{ current_project }}/metrics/{{ task.id }}/export">
+        <label>
+          <span>模型格式</span>
+          <select name="format">
+            {% for value, label in export_formats.items() %}
+              <option value="{{ value }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <button type="submit" {% if not assets.has_best %}disabled{% endif %}>导出</button>
         {% if assets.has_best %}
           <a href="/model/{{ current_project }}/metrics/{{ task.id }}/weights/best.pt">下载 best.pt</a>
         {% endif %}
         {% if assets.has_last %}
           <a href="/model/{{ current_project }}/metrics/{{ task.id }}/weights/last.pt">下载 last.pt</a>
         {% endif %}
-      </div>
+      </form>
     </section>
 
     <section class="model-layout">

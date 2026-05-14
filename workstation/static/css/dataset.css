@@ -272,6 +272,7 @@
   border-radius: 6px;
   background: #ffffff;
   color: #334e68;
+  font: inherit;
   font-weight: 650;
   text-decoration: none;
 }
@@ -294,6 +295,20 @@
 .delete-button {
   cursor: pointer;
   font: inherit;
+}
+
+.deploy-button,
+.deploy-log-button {
+  cursor: pointer;
+}
+
+.deploy-button:disabled {
+  opacity: .65;
+  cursor: progress;
+}
+
+.dataset-failed-footer {
+  justify-content: flex-end;
 }
 
 .dataset-confirm-message {
@@ -1254,8 +1269,63 @@
 
 .dataset-split-row {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+}
+
+.dataset-classes-box {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  background: #f8fbff;
+}
+
+.dataset-classes-box.missing {
+  border-color: #fed7aa;
+  background: #fff7ed;
+}
+
+.dataset-classes-box > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dataset-classes-box strong {
+  color: #243b53;
+  font-size: 13px;
+}
+
+.dataset-classes-box span {
+  color: #52606d;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.dataset-classes-box.missing span {
+  color: #9a3412;
+}
+
+.dataset-classes-box ol {
+  max-height: 96px;
+  overflow: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dataset-classes-box li {
+  padding: 3px 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #334e68;
+  font-size: 12px;
 }
 
 .dataset-name-field,
@@ -1341,6 +1411,11 @@
 
 .dataset-dialog button[type="submit"]:hover {
   background: #f8fafc;
+}
+
+.dataset-dialog button[type="submit"]:disabled {
+  opacity: .55;
+  cursor: not-allowed;
 }
 
 .dataset-dialog .dataset-icon-random button {
