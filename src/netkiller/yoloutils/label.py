@@ -613,6 +613,9 @@ class YoloLabel(Common):
 
         self.indexs = {}
 
+    def source_relpath(self, file):
+        return os.path.relpath(file, self.args.source)
+
     def classes(self):
         classes = os.path.join(self.args.source, "classes.txt")
         if not os.path.isfile(classes):
@@ -641,9 +644,9 @@ class YoloLabel(Common):
 
         self.files = glob.glob(f"{self.args.source}/**/*.txt", recursive=True)
         self.logger.info(f"files total={len(self.files)}")
-        with tqdm(total=len(self.files), ncols=150) as progress:
+        with tqdm(total=len(self.files), ncols=100) as progress:
             for file in self.files:
-                progress.set_description(file)
+                progress.set_description(self.source_relpath(file))
                 filename = os.path.basename(file)
                 self.logger.info(f"file={file}")
                 try:
@@ -697,11 +700,13 @@ class YoloLabel(Common):
 
         with tqdm(total=len(self.files), ncols=100) as progress:
             for file in self.files:
+                progress.set_description(self.source_relpath(file))
                 filename = os.path.basename(file)
                 self.logger.info(f"file={file}")
                 try:
                     if filename.lower() == "classes.txt":
                         self.logger.info(f"skip file={file}")
+                        progress.update(1)
                         continue
                     else:
                         with open(file, "r", encoding="utf-8") as original:
