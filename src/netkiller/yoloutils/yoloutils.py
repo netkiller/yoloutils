@@ -338,12 +338,7 @@ class YoloUtils:
         self.workstation.add_argument("-p", "--port", type=int, default=8000, help="监听端口")
         self.workstation.add_argument('-d', '--daemon', action="store_true", default=False, help='后台运行')
         self.workstation.add_argument('-w', "--workspace", type=str, default=None, help="标注工作目录")
-        self.workstation.add_argument('-s', "--dataset", type=str, default=None, help="数据集目录")
-        self.workstation.add_argument('-r', "--run", type=str, default=None, help="训练目录")
         self.workstation.add_argument("-c", "--classes", type=str, default=None, help="classes.txt 文件")
-        self.workstation.add_argument("--open", action="store_true", default=False, help="启动服务后打开无地址栏应用窗口")
-        self.workstation.add_argument("-t", "--team", action="store_true", default=False, help="团队协作模式")
-        self.workstation.add_argument("--mDNS", dest="mdns", type=str, default="netkiller.local", help=".local 分享域名")
 
         self.parser = parser
 
@@ -519,7 +514,7 @@ class YoloUtils:
                 args = self.workstation.parse_args(argv[1:])
                 run = Workstation(args.host, args.port, args.daemon)
                 if args.workspace:
-                    run.main(args.workspace, args.dataset, args.run, args.classes, args.open, args.team, args.mdns)
+                    run.main(args.workspace, None, None, args.classes)
                 else:
                     self.workstation.print_help()
             except SystemExit as e:

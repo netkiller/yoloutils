@@ -847,11 +847,8 @@ yoloutils workstation \
     --host 0.0.0.0 \
     --port 8000 \
     -w /Users/neo/tmp/yolo/source \
-    --dataset /Users/neo/tmp/yolo/dataset \
-    --run /Users/neo/tmp/yolo/runs \
     --classes /Users/neo/tmp/yolo/source/classes.txt \
     --open \
-    --team \
     --mDNS netkiller.local
 ```
 
@@ -860,8 +857,6 @@ yoloutils workstation \
 - 遍历 `--workspace` 目录。
 - 顶部 header 提供标注、数据集、训练、自动、只读/打标、分享、下载、查询和快捷键入口。
 - 左侧目录栏按树形结构展示目录，目录完成后显示 `[x]`，未完成显示 `[]`；目录栏支持重载、折叠和隐藏。
-- `--team` 开启团队模式后，首次进入页面会提示输入用户名；目录栏下方展示“协作”区域，和目录区域按约 80:20 分栏，显示在线用户名称和人数。
-- 独立模式不显示协作栏，不启用团队在线和锁定逻辑。
 - 左侧文件栏展示当前目录图片，文件名前显示格式图标；排序按钮可在“未达标优先”和“已达标优先”之间切换。
 - 文件列表中，已标注且 `.txt` 有效的图片显示为绿色，状态后显示标签数量；空 `.txt`、无效 `.txt` 或损坏图片显示为红色。
 - 当前目录会默认打开排序后的第一张图片。
@@ -883,10 +878,8 @@ yoloutils workstation \
 - 默认监听 `0.0.0.0:8000`，本机打开使用 `http://127.0.0.1:8000`，可用 `--host` 和 `--port` 调整。
 - 使用 `-d/--daemon` 后台运行，工作目录会写入 `.yoloutils-workstation.pid` 和 `.yoloutils-workstation.log`。
 - `--classes` 可指定要使用的 `classes.txt`；未指定时会递归扫描 `--workspace` 下所有 `classes.txt`，并把根目录的 `classes.txt` 展示在标签栏最上方。
-- `--dataset` 和 `--run` 用于传入数据集目录和训练目录，当前作为工作站入口参数保留。
 - `--open` 会在服务启动后优先打开无地址栏的浏览器应用窗口，并定时访问首页做保活。
 - `--mDNS` 指定分享给协作者的 `.local` 域名，默认 `netkiller.local`；分享按钮会复制 `http://域名:端口`。
-- `-t/--team` 开启团队协作模式。团队模式下，用户进入图片后会锁定该图片；其他在线用户可以查看，但不能编辑、删除、重置或保存该图片，直到锁定者保存该图片或锁过期。独立模式不启用该逻辑。
 
 快捷键：
 

@@ -51,9 +51,9 @@ class Workstation:
         self.dataset = None
         self.run = None
         self.requested_classes_file = None
-        self.open_browser = False
+        self.open_browser = True
         self.team_mode = False
-        self.mdns = "netkiller.local"
+        self.share_host = "netkiller.local"
         self.presence = {}
         self.locks = {}
         self.classes_file = None
@@ -66,9 +66,8 @@ class Workstation:
         dataset: str = None,
         run: str = None,
         classes_file: str = None,
-        open_browser: bool = False,
+        open_browser: bool = True,
         team_mode: bool = False,
-        mdns: str = "netkiller.local",
     ):
         if FastAPI is None or uvicorn is None:
             print("缺少依赖: fastapi/uvicorn，请先安装: pip install fastapi uvicorn")
@@ -83,7 +82,7 @@ class Workstation:
         self.requested_classes_file = classes_file
         self.open_browser = open_browser
         self.team_mode = team_mode
-        self.mdns = self._normalize_mdns(mdns)
+        self.share_host = "netkiller.local"
 
         if self.daemon:
             self._start_daemon()
@@ -121,14 +120,7 @@ class Workstation:
         return f"http://{host}:{self.port}"
 
     def _share_url(self):
-        return f"http://{self.mdns}:{self.port}"
-
-    def _normalize_mdns(self, value: str):
-        name = (value or "netkiller.local").strip().lower()
-        if "://" in name:
-            name = name.split("://", 1)[1]
-        name = name.split("/", 1)[0].split(":", 1)[0]
-        return name if name.endswith(".local") else f"{name}.local"
+        return f"http://{self.share_host}:{self.port}"
 
     def _start_browser_opener(self, url: str):
         def open_and_keep_alive():
@@ -860,8 +852,14 @@ class Workstation:
     .main-splitter { cursor: col-resize; background: #d9e2ec; }
     .main-splitter:hover, .main-splitter.dragging { background: #bcccdc; }
     .tree, .files, .labels, .exif { padding: 8px; }
-    .tree { flex: 4 1 80%; min-height: 0; overflow: auto; }
+    .tree { flex: 1 1 auto; min-height: 0; overflow: auto; }
     .files { flex: 1 1 auto; min-height: 0; overflow: auto; }
+    .donation-pane { flex: 0 0 260px; min-height: 260px; overflow: hidden; border-top: 1px solid #d9e2ec; background: #fff; display: flex; flex-direction: column; }
+    .donation { flex: 1 1 auto; min-height: 0; padding: 8px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+    .donation img { display: block; width: 100%; height: auto; max-height: 100%; object-fit: contain; border: 1px solid #e4e7eb; border-radius: 6px; background: #fff; cursor: zoom-in; }
+    .donation-lightbox { position: fixed; inset: 0; z-index: 80; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(15, 23, 42, .62); }
+    .donation-lightbox[hidden] { display: none; }
+    .donation-lightbox img { display: block; width: auto; height: auto; max-width: min(520px, calc(100vw - 48px)); max-height: calc(100vh - 48px); border: 1px solid #e4e7eb; border-radius: 8px; background: #fff; box-shadow: 0 18px 45px rgba(15, 23, 42, .32); cursor: zoom-out; }
     .collaboration { display: none; flex: 1 1 20%; min-height: 72px; overflow: hidden; border-top: 1px solid #d9e2ec; background: #fff; }
     body.team-mode .collaboration { display: block; }
     .tree-pane.collaboration-collapsed .tree { flex: 1 1 auto; }
@@ -1110,6 +1108,14 @@ class Workstation:
           </div>
         </div>
         <div id="tree" class="tree"></div>
+        <div class="donation-pane" aria-label="打赏">
+          <div class="pane-header">
+            <h2><span class="pane-title-icon">¥</span>打赏</h2>
+          </div>
+          <div class="donation">
+            <img id="donationImage" src="https://www.netkiller.cn/images/donation.jpg" alt="打赏二维码" loading="lazy" title="点击放大">
+          </div>
+        </div>
         <div id="collaboration" class="collaboration">
           <div class="pane-header collaboration-header">
             <h2><span class="pane-title-icon">◌</span>协作</h2>
@@ -1175,8 +1181,6 @@ class Workstation:
       <span class="stat"><span class="stat-icon">✓</span>已完成 <strong>-/-</strong></span>
       <span class="stat"><span class="stat-icon">▯</span>.txt <strong>-</strong></span>
       <span class="stat"><span class="stat-icon">⌑</span>classes.txt <strong>-</strong></span>
-      <span class="stat bad"><span class="stat-icon">✕</span>损坏图像 <strong>-</strong></span>
-      <span class="stat bad"><span class="stat-icon">!</span>无效 .txt <strong>-</strong></span>
       <button id="consoleToggle" class="footer-button" type="button"><span class="stat-icon">▤</span>控制台</button>
     </div>
   </footer>
@@ -1184,6 +1188,9 @@ class Workstation:
   <section id="consolePanel" class="console-panel"><pre id="consoleLog" class="console-log">控制台未打开</pre></section>
   <div id="imageContextMenu" class="context-menu" hidden>
     <button id="deleteFileMenuItem" type="button">删除文件</button>
+  </div>
+  <div id="donationLightbox" class="donation-lightbox" hidden>
+    <img src="https://www.netkiller.cn/images/donation.jpg" alt="打赏二维码放大图">
   </div>
   <script>
     const colors = ["#e11d48", "#2563eb", "#16a34a", "#d97706", "#7c3aed", "#0891b2", "#be123c", "#4d7c0f"];
@@ -1239,6 +1246,8 @@ class Workstation:
     const usernameSubmit = document.getElementById("usernameSubmit");
     const imageContextMenu = document.getElementById("imageContextMenu");
     const deleteFileMenuItem = document.getElementById("deleteFileMenuItem");
+    const donationImage = document.getElementById("donationImage");
+    const donationLightbox = document.getElementById("donationLightbox");
     const canvas = document.getElementById("canvas");
     const ctx = canvas.getContext("2d");
     const empty = document.getElementById("empty");
@@ -1274,6 +1283,19 @@ class Workstation:
     const collapsedDirs = new Set();
     let statisticsData = null;
     let histogramExpandedTopHeight = null;
+
+    function openDonationLightbox() {
+      if (!donationLightbox) return;
+      donationLightbox.hidden = false;
+    }
+
+    function closeDonationLightbox() {
+      if (!donationLightbox) return;
+      donationLightbox.hidden = true;
+    }
+
+    donationImage?.addEventListener("click", openDonationLightbox);
+    donationLightbox?.addEventListener("click", closeDonationLightbox);
 
     async function getJson(url) {
       const response = await fetch(url);
@@ -2110,8 +2132,6 @@ class Workstation:
           <span class="stat"><span class="stat-icon">✓</span>已完成 <strong>${data.txt_valid}/${data.images}</strong></span>
           <span class="stat"><span class="stat-icon">▯</span>.txt <strong>${data.txt_total}</strong></span>
           <span class="stat"><span class="stat-icon">⌑</span>classes.txt <strong>${data.classes_files}</strong></span>
-          <span class="stat bad"><span class="stat-icon">✕</span>损坏图像 <strong>${data.images_damaged}</strong></span>
-          <span class="stat bad"><span class="stat-icon">!</span>无效 .txt <strong>${data.txt_invalid_total}</strong></span>
           <button id="consoleToggle" class="footer-button" type="button"><span class="stat-icon">▤</span>控制台</button>
         </div>
       `;
@@ -2348,7 +2368,9 @@ class Workstation:
       window.addEventListener("keydown", event => {
         if (event.target instanceof Element && event.target.closest("input, textarea, select")) return;
         if (event.key === "Escape") {
-          if (!shortcutPopover.hidden) {
+          if (donationLightbox && !donationLightbox.hidden) {
+            closeDonationLightbox();
+          } else if (!shortcutPopover.hidden) {
             shortcutPopover.hidden = true;
           } else if (currentImage) {
             resetImageZoom();

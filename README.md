@@ -6,6 +6,8 @@ YOLO 标签工具集 - 用于处理 YOLO 目标检测数据集的标签和图片
 
 官网: https://www.netkiller.cn
 
+![打赏](https://github.com/netkiller/yoloutils/blob/main/doc/donation.jpg?raw=true)
+
 ## 从 PyPI 安装
 
 使用 pip 安装
