@@ -160,8 +160,14 @@ textarea {
 .dashboard-progress-title {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.dashboard-progress-title span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 650;
 }
 
 .dashboard-progress-title h3 {
@@ -251,7 +257,7 @@ textarea {
 .dashboard-legend-row {
   min-width: 0;
   display: grid;
-  grid-template-columns: 10px minmax(0, 1fr) auto auto;
+  grid-template-columns: 10px minmax(0, 1fr);
   gap: 8px;
   align-items: center;
   color: var(--muted);
@@ -272,8 +278,32 @@ textarea {
   white-space: nowrap;
 }
 
-.dashboard-legend-row strong {
+.legend-text {
+  min-width: 0;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.legend-metric {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  padding: 2px 7px;
+  border: 1px solid #d9e2ec;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #52606d;
+  font-size: 12px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.legend-metric strong {
   color: var(--text);
+  font-size: 12px;
 }
 
 .project-detail-page {

@@ -3,7 +3,7 @@
 {% block title %}当前项目 {{ project.name }}{% endblock %}
 
 {% block styles %}
-  <link rel="stylesheet" href="/static/css/project.css?v=20260514-dashboard-refresh">
+  <link rel="stylesheet" href="/static/css/project.css?v=20260514-dashboard-progress-top">
 {% endblock %}
 
 {% block content %}
@@ -59,10 +59,18 @@
           <div class="dashboard-head">
             <div>
               <h2 id="dashboard-title">Dashboard</h2>
-              <p>当前项目资源概览</p>
+            </div>
+            <div class="dashboard-progress-title">
+              <span>标注进度</span>
+              <strong>{{ dashboard.progress_percent }}%</strong>
             </div>
           </div>
           <div class="dashboard-body">
+            <div class="annotation-progress dashboard-progress-block" aria-label="标注进度">
+              <div class="progress-track" aria-hidden="true">
+                <span style="width: {{ dashboard.progress_percent }}%"></span>
+              </div>
+            </div>
             <div class="dashboard-chart-grid">
               <div class="class-dashboard" aria-label="项目资源比例">
                 <h3>资源比例</h3>
@@ -71,9 +79,7 @@
                   {% for item in dashboard.resource_items %}
                     <div class="dashboard-legend-row">
                       <span class="legend-swatch" style="background: {{ item.color }}" aria-hidden="true"></span>
-                      <span class="legend-label">{{ item.label }}</span>
-                      <strong>{{ item.count }}</strong>
-                      <span>{{ item.detail }}</span>
+                      <span class="legend-text"><span class="legend-label">{{ item.label }}</span><span class="legend-metric"><strong>{{ item.count }}</strong><span>{{ item.percent }}</span></span></span>
                     </div>
                   {% endfor %}
                 </div>
@@ -85,21 +91,10 @@
                   {% for item in dashboard.annotate_items %}
                     <div class="dashboard-legend-row">
                       <span class="legend-swatch" style="background: {{ item.color }}" aria-hidden="true"></span>
-                      <span class="legend-label">{{ item.label }}</span>
-                      <strong>{{ item.count }}</strong>
-                      <span>{{ item.detail }}</span>
+                      <span class="legend-text"><span class="legend-label">{{ item.label }}</span><span class="legend-metric"><strong>{{ item.count }}</strong><span>{{ item.percent }}</span></span></span>
                     </div>
                   {% endfor %}
                 </div>
-              </div>
-            </div>
-            <div class="annotation-progress dashboard-progress-block" aria-label="标注进度">
-              <div class="dashboard-progress-title">
-                <h3>标注进度</h3>
-                <strong>{{ dashboard.progress_percent }}%</strong>
-              </div>
-              <div class="progress-track" aria-hidden="true">
-                <span style="width: {{ dashboard.progress_percent }}%"></span>
               </div>
             </div>
           </div>

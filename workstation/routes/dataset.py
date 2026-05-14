@@ -1045,11 +1045,14 @@ def dataset_summary(path: Path, project: str, name: str):
     }
     classes = read_classes_for_dataset(path)
     annotations = class_annotations(path, classes["class_names"])
+    project_path = path.parent.parent
+    deploy_task = latest_dataset_deploy_task(project_path, name)
     return {
         "name": name,
         "icon": read_dataset_meta(path)["icon"],
         "project_dir": project,
         "project": project_name(path.parent.parent),
+        "deploy_target": str(deploy_task.get("resource_name") or "") if deploy_task else "",
         "path": path,
         "splits": splits,
         "total_images": sum(split["images"] for split in splits.values()),

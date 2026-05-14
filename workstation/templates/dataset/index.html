@@ -80,9 +80,7 @@
                 </div>
               {% else %}
                 <div class="dataset-footer">
-                  <button class="delete-button" type="button" data-delete-dataset data-project="{{ dataset.project_dir }}" data-name="{{ dataset.name }}" data-has-remote="{{ '1' if dataset.location_label and dataset.location_label != '本地' else '0' }}">删除</button>
                   <a class="view-button" href="/dataset/{{ dataset.project_dir }}/{{ dataset.name }}">查看</a>
-                  <a class="download-button" href="/dataset/{{ dataset.project_dir }}/{{ dataset.name }}/download">下载</a>
                   <button class="download-button deploy-button" type="button" data-run-deploy data-project="{{ dataset.project_dir }}" data-name="{{ dataset.name }}">部署</button>
                   <a class="download-button train-button" href="/model/{{ dataset.project_dir }}/train/new?dataset={{ dataset.name }}{% if dataset.location_label and dataset.location_label != '本地' %}&remote=1{% endif %}">训练</a>
                 </div>

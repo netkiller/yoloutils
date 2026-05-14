@@ -3,7 +3,7 @@
 {% block title %}数据集 {{ dataset.name }}{% endblock %}
 
 {% block styles %}
-  <link rel="stylesheet" href="/static/css/dataset.css?v=20260504-image-preview">
+  <link rel="stylesheet" href="/static/css/dataset.css?v=20260514-detail-actions">
 {% endblock %}
 
 {% block content %}
@@ -12,7 +12,11 @@
       <div>
         <h1 id="dataset-title">数据集 {{ dataset.name }}</h1>
       </div>
-      <a class="project-link-button" href="/dataset/{{ dataset.project_dir }}">返回数据集</a>
+      <div class="dataset-detail-actions">
+        <button class="delete-button" type="button" data-delete-dataset data-project="{{ dataset.project_dir }}" data-name="{{ dataset.name }}" data-has-remote="{{ '1' if dataset.deploy_target and dataset.deploy_target != '本地' else '0' }}">删除</button>
+        <a class="download-button" href="/dataset/{{ dataset.project_dir }}/{{ dataset.name }}/download">下载</a>
+        <a class="project-link-button" href="/dataset/{{ dataset.project_dir }}">返回数据集</a>
+      </div>
     </section>
 
     <section class="dataset-summary" aria-label="数据集统计">
@@ -156,6 +160,24 @@
   {% set footer_left = "" %}
   {% include "partials/footer.html" %}
 
+  <dialog id="deleteDatasetDialog" class="dataset-dialog dataset-confirm-dialog">
+    <form method="dialog">
+      <div class="dataset-dialog-head">
+        <h2>删除数据集</h2>
+        <button type="button" class="dataset-dialog-close" data-cancel-delete-dataset aria-label="关闭">×</button>
+      </div>
+      <p class="dataset-confirm-message">确认删除 <strong data-delete-dataset-name></strong>？默认只删除本地数据集和本地任务记录，不会删除已部署到算力服务器上的远程数据。</p>
+      <label class="dataset-delete-remote" data-delete-remote-row hidden>
+        <input type="checkbox" data-delete-remote>
+        <span>删除远程数据集</span>
+      </label>
+      <div class="dataset-dialog-actions">
+        <button type="button" data-cancel-delete-dataset>取消</button>
+        <button type="button" data-confirm-delete-dataset>确认</button>
+      </div>
+    </form>
+  </dialog>
+
   <dialog class="image-preview-dialog" data-image-preview>
     <button type="button" class="image-preview-close" data-image-preview-close aria-label="关闭">x</button>
     <figure>
@@ -167,6 +189,11 @@
   <script>
     (() => {
       const splitFiles = {{ dataset.files | tojson }};
+      const deleteDialog = document.getElementById("deleteDatasetDialog");
+      const deleteName = document.querySelector("[data-delete-dataset-name]");
+      const deleteRemoteRow = document.querySelector("[data-delete-remote-row]");
+      const deleteRemoteInput = document.querySelector("[data-delete-remote]");
+      let deleteTarget = null;
       const panels = new Map(Array.from(document.querySelectorAll("[data-split-panel]")).map((panel) => [panel.dataset.splitPanel, panel]));
       const pageSizeSelect = document.querySelector("[data-page-size-select]");
       const pageLabel = document.querySelector("[data-page-label]");
@@ -301,6 +328,36 @@
       });
       window.addEventListener("keydown", (event) => {
         if (event.key === "Escape" && preview?.open) closePreview();
+      });
+
+      document.addEventListener("click", event => {
+        const button = event.target.closest("[data-delete-dataset]");
+        if (!button) return;
+        deleteTarget = {project: button.dataset.project || "", name: button.dataset.name || "", hasRemote: button.dataset.hasRemote === "1"};
+        if (deleteName) deleteName.textContent = deleteTarget.name;
+        if (deleteRemoteInput) deleteRemoteInput.checked = false;
+        if (deleteRemoteRow) deleteRemoteRow.hidden = !deleteTarget.hasRemote;
+        deleteDialog?.showModal();
+      });
+      document.querySelectorAll("[data-cancel-delete-dataset]").forEach(button => {
+        button.addEventListener("click", () => {
+          deleteTarget = null;
+          deleteDialog?.close();
+        });
+      });
+      document.querySelector("[data-confirm-delete-dataset]")?.addEventListener("click", async () => {
+        if (!deleteTarget?.project || !deleteTarget?.name) return;
+        const response = await fetch(`/dataset/${encodeURIComponent(deleteTarget.project)}/${encodeURIComponent(deleteTarget.name)}/delete`, {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({delete_remote: Boolean(deleteRemoteInput?.checked)}),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || !payload.ok) {
+          alert(payload.error || "删除数据集失败");
+          return;
+        }
+        window.location.href = `/dataset/${encodeURIComponent(deleteTarget.project)}`;
       });
     })();
   </script>
