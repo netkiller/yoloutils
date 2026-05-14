@@ -420,8 +420,10 @@ def read_project_meta(path: Path, registry: dict | None = None):
         data = json.loads(meta_file.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return fallback
+    stored_directory = str(data.get("directory") or path.name)
+    stale_directory = stored_directory != path.name
     return {
-        "name": str(data.get("name") or path.name),
+        "name": path.name if stale_directory else str(data.get("name") or path.name),
         "directory": path.name,
         "description": str(data.get("description") or ""),
     }
@@ -605,15 +607,55 @@ def read_classes(path: Path):
 def project_dashboard(projects: list[dict]):
     total_images = 0
     total_labels = 0
+    total_test_images = 0
+    total_models = 0
+    total_classes_files = 0
     class_counts: dict[str, int] = {}
-    colors = ["#2563eb", "#16a34a", "#f97316", "#dc2626", "#7c3aed", "#0891b2", "#ca8a04", "#be185d"]
+    colors = ["#2563eb", "#16a34a", "#f97316", "#7c3aed"]
 
     for project in projects:
-        annotate = project_index(project["path"]).get("annotate", {})
+        path = project["path"]
+        index = project_index(path)
+        annotate = index.get("annotate", {})
         total_images += int(annotate.get("images") or 0)
         total_labels += int(annotate.get("labels") or 0)
+        total_test_images += int(index.get("test", {}).get("images") or 0)
+        total_models += int(index.get("models", {}).get("count") or 0)
+        total_classes_files += 1 if (path / ANNOTATE_DIR / "classes.txt").is_file() or (path / "classes.txt").is_file() else 0
         for label, count in (annotate.get("class_counts") or {}).items():
             class_counts[label] = class_counts.get(label, 0) + int(count or 0)
+
+    resource_items = [
+        {"label": "标注资源", "count": total_images + total_labels, "detail": f"{total_images} 图像 / {total_labels} txt", "color": colors[0]},
+        {"label": "测试资源", "count": total_test_images, "detail": f"{total_test_images} 图像", "color": colors[1]},
+        {"label": "模型资源", "count": total_models, "detail": f"{total_models} 模型", "color": colors[2]},
+    ]
+    resource_total = sum(item["count"] for item in resource_items)
+    resource_start = 0.0
+    resource_segments = []
+    for item in resource_items:
+        percent = (item["count"] / resource_total * 100) if resource_total else 0
+        resource_end = resource_start + percent
+        item["percent"] = f"{percent:.1f}%"
+        if item["count"]:
+            resource_segments.append(f"{item['color']} {resource_start:.2f}% {resource_end:.2f}%")
+        resource_start = resource_end
+
+    annotate_items = [
+        {"label": "图像数量", "count": total_images, "detail": f"{total_images} 图像", "color": "#2563eb"},
+        {"label": ".txt 数量", "count": total_labels, "detail": f"{total_labels} txt", "color": "#16a34a"},
+        {"label": "classes.txt", "count": total_classes_files, "detail": f"{total_classes_files} 文件", "color": "#7c3aed"},
+    ]
+    annotate_total = sum(item["count"] for item in annotate_items)
+    annotate_start = 0.0
+    annotate_segments = []
+    for item in annotate_items:
+        percent = (item["count"] / annotate_total * 100) if annotate_total else 0
+        annotate_end = annotate_start + percent
+        item["percent"] = f"{percent:.1f}%"
+        if item["count"]:
+            annotate_segments.append(f"{item['color']} {annotate_start:.2f}% {annotate_end:.2f}%")
+        annotate_start = annotate_end
 
     total_annotations = sum(class_counts.values())
     legend = []
@@ -638,7 +680,14 @@ def project_dashboard(projects: list[dict]):
         "image_count": total_images,
         "label_count": total_labels,
         "remaining_count": max(total_images - total_labels, 0),
-        "progress_percent": round((total_labels / total_images * 100) if total_images else 0),
+        "progress_percent": max(0, min(round((total_labels / total_images * 100) if total_images else 0), 100)),
+        "test_count": total_test_images,
+        "model_count": total_models,
+        "classes_count": total_classes_files,
+        "resource_items": resource_items,
+        "resource_chart_style": f"conic-gradient({', '.join(resource_segments)})" if resource_segments else "#e2e8f0",
+        "annotate_items": annotate_items,
+        "annotate_chart_style": f"conic-gradient({', '.join(annotate_segments)})" if annotate_segments else "#e2e8f0",
         "total_annotations": total_annotations,
         "legend": legend,
         "chart_style": f"conic-gradient({', '.join(segments)})" if segments else "#e2e8f0",
@@ -792,6 +841,18 @@ def project_redirect(error: str = None):
     return RedirectResponse(url=url, status_code=status.HTTP_303_SEE_OTHER)
 
 
+def refresh_project_resources(workspace: Path):
+    refreshed = 0
+    if not workspace.is_dir():
+        return refreshed
+    for path in sorted(workspace.iterdir(), key=lambda item: item.name.lower()):
+        if not path.is_dir() or path.name.startswith("."):
+            continue
+        build_project_index(path)
+        refreshed += 1
+    return refreshed
+
+
 def project_detail_redirect(directory: str, error: str = None):
     url = f"/project/{directory}"
     if error:
@@ -898,6 +959,20 @@ def project(request: Request):
             f"Project page error. See {WORKSPACE_LOG}",
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
+
+
+@router.post("/project/refresh")
+def refresh_projects(request: Request):
+    workspace = workspace_path()
+    login_response = require_team_login(request, workspace)
+    if login_response:
+        return login_response
+    try:
+        refresh_project_resources(workspace)
+    except Exception:
+        write_error_log(workspace, "project refresh error")
+        return project_redirect("刷新项目资源失败")
+    return project_redirect()
 
 
 @router.get("/login")
@@ -1128,6 +1203,24 @@ def delete_project(directory: str):
         del registry[directory]
         write_project_registry(workspace, registry)
     return project_redirect()
+
+
+@router.post("/project/{directory}/refresh")
+def refresh_project_detail(directory: str, request: Request):
+    workspace = workspace_path()
+    login_response = require_team_login(request, workspace)
+    if login_response:
+        return login_response
+    path = project_dir(workspace, directory)
+    if path is None or not path.is_dir():
+        return project_redirect("项目不存在")
+    try:
+        build_project_index(path)
+        append_upload_log(path, "刷新项目资源索引")
+    except Exception:
+        write_error_log(workspace, "project detail refresh error")
+        return project_detail_redirect(directory, "刷新项目资源失败")
+    return project_detail_redirect(directory)
 
 
 @router.get("/project/{directory}")

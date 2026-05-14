@@ -3,7 +3,7 @@
 {% block title %}项目{% endblock %}
 
 {% block styles %}
-  <link rel="stylesheet" href="/static/css/project.css?v=20260512-resources-layout">
+  <link rel="stylesheet" href="/static/css/project.css?v=20260514-project-toolbar">
 {% endblock %}
 
 {% block content %}
@@ -11,10 +11,16 @@
     <section class="toolbar" aria-labelledby="project-title">
       <div>
         <h1 id="project-title">项目</h1>
+        <p class="workspace">工作目录 {{ workspace }}</p>
       </div>
-      {% if show_create_project | default(false) %}
-        <button type="button" id="openCreateDialog">创建项目</button>
-      {% endif %}
+      <div class="toolbar-actions">
+        <form method="post" action="/project/refresh">
+          <button type="submit" class="toolbar-button primary-toolbar-button">刷新</button>
+        </form>
+        {% if show_create_project | default(false) %}
+          <button type="button" id="openCreateDialog" class="toolbar-button secondary-toolbar-button">创建项目</button>
+        {% endif %}
+      </div>
     </section>
 
     {% if error %}
@@ -40,7 +46,6 @@
                   {% else %}
                     <p class="project-description muted">暂无描述</p>
                   {% endif %}
-                  <div class="project-path">{{ project.path }}</div>
                 </div>
                 <div class="folders" aria-label="项目目录">
                   <span class="folder{% if not project.images %} missing{% endif %}">annotate</span>

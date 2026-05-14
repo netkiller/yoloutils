@@ -19,7 +19,7 @@
       </div>
     </section>
 
-    <form class="predict-workbench" method="post" action="{% if current_project %}/model/predict/{{ current_project }}{% else %}/model/predict{% endif %}" enctype="multipart/form-data" data-predict-form>
+    <form class="predict-workbench" method="post" action="{% if current_project %}/model/{{ current_project }}/predict{% else %}/model/predict{% endif %}" enctype="multipart/form-data" data-predict-form>
       <section class="tool-panel predict-model-panel" aria-labelledby="predict-model-title">
         <div>
           <h2 id="predict-model-title">1. 选择模型</h2>

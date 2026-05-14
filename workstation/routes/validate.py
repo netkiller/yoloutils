@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 import threading
+import base64
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import parse_qs
@@ -142,10 +143,17 @@ def read_metrics(run_dir: Path):
     }
 
 
+def encode_run_id(project: str, run_name: str):
+    raw = f"{project}/{run_name}".encode("utf-8")
+    return "run-" + base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+
+
 def model_item(file: Path, root: Path, source: str):
     stat = file.stat()
     run_dir = file.parent.parent if file.parent.name == "weights" else file.parent
     metrics = read_metrics(run_dir)
+    is_run_model = source == "训练" and file.parent.name == "weights"
+    model_id = encode_run_id(root.name, run_dir.name) if is_run_model else ""
     return {
         "name": file.stem,
         "filename": file.name,
@@ -153,6 +161,7 @@ def model_item(file: Path, root: Path, source: str):
         "relative_path": file.relative_to(root).as_posix(),
         "source": source,
         "run": run_dir.name if source == "训练" else "",
+        "detail_url": f"/model/train/models/{model_id}" if model_id else "",
         "size_mb": round(stat.st_size / 1024 / 1024, 2),
         "modified": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M"),
         "metrics": metrics,
@@ -163,6 +172,7 @@ def model_items(path: Path):
     models = []
     seen = set()
     sources = [
+        (path / "runs", "训练"),
         (path / "train-runs", "训练"),
         (path / "models", "上传"),
     ]
@@ -309,7 +319,7 @@ def project_tasks(project: str):
 def validate(request: Request):
     project = request.query_params.get("project", "")
     if project:
-        return RedirectResponse(url=f"/model/val/{project}", status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(url=f"/model/{project}/val", status_code=status.HTTP_303_SEE_OTHER)
     workspace = workspace_path()
     current_project = request.cookies.get("current_project", "")
     path = project_path(workspace, current_project)
@@ -337,9 +347,12 @@ def validate(request: Request):
     return response
 
 
+@router.get("/model/{project}/val")
 @router.get("/model/val/{project}")
 @router.get("/validate/{project}")
 def validate_with_project(request: Request, project: str):
+    if request.url.path.startswith("/model/val/"):
+        return RedirectResponse(url=f"/model/{project}/val", status_code=status.HTTP_303_SEE_OTHER)
     workspace = workspace_path()
     current_project = project
     path = project_path(workspace, current_project)
@@ -392,7 +405,7 @@ async def create_validate_task(request: Request):
         or not is_inside(dataset_path, datasets_root)
         or not dataset_path.is_dir()
     ):
-        return RedirectResponse(url=f"/model/val/{project}", status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(url=f"/model/{project}/val", status_code=status.HTTP_303_SEE_OTHER)
 
     default_name = f"{split}-{dataset}-{model_path.stem}-{datetime.now().strftime('%Y%m%d%H%M%S')}"
     try:

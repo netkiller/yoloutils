@@ -11,7 +11,7 @@
     {% include "partials/model_nav.html" %}
     <section class="train-head">
       <div>
-        <a class="back-link" href="/model/train">返回训练队列</a>
+        <a class="back-link" href="/model/{{ task.project }}/train">返回训练队列</a>
         <h1>{{ task.name }}</h1>
         <p>{{ task.project }} / {{ task.dataset }} · <span data-task-status>{{ task.status }}</span></p>
       </div>

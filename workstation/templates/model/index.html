@@ -4,10 +4,11 @@
 
 {% block styles %}
   <link rel="stylesheet" href="/static/css/validate.css?v=20260512-model">
+  <link rel="stylesheet" href="/static/css/train.css?v=20260514-model-overview">
 {% endblock %}
 
 {% block content %}
-  <main class="validate-main">
+  <main class="validate-main model-overview-main">
     <section class="validate-head" aria-labelledby="model-title">
       <div>
         <h1 id="model-title">{% if project_name %}项目 {{ project_name }} 模型{% else %}模型{% endif %}</h1>
@@ -15,7 +16,7 @@
       </div>
       <div class="model-head-actions">
         {% include "partials/model_nav.html" %}
-        <span class="model-count">{{ models | length }} 个模型 / {{ datasets | length }} 个数据集</span>
+        <span class="model-count">{{ models | length }} 个训练结果 / {{ datasets | length }} 个数据集</span>
       </div>
     </section>
 
@@ -25,51 +26,64 @@
           <h2>训练</h2>
           <p>创建训练任务，查看训练队列和训练完成的模型。</p>
         </div>
-        <a class="secondary-button" href="/model/train{% if current_project %}/{{ current_project }}{% endif %}">进入训练</a>
+        <a class="secondary-button" href="{% if current_project %}/model/{{ current_project }}/train{% else %}/model/train{% endif %}">进入训练</a>
       </article>
       <article class="tool-panel">
         <div>
           <h2>验证</h2>
           <p>执行 YOLO val，输出 mAP、Precision、Recall 指标。</p>
         </div>
-        <a class="secondary-button" href="/model/val{% if current_project %}/{{ current_project }}{% endif %}">进入验证</a>
+        <a class="secondary-button" href="{% if current_project %}/model/{{ current_project }}/val{% else %}/model/val{% endif %}">进入验证</a>
       </article>
       <article class="tool-panel">
         <div>
           <h2>预测</h2>
           <p>选择模型后上传图片、视频，或使用摄像头预测。</p>
         </div>
-        <a class="secondary-button" href="/model/predict{% if current_project %}/{{ current_project }}{% endif %}">进入预测</a>
+        <a class="secondary-button" href="{% if current_project %}/model/{{ current_project }}/predict{% else %}/model/predict{% endif %}">进入预测</a>
       </article>
     </section>
 
     {% if models %}
-      <section class="model-grid" aria-label="模型列表">
+      <section class="model-list model-overview-list" aria-label="训练结果列表">
         {% for model in models %}
           <article class="model-card">
-            <div class="model-title">
-              <div>
-                <h2>{{ model.filename }}</h2>
-                <p>{{ model.relative_path }}</p>
+            <a class="model-card-link" href="/model/{{ model.task.project }}/metrics/{{ model.task.id }}" aria-label="查看模型 {{ model.task.name }}">
+              <div class="model-card-main">
+                <h2>{{ model.task.name }}</h2>
+                <p>{{ model.display_time }}</p>
+                {% if model.summary %}
+                  <p>{{ model.summary }}</p>
+                {% endif %}
+                {% if model.metrics %}
+                  <div class="model-metrics" aria-label="训练指标">
+                    {% for metric in model.metrics %}
+                      <span><b>{{ metric.label }}</b>{{ metric.value }}</span>
+                    {% endfor %}
+                  </div>
+                {% endif %}
               </div>
-              <span>{{ model.source }}</span>
-            </div>
-            <dl class="metric-grid">
-              <div><dt>mAP50</dt><dd>{{ model.metrics.get('map50') if model.metrics.get('map50') is not none else "-" }}</dd></div>
-              <div><dt>mAP50-95</dt><dd>{{ model.metrics.get('map5095') if model.metrics.get('map5095') is not none else "-" }}</dd></div>
-              <div><dt>Precision</dt><dd>{{ model.metrics.get('precision') if model.metrics.get('precision') is not none else "-" }}</dd></div>
-              <div><dt>Recall</dt><dd>{{ model.metrics.get('recall') if model.metrics.get('recall') is not none else "-" }}</dd></div>
-            </dl>
-            <div class="model-meta">
-              {% if model.run %}<span>run: {{ model.run }}</span>{% endif %}
-              <span>{{ model.size_mb }} MB</span>
-              <span>{{ model.modified }}</span>
+              {% if model.results_image %}
+                <div class="model-card-preview">
+                  <img src="{{ model.results_image }}" alt="{{ model.task.name }} results.png">
+                </div>
+              {% else %}
+                <div class="model-card-preview model-card-empty">暂无 results.png</div>
+              {% endif %}
+            </a>
+            <div class="model-card-actions">
+              {% if model.has_best %}
+                <a href="/model/{{ model.task.project }}/metrics/{{ model.task.id }}/weights/best.pt">下载 best.pt</a>
+              {% endif %}
+              {% if model.has_last %}
+                <a href="/model/{{ model.task.project }}/metrics/{{ model.task.id }}/weights/last.pt">下载 last.pt</a>
+              {% endif %}
             </div>
           </article>
         {% endfor %}
       </section>
     {% else %}
-      <section class="empty">暂无模型，请先训练或上传模型。</section>
+      <section class="empty">暂无训练结果，请先完成训练。</section>
     {% endif %}
   </main>
 

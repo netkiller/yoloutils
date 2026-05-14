@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 
-{% block title %}模型 {{ task.name }}{% endblock %}
+{% block title %}模型 {{ task.name }} 指标{% endblock %}
 
 {% block styles %}
-  <link rel="stylesheet" href="/static/css/train.css?v=20260504-labels-fit">
+  <link rel="stylesheet" href="/static/css/train.css?v=20260514-metrics-tabs">
 {% endblock %}
 
 {% block content %}
@@ -11,7 +11,7 @@
     {% include "partials/model_nav.html" %}
     <section class="train-head model-detail-head">
       <div>
-        <h1>模型 {{ task.name }}</h1>
+        <h1>模型 {{ task.name }} 指标</h1>
         {% if assets.metrics %}
           <p class="model-detail-metrics">
             {% for metric in assets.metrics %}
@@ -22,10 +22,10 @@
       </div>
       <div class="task-actions model-downloads">
         {% if assets.has_best %}
-          <a href="/model/train/models/{{ task.id }}/weights/best.pt">下载 best.pt</a>
+          <a href="/model/{{ current_project }}/metrics/{{ task.id }}/weights/best.pt">下载 best.pt</a>
         {% endif %}
         {% if assets.has_last %}
-          <a href="/model/train/models/{{ task.id }}/weights/last.pt">下载 last.pt</a>
+          <a href="/model/{{ current_project }}/metrics/{{ task.id }}/weights/last.pt">下载 last.pt</a>
         {% endif %}
       </div>
     </section>

@@ -82,7 +82,7 @@ def output_items(project: str, project_dir: Path, run_dir: Path):
             {
                 "name": file.name,
                 "type": "video" if file.suffix.lower() in VIDEO_EXTS else "image",
-                "url": f"/model/predict/{project}/files/{relative}",
+                "url": f"/model/{project}/predict/files/{relative}",
             }
         )
     return items
@@ -144,7 +144,7 @@ def predict_context(request: Request, current_project: str, result: dict | None 
 def predict(request: Request):
     project = request.query_params.get("project", "")
     if project:
-        return RedirectResponse(url=f"/model/predict/{project}", status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(url=f"/model/{project}/predict", status_code=status.HTTP_303_SEE_OTHER)
     current_project = request.cookies.get("current_project", "")
     response = templates.TemplateResponse(
         request=request,
@@ -156,9 +156,12 @@ def predict(request: Request):
     return response
 
 
+@router.get("/model/{project}/predict")
 @router.get("/model/predict/{project}")
 @router.get("/predict/{project}")
 def predict_with_project(request: Request, project: str):
+    if request.url.path.startswith("/model/predict/"):
+        return RedirectResponse(url=f"/model/{project}/predict", status_code=status.HTTP_303_SEE_OTHER)
     response = templates.TemplateResponse(
         request=request,
         name="predict/index.html",
@@ -168,6 +171,7 @@ def predict_with_project(request: Request, project: str):
     return response
 
 
+@router.post("/model/{project}/predict")
 @router.post("/model/predict/{project}")
 @router.post("/predict/{project}")
 async def run_predict_with_project(request: Request, project: str):
@@ -202,6 +206,7 @@ async def run_predict_with_project(request: Request, project: str):
     return response
 
 
+@router.get("/model/{project}/predict/files/{file_path:path}")
 @router.get("/model/predict/{project}/files/{file_path:path}")
 @router.get("/predict/{project}/files/{file_path:path}")
 def predict_file(project: str, file_path: str):
@@ -212,5 +217,5 @@ def predict_file(project: str, file_path: str):
     file = (path / file_path).resolve()
     allowed_roots = ((path / "predict-runs").resolve(), (path / "predict" / "uploads").resolve())
     if not file.is_file() or not any(file == root or root in file.parents for root in allowed_roots):
-        return RedirectResponse(url=f"/model/predict/{project}", status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(url=f"/model/{project}/predict", status_code=status.HTTP_303_SEE_OTHER)
     return FileResponse(file)

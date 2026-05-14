@@ -44,13 +44,13 @@
 
     <section class="train-task-toolbar" aria-label="训练任务操作">
       <div class="train-create-actions">
-        <a class="primary-link" href="/model/train/new{% if current_project %}/{{ current_project }}{% endif %}">本地训练</a>
-        <a class="secondary-link" href="/model/train/new{% if current_project %}/{{ current_project }}{% endif %}?remote=1">远程训练</a>
+        <a class="primary-link" href="{% if current_project %}/model/{{ current_project }}/train/new{% else %}/model/train/new{% endif %}">本地训练</a>
+        <a class="secondary-link" href="{% if current_project %}/model/{{ current_project }}/train/new?remote=1{% else %}/model/train/new?remote=1{% endif %}">远程训练</a>
       </div>
       <nav class="queue-filter train-segmented" aria-label="训练队列筛选">
-        <a class="{% if queue_filter == 'all' %}active{% endif %}" href="/model/train{% if current_project %}/{{ current_project }}{% endif %}?queue=all">全部</a>
-        <a class="{% if queue_filter == 'active' %}active{% endif %}" href="/model/train{% if current_project %}/{{ current_project }}{% endif %}?queue=active">未完成</a>
-        <a class="{% if queue_filter == 'completed' %}active{% endif %}" href="/model/train{% if current_project %}/{{ current_project }}{% endif %}?queue=completed">已完成</a>
+        <a class="{% if queue_filter == 'all' %}active{% endif %}" href="{% if current_project %}/model/{{ current_project }}/train{% else %}/model/train{% endif %}?queue=all">全部</a>
+        <a class="{% if queue_filter == 'active' %}active{% endif %}" href="{% if current_project %}/model/{{ current_project }}/train{% else %}/model/train{% endif %}?queue=active">未完成</a>
+        <a class="{% if queue_filter == 'completed' %}active{% endif %}" href="{% if current_project %}/model/{{ current_project }}/train{% else %}/model/train{% endif %}?queue=completed">已完成</a>
       </nav>
     </section>
 

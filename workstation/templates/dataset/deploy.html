@@ -88,7 +88,7 @@
                   </div>
                   <button type="button" data-view-task-log data-log-url="/dataset/{{ current_project }}/deploy/tasks/{{ task.id }}/log">查看</button>
                   {% if task.completed %}
-                    <a href="/model/train/new/{{ current_project }}?dataset={{ task.dataset }}">开始训练</a>
+                    <a href="/model/{{ current_project }}/train/new?dataset={{ task.dataset }}">开始训练</a>
                   {% endif %}
                 </div>
                 <div class="deploy-task-line">

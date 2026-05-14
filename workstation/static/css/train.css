@@ -252,6 +252,20 @@
   align-items: start;
 }
 
+.model-overview-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-height: 0;
+  overflow: auto;
+  padding-right: 4px;
+  scroll-padding-bottom: 20px;
+}
+
+.model-overview-main {
+  grid-template-rows: auto auto minmax(0, 1fr);
+  align-content: stretch;
+  overflow: hidden;
+}
+
 .model-card {
   break-inside: avoid;
   display: grid;
@@ -269,6 +283,10 @@
   gap: 12px;
   color: inherit;
   text-decoration: none;
+}
+
+.model-card-link:hover h2 {
+  color: var(--accent);
 }
 
 .model-card-main {
@@ -290,6 +308,15 @@
   object-fit: contain;
 }
 
+.model-card-empty {
+  min-height: 190px;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: 13px;
+  border-style: dashed;
+}
+
 .model-card h2 {
   margin: 0;
   font-size: 18px;
@@ -300,6 +327,34 @@
   color: var(--muted);
   tab-size: 4;
   white-space: pre-wrap;
+}
+
+.model-card-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.model-card-actions a {
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #ffffff;
+  color: #334e68;
+  font-size: 13px;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.model-card-actions a:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: #eef6ff;
 }
 
 .model-metrics {
@@ -688,8 +743,22 @@
 
 .model-detail-main {
   align-content: stretch;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
   overflow: hidden;
+}
+
+.model-detail-main > .model-subnav {
+  align-self: start;
+}
+
+.model-detail-head {
+  min-height: 58px;
+  align-items: center;
+}
+
+.model-downloads {
+  align-self: center;
+  justify-content: flex-end;
 }
 
 .model-layout {
@@ -791,15 +860,18 @@
 
 .result-tab-list {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 8px;
+  min-height: 35px;
   border-bottom: 1px solid var(--line);
   overflow-x: auto;
 }
 
 .result-tab {
+  box-sizing: border-box;
   height: 34px;
   min-width: 96px;
+  flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -825,7 +897,7 @@
   border-color: var(--line);
   background: #ffffff;
   color: var(--accent);
-  transform: translateY(1px);
+  transform: none;
 }
 
 .result-tab-panel[hidden] {

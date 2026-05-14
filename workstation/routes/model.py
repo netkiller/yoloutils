@@ -5,7 +5,8 @@ from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from routes.project import header_context
-from routes.validate import dataset_items, model_items, project_path, read_project_name, workspace_path
+from routes.train import load_tasks as load_train_tasks, model_items as run_model_items
+from routes.validate import dataset_items, project_path, read_project_name, workspace_path
 
 
 router = APIRouter()
@@ -22,7 +23,7 @@ def model_context(request: Request, current_project: str):
         "model_active": "overview",
         "current_project": current_project,
         "project_name": read_project_name(path) if path else "",
-        "models": model_items(path) if path else [],
+        "models": run_model_items(load_train_tasks(), current_project) if path else [],
         "datasets": dataset_items(path) if path else [],
         **header_context(request, workspace),
     }

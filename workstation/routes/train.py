@@ -11,7 +11,7 @@ import threading
 import time
 from datetime import datetime
 from pathlib import Path
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, urlencode
 from uuid import uuid4
 
 from fastapi import APIRouter, Request, status
@@ -314,13 +314,17 @@ def model_items(tasks, current_project: str = ""):
         if run_dir.is_dir():
             seen_runs.add(run_dir.resolve())
         weights_dir = run_dir / "weights"
+        has_best = (weights_dir / "best.pt").is_file()
+        has_last = (weights_dir / "last.pt").is_file()
+        if not has_best and not has_last:
+            continue
         items.append(
             {
                 "task": task,
                 "run_dir": run_dir,
-                "has_best": (weights_dir / "best.pt").is_file(),
-                "has_last": (weights_dir / "last.pt").is_file(),
-                "results_image": f"/model/train/models/{task['id']}/files/results.png" if (run_dir / "results.png").is_file() else "",
+                "has_best": has_best,
+                "has_last": has_last,
+                "results_image": f"/model/{task.get('project', '')}/metrics/{task['id']}/files/results.png" if (run_dir / "results.png").is_file() else "",
                 "metrics": run_metrics_summary(run_dir),
                 "summary": f"{task.get('project', '')} / {task.get('dataset', '')}",
                 "updated_at": datetime.fromtimestamp(run_dir.stat().st_mtime).isoformat(timespec="seconds")
@@ -345,13 +349,17 @@ def model_items(tasks, current_project: str = ""):
                 continue
             task = synthetic_run_task(project_dir.name, run_dir)
             weights_dir = run_dir / "weights"
+            has_best = (weights_dir / "best.pt").is_file()
+            has_last = (weights_dir / "last.pt").is_file()
+            if not has_best and not has_last:
+                continue
             items.append(
                 {
                     "task": task,
                     "run_dir": resolved,
-                    "has_best": (weights_dir / "best.pt").is_file(),
-                    "has_last": (weights_dir / "last.pt").is_file(),
-                    "results_image": f"/model/train/models/{task['id']}/files/results.png" if (run_dir / "results.png").is_file() else "",
+                    "has_best": has_best,
+                    "has_last": has_last,
+                    "results_image": f"/model/{task.get('project', '')}/metrics/{task['id']}/files/results.png" if (run_dir / "results.png").is_file() else "",
                     "metrics": run_metrics_summary(run_dir),
                     "summary": "",
                     "updated_at": datetime.fromtimestamp(run_dir.stat().st_mtime).isoformat(timespec="seconds"),
@@ -542,7 +550,7 @@ def run_result_assets(task):
             continue
         relative = path.relative_to(run_dir).as_posix()
         if path.suffix.lower() in RESULT_IMAGE_EXTS:
-            image = {"name": relative, "src": f"/model/train/models/{task['id']}/files/{relative}"}
+            image = {"name": relative, "src": f"/model/{task.get('project', '')}/metrics/{task['id']}/files/{relative}"}
             images.append(image)
             filename = path.name.lower()
             if filename.startswith("train_") and path.suffix.lower() in {".jpg", ".jpeg"}:
@@ -558,7 +566,7 @@ def run_result_assets(task):
             elif filename.startswith("confusion") and filename.endswith(".png"):
                 image_tabs["confusion"]["images"].append(image)
         elif path.name not in WEIGHT_FILES:
-            files.append({"name": relative, "size": path.stat().st_size, "href": f"/model/train/models/{task['id']}/files/{relative}"})
+            files.append({"name": relative, "size": path.stat().st_size, "href": f"/model/{task.get('project', '')}/metrics/{task['id']}/files/{relative}"})
     return {
         "run_dir": run_dir,
         "has_best": (run_dir / "weights" / "best.pt").is_file(),
@@ -797,7 +805,7 @@ async def form_fields(request: Request):
 def train(request: Request, tab: str = "", queue: str = "all"):
     project = request.query_params.get("project", "")
     if project:
-        url = f"/model/train/{project}"
+        url = f"/model/{project}/train"
         params = []
         if queue != "all":
             params.append(f"queue={queue}")
@@ -869,6 +877,8 @@ def train_model(request: Request, task_id: str):
     if task is None:
         return RedirectResponse(url="/model/train", status_code=status.HTTP_303_SEE_OTHER)
     current_project = task.get("project", request.cookies.get("current_project", ""))
+    if request.url.path.startswith("/model/train/models/"):
+        return RedirectResponse(url=f"/model/{current_project}/metrics/{task_id}", status_code=status.HTTP_303_SEE_OTHER)
     assets = run_result_assets(task)
     return templates.TemplateResponse(
         request=request,
@@ -886,11 +896,35 @@ def train_model(request: Request, task_id: str):
     )
 
 
+@router.get("/model/{project}/metrics/{task_id}")
+def train_model_metrics(request: Request, project: str, task_id: str):
+    workspace = workspace_path()
+    task = resolve_model_task(task_id)
+    if task is None or task.get("project") != project:
+        return RedirectResponse(url=f"/model/{project}", status_code=status.HTTP_303_SEE_OTHER)
+    assets = run_result_assets(task)
+    return templates.TemplateResponse(
+        request=request,
+        name="train/model.html",
+        context={
+            "request": request,
+            "workspace": workspace,
+            "task": task,
+            "assets": assets,
+            "active_page": "model",
+            "model_active": "overview",
+            "current_project": project,
+            **header_context(request, workspace),
+        },
+    )
+
+
+@router.get("/model/{project}/metrics/{task_id}/weights/{weight_name}")
 @router.get("/model/train/models/{task_id}/weights/{weight_name}")
 @router.get("/train/models/{task_id}/weights/{weight_name}")
-def download_model_weight(task_id: str, weight_name: str):
+def download_model_weight(task_id: str, weight_name: str, project: str = ""):
     task = resolve_model_task(task_id)
-    if task is None or weight_name not in WEIGHT_FILES:
+    if task is None or weight_name not in WEIGHT_FILES or (project and task.get("project") != project):
         return JSONResponse({"ok": False, "error": "模型不存在"}, status_code=404)
     run_dir = task_run_dir(task)
     path = (run_dir / "weights" / weight_name).resolve()
@@ -900,11 +934,12 @@ def download_model_weight(task_id: str, weight_name: str):
     return FileResponse(path, filename=f"{task['name']}-{weight_name}")
 
 
+@router.get("/model/{project}/metrics/{task_id}/files/{file_path:path}")
 @router.get("/model/train/models/{task_id}/files/{file_path:path}")
 @router.get("/train/models/{task_id}/files/{file_path:path}")
-def train_model_file(task_id: str, file_path: str):
+def train_model_file(task_id: str, file_path: str, project: str = ""):
     task = resolve_model_task(task_id)
-    if task is None:
+    if task is None or (project and task.get("project") != project):
         return JSONResponse({"ok": False, "error": "文件不存在"}, status_code=404)
     run_dir = task_run_dir(task).resolve()
     path = (run_dir / file_path).resolve()
@@ -919,7 +954,7 @@ def new_train(request: Request, dataset: str = ""):
     project = request.query_params.get("project", "")
     is_remote = request.query_params.get("remote") == "1"
     if project:
-        url = f"/model/train/new/{project}"
+        url = f"/model/{project}/train/new"
         params = []
         if dataset:
             params.append(f"dataset={dataset}")
@@ -957,9 +992,18 @@ def new_train(request: Request, dataset: str = ""):
     return response
 
 
+@router.get("/model/{project}/train/new")
 @router.get("/model/train/new/{project}")
 @router.get("/train/new/{project}")
 def new_train_with_project(request: Request, project: str, dataset: str = ""):
+    if request.url.path.startswith("/model/train/new/"):
+        params = []
+        if dataset:
+            params.append(("dataset", dataset))
+        if request.query_params.get("remote") == "1":
+            params.append(("remote", "1"))
+        suffix = "?" + urlencode(params) if params else ""
+        return RedirectResponse(url=f"/model/{project}/train/new{suffix}", status_code=status.HTTP_303_SEE_OTHER)
     workspace = workspace_path()
     current_project = project
     is_remote = request.query_params.get("remote") == "1"
@@ -998,7 +1042,7 @@ async def create_train(request: Request):
     is_remote = form.get("train_scope", ["local"])[0] == "remote"
     dataset_item = selected_remote_dataset(project, dataset) if is_remote else selected_dataset(project, dataset)
     if dataset_item is None:
-        base_url = f"/model/train/new/{project}" if project else "/model/train/new"
+        base_url = f"/model/{project}/train/new" if project else "/model/train/new"
         suffix = "?remote=1" if is_remote else ""
         return RedirectResponse(url=f"{base_url}{suffix}", status_code=status.HTTP_303_SEE_OTHER)
 
@@ -1042,7 +1086,7 @@ async def create_train(request: Request):
         append_log(task["id"], "当前为演示模式，不会启动训练。\n")
     else:
         ensure_worker()
-    return RedirectResponse(url="/model/train", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url=f"/model/{task['project']}/train", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.get("/model/train/tasks/{task_id}")
@@ -1100,8 +1144,12 @@ def cancel_task(task_id: str):
 
 
 @router.get("/model/train/{project}")
+@router.get("/model/{project}/train")
 @router.get("/train/{project}")
 def train_with_project(request: Request, project: str, tab: str = "", queue: str = "all"):
+    if request.url.path.startswith("/model/train/"):
+        suffix = f"?queue={queue}" if queue != "all" else ""
+        return RedirectResponse(url=f"/model/{project}/train{suffix}", status_code=status.HTTP_303_SEE_OTHER)
     workspace = workspace_path()
     current_project = project
     with queue_lock:
