@@ -7,11 +7,10 @@ import threading
 import base64
 from datetime import datetime
 from pathlib import Path
-from urllib.parse import parse_qs
 from uuid import uuid4
 
 from fastapi import APIRouter, Request, status
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from routes.project import header_context
@@ -68,6 +67,32 @@ def dataset_items(path: Path):
         for item in sorted(datasets_dir.iterdir(), key=lambda dataset: dataset.name.lower())
         if item.is_dir()
     ]
+
+
+def safe_model_name(filename: str):
+    raw = Path((filename or "").replace("\\", "/")).name
+    if Path(raw).suffix.lower() != ".pt":
+        return ""
+    stem = Path(raw).stem.strip() or "model"
+    cleaned = "".join(char if char.isalnum() or char in ("-", "_", ".") else "_" for char in stem)
+    return cleaned[:100] + ".pt"
+
+
+def save_uploaded_model(path: Path, upload):
+    name = safe_model_name(getattr(upload, "filename", ""))
+    if not name:
+        return None
+    models_dir = path / "models"
+    models_dir.mkdir(parents=True, exist_ok=True)
+    target = models_dir / name
+    if target.exists():
+        target = models_dir / f"{Path(name).stem}-{datetime.now().strftime('%Y%m%d%H%M%S')}.pt"
+    with target.open("wb") as output:
+        shutil.copyfileobj(upload.file, output)
+    if not target.is_file() or target.stat().st_size == 0:
+        target.unlink(missing_ok=True)
+        return None
+    return target
 
 
 def has_images(path: Path):
@@ -251,18 +276,17 @@ def read_classes(path: Path):
 
 def write_data_yaml(task):
     project = project_path(workspace_path(), task["project"])
-    testset_path = (project / task["testset"]).resolve()
-    relative_testset = testset_path.relative_to(project).as_posix()
+    dataset_path = project / "datasets" / task["dataset"]
     classes = read_classes(project)
     yaml_path = queue_dir() / f"{task['id']}.yaml"
     names = "\n".join(f"  {index}: {name}" for index, name in enumerate(classes))
     yaml_path.write_text(
         "\n".join(
             [
-                f"path: {project}",
-                f"train: {relative_testset}",
-                f"val: {relative_testset}",
-                f"test: {relative_testset}",
+                f"path: {dataset_path}",
+                "train: images/train",
+                "val: images/val",
+                "test: images/test",
                 "names:",
                 names,
                 "",
@@ -353,11 +377,6 @@ def ensure_worker():
     worker_thread.start()
 
 
-async def form_fields(request: Request):
-    body = (await request.body()).decode("utf-8")
-    return parse_qs(body, keep_blank_values=True)
-
-
 def project_tasks(project: str):
     with queue_lock:
         tasks = list(reversed(load_tasks()))
@@ -373,8 +392,7 @@ def validate(request: Request):
     workspace = workspace_path()
     current_project = request.cookies.get("current_project", "")
     path = project_path(workspace, current_project)
-    models = run_model_items(path) if path else []
-    testsets = testset_items(path) if path else []
+    datasets = dataset_items(path) if path else []
     tasks = project_tasks(current_project) if current_project else []
     response = templates.TemplateResponse(
         request=request,
@@ -386,8 +404,7 @@ def validate(request: Request):
             "model_active": "val",
             "current_project": current_project,
             "project_name": read_project_name(path) if path else "",
-            "models": models,
-            "testsets": testsets,
+            "datasets": datasets,
             "tasks": tasks,
             **header_context(request, workspace),
         },
@@ -406,8 +423,7 @@ def validate_with_project(request: Request, project: str):
     workspace = workspace_path()
     current_project = project
     path = project_path(workspace, current_project)
-    models = run_model_items(path) if path else []
-    testsets = testset_items(path) if path else []
+    datasets = dataset_items(path) if path else []
     tasks = project_tasks(current_project) if current_project else []
     response = templates.TemplateResponse(
         request=request,
@@ -419,8 +435,7 @@ def validate_with_project(request: Request, project: str):
             "model_active": "val",
             "current_project": current_project,
             "project_name": read_project_name(path) if path else "",
-            "models": models,
-            "testsets": testsets,
+            "datasets": datasets,
             "tasks": tasks,
             **header_context(request, workspace),
         },
@@ -432,48 +447,48 @@ def validate_with_project(request: Request, project: str):
 @router.post("/model/val/run")
 @router.post("/validate/run")
 async def create_validate_task(request: Request):
-    form = await form_fields(request)
-    project = form.get("project", [""])[0] or request.cookies.get("current_project", "")
+    form = await request.form()
+    project = str(form.get("project") or request.cookies.get("current_project", ""))
     path = project_path(workspace_path(), project)
     if path is None:
         return RedirectResponse(url="/project", status_code=status.HTTP_303_SEE_OTHER)
 
-    model = form.get("model", [""])[0]
-    testset = form.get("testset", [""])[0]
-    split = form.get("split", ["val"])[0]
+    dataset = str(form.get("dataset") or "")
+    split = str(form.get("split") or "test")
     if split not in {"val", "test"}:
         split = "test"
-    model_path = (path / model).resolve()
-    testset_path = (path / testset).resolve()
-    test_root = (path / "test").resolve()
+    dataset_path = (path / "datasets" / dataset).resolve()
+    datasets_root = (path / "datasets").resolve()
     if (
-        not model
-        or not testset
-        or not is_inside(model_path, path)
-        or not model_path.is_file()
-        or not is_inside(testset_path, test_root)
-        or not testset_path.is_dir()
-        or not has_images(testset_path)
+        not dataset
+        or dataset_path == datasets_root
+        or not is_inside(dataset_path, datasets_root)
+        or not dataset_path.is_dir()
     ):
         return RedirectResponse(url=f"/model/{project}/val", status_code=status.HTTP_303_SEE_OTHER)
 
-    testset_name = "test" if testset_path == test_root else testset_path.name
-    default_name = f"{split}-{testset_name}-{model_path.parent.parent.name}-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    model_upload = form.get("model_file")
+    model_path = save_uploaded_model(path, model_upload)
+    if model_path is None:
+        return RedirectResponse(url=f"/model/{project}/val", status_code=status.HTTP_303_SEE_OTHER)
+
+    model_relative = model_path.relative_to(path).as_posix()
+    default_name = f"{split}-{dataset}-{model_path.stem}-{datetime.now().strftime('%Y%m%d%H%M%S')}"
     try:
-        imgsz = int(form.get("imgsz", ["640"])[0] or 640)
+        imgsz = int(form.get("imgsz") or 640)
     except ValueError:
         imgsz = 640
     task = {
         "id": uuid4().hex[:12],
-        "name": form.get("name", [default_name])[0].strip() or default_name,
+        "name": str(form.get("name") or "").strip() or default_name,
         "project": project,
-        "dataset": testset_name,
-        "testset": testset,
-        "model": model,
+        "dataset": dataset,
+        "model": model_relative,
+        "model_name": model_path.name,
         "split": split,
         "mode": "测试" if split == "test" else "检验",
         "imgsz": imgsz,
-        "device": form.get("device", [""])[0].strip(),
+        "device": str(form.get("device") or "").strip(),
         "status": "排队中",
         "created_at": datetime.now().isoformat(timespec="seconds"),
     }
@@ -483,7 +498,36 @@ async def create_validate_task(request: Request):
         save_tasks(tasks)
     append_log(task["id"], f"任务已创建: {task['created_at']}\n")
     ensure_worker()
-    return RedirectResponse(url=f"/model/val/tasks/{task['id']}", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url=f"/model/{project}/val", status_code=status.HTTP_303_SEE_OTHER)
+
+
+def task_progress(task):
+    if task.get("status") == "完成":
+        return 100
+    if task.get("status") == "失败":
+        return 100
+    if task.get("status") == "进行中":
+        return 50
+    return 0
+
+
+@router.get("/model/val/tasks/{task_id}/logs")
+@router.get("/validate/tasks/{task_id}/logs")
+def validate_task_logs(task_id: str):
+    tasks = load_tasks()
+    task = next((item for item in tasks if item["id"] == task_id), None)
+    if task is None:
+        return JSONResponse({"ok": False, "error": "任务不存在"}, status_code=404)
+    path = log_file(task_id)
+    log = path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
+    view = dict(task)
+    view["progress"] = task_progress(task)
+    return {
+        "ok": True,
+        "task": view,
+        "log": log,
+        "size": path.stat().st_size if path.is_file() else 0,
+    }
 
 
 @router.get("/model/val/tasks/{task_id}")

@@ -15,7 +15,7 @@
       <section class="validate-task-card">
         <div>
           <h1>{{ task.name }}</h1>
-          <p>{{ task.mode }} / {{ task.dataset }} / {{ task.model }}</p>
+          <p>{{ task.mode }} / {{ task.dataset }} / {{ task.model_name or task.model }}</p>
           {% if task.metrics %}
             <dl class="validate-inline-metrics">
               <div><dt>mAP50</dt><dd>{{ task.metrics.get("map50", "-") }}</dd></div>

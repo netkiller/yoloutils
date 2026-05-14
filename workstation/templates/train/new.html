@@ -3,7 +3,7 @@
 {% block title %}{% if remote_train %}远程训练{% else %}本地训练{% endif %}{% endblock %}
 
 {% block styles %}
-  <link rel="stylesheet" href="/static/css/train.css?v=20260513-remote-train">
+  <link rel="stylesheet" href="/static/css/train.css?v=20260514-remote-dataset-info">
 {% endblock %}
 
 {% block content %}
@@ -29,9 +29,13 @@
 
         <label>
           <span>数据集</span>
-          <select name="dataset" required>
+          <select name="dataset" required {% if remote_train %}data-remote-dataset-select{% endif %}>
             {% for item in datasets %}
-              <option value="{{ item.key if remote_train else item.name }}" {% if dataset and item.path == dataset.path and (not remote_train or item.resource_id == dataset.resource_id) %}selected{% endif %}>{{ item.name }}{% if remote_train %} · {{ item.resource_name }}{% endif %}</option>
+              <option
+                value="{{ item.key if remote_train else item.name }}"
+                {% if remote_train %}data-resource-id="{{ item.resource_id }}" data-resource-name="{{ item.resource_name }}" data-remote-path="{{ item.remote_path }}"{% endif %}
+                {% if dataset and ((remote_train and item.key == dataset.key) or (not remote_train and item.path == dataset.path)) %}selected{% endif %}
+              >{{ item.name }}</option>
             {% endfor %}
           </select>
         </label>
@@ -40,12 +44,12 @@
         {% endif %}
         <input type="hidden" name="project" value="{{ dataset.project if dataset else current_project }}">
         <input type="hidden" name="train_scope" value="{{ 'remote' if remote_train else 'local' }}">
-        {% if remote_train and dataset %}
-          <input type="hidden" name="resource_id" value="{{ dataset.resource_id }}">
-          <input type="hidden" name="remote_dataset_path" value="{{ dataset.remote_path }}">
-          <div class="remote-train-target">
-            <span>算力服务器</span><strong>{{ dataset.resource_name }}</strong>
-            <span>部署数据集</span><strong>{{ dataset.remote_path }}</strong>
+        {% if remote_train %}
+          <input type="hidden" name="resource_id" value="{{ dataset.resource_id if dataset else '' }}" data-remote-resource-id>
+          <input type="hidden" name="remote_dataset_path" value="{{ dataset.remote_path if dataset else '' }}" data-remote-dataset-path>
+          <div class="remote-train-target" data-remote-train-target {% if not dataset %}hidden{% endif %}>
+            <span>算力服务器</span><strong data-remote-resource-name>{{ dataset.resource_name if dataset else "" }}</strong>
+            <span>部署位置</span><strong data-remote-path>{{ dataset.remote_path if dataset else "" }}</strong>
           </div>
         {% endif %}
 
@@ -117,4 +121,27 @@
   {% set footer_id = "stats" %}
   {% set footer_left = workspace %}
   {% include "partials/footer.html" %}
+  {% if remote_train %}
+    <script>
+      (() => {
+        const select = document.querySelector("[data-remote-dataset-select]");
+        const target = document.querySelector("[data-remote-train-target]");
+        const resourceName = document.querySelector("[data-remote-resource-name]");
+        const remotePath = document.querySelector("[data-remote-path]");
+        const resourceIdInput = document.querySelector("[data-remote-resource-id]");
+        const remotePathInput = document.querySelector("[data-remote-dataset-path]");
+        function renderRemoteTarget() {
+          const option = select?.selectedOptions?.[0];
+          if (!option || !target) return;
+          if (resourceName) resourceName.textContent = option.dataset.resourceName || "算力服务器";
+          if (remotePath) remotePath.textContent = option.dataset.remotePath || "";
+          if (resourceIdInput) resourceIdInput.value = option.dataset.resourceId || "";
+          if (remotePathInput) remotePathInput.value = option.dataset.remotePath || "";
+          target.hidden = false;
+        }
+        select?.addEventListener("change", renderRemoteTarget);
+        renderRemoteTarget();
+      })();
+    </script>
+  {% endif %}
 {% endblock %}

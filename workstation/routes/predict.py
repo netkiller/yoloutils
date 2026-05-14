@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from routes.project import header_context
-from routes.val import model_items, project_path, read_project_name, workspace_path
+from routes.val import project_path, read_project_name, run_model_items, workspace_path
 
 
 router = APIRouter()
@@ -133,7 +133,7 @@ def predict_context(request: Request, current_project: str, result: dict | None 
         "model_active": "predict",
         "current_project": current_project,
         "project_name": read_project_name(path) if path else "",
-        "models": model_items(path) if path else [],
+        "models": run_model_items(path) if path else [],
         "result": result,
         **header_context(request, workspace),
     }

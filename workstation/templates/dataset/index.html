@@ -3,7 +3,7 @@
 {% block title %}{% if current_project_name %}项目 {{ current_project_name }} 数据集{% else %}数据集{% endif %}{% endblock %}
 
 {% block styles %}
-  <link rel="stylesheet" href="/static/css/dataset.css?v=20260513-dataset-icon-size">
+  <link rel="stylesheet" href="/static/css/dataset.css?v=20260514-dataset-created-sort-dialog-up">
 {% endblock %}
 
 {% block content %}
@@ -21,63 +21,74 @@
       </div>
     </section>
 
-    {% if datasets %}
-      <section class="dataset-grid" aria-label="数据集列表">
-        {% for dataset in datasets %}
-          <article class="dataset-card"{% if dataset.building %} data-building="true"{% endif %}>
-            <div class="card-title">
-              <span class="dataset-card-icon" aria-hidden="true">{{ dataset.icon }}</span>
-              <div>
-                <h2>{{ dataset.name }}</h2>
-                <p>{{ dataset.project }}</p>
-              </div>
-              <span>{{ dataset.updated_date }}</span>
-            </div>
-
-            <div class="dataset-chart" aria-label="train val test 比例">
-              <span class="pie-chart" style="background: {{ dataset.chart_style }}"></span>
-              <div class="chart-legend">
-                {% for segment in dataset.chart_segments %}
-                  <span class="legend-item legend-{{ segment.name }}">
-                    <i aria-hidden="true"></i>
-                    {{ segment.name }} {{ segment.percent }}%
-                  </span>
-                {% endfor %}
-              </div>
-              <div class="split-grid">
-                {% for split_name, split in dataset.splits.items() %}
-                  <div class="split">
-                    <strong>{{ split_name }}</strong>
-                    <span>{{ split.images }} images</span>
-                    <span>{{ split.labels }} labels</span>
-                  </div>
-                {% endfor %}
-              </div>
-            </div>
-
-            {% if dataset.building %}
-              <div class="dataset-build-status">
+    <div data-dataset-list>
+      {% if datasets %}
+        <section class="dataset-grid" aria-label="数据集列表">
+          {% for dataset in datasets %}
+            <article class="dataset-card"{% if dataset.building %} data-building="true"{% endif %}{% if dataset.deploying %} data-deploying="true"{% endif %}>
+              <div class="card-title">
+                <span class="dataset-card-icon" aria-hidden="true">{{ dataset.icon }}</span>
                 <div>
-                  <span>{{ dataset.build_status }}</span>
-                  <strong>{{ dataset.build_progress }}%</strong>
+                  <h2>{{ dataset.name }}</h2>
+                  <p>{{ dataset.location_label or "本地" }}</p>
                 </div>
-                <div class="dataset-build-progress"><span style="width: {{ dataset.build_progress }}%"></span></div>
-                {% if dataset.build_error %}<p>{{ dataset.build_error }}</p>{% endif %}
+                <span>{{ dataset.updated_date }}</span>
               </div>
-            {% else %}
-              <div class="dataset-footer">
-                <a class="view-button" href="/dataset/{{ dataset.project_dir }}/{{ dataset.name }}">查看</a>
-                <a class="download-button" href="/dataset/{{ dataset.project_dir }}/{{ dataset.name }}/download">下载</a>
-                <a class="download-button train-button" href="/model/{{ dataset.project_dir }}/train/new?dataset={{ dataset.name }}">本地训练</a>
-                <a class="download-button deploy-button" href="/dataset/{{ dataset.project_dir }}/deploy/{{ dataset.name }}">部署</a>
+
+              <div class="dataset-chart" aria-label="train val test 比例">
+                <span class="pie-chart{% if dataset.building %} build-mask{% endif %}" style="background: {{ dataset.chart_style }}; --build-progress: {{ dataset.build_progress | default(100) }}%"></span>
+                <div class="chart-legend">
+                  {% for segment in dataset.chart_segments %}
+                    <span class="legend-item legend-{{ segment.name }}">
+                      <i aria-hidden="true"></i>
+                      {{ segment.name }} {{ segment.percent }}%
+                    </span>
+                  {% endfor %}
+                </div>
+                <div class="split-grid">
+                  {% for split_name, split in dataset.splits.items() %}
+                    <div class="split">
+                      <strong>{{ split_name }}</strong>
+                      <span>{{ split.images }} images</span>
+                      <span>{{ split.labels }} labels</span>
+                    </div>
+                  {% endfor %}
+                </div>
               </div>
-            {% endif %}
-          </article>
-        {% endfor %}
-      </section>
-    {% else %}
-      <section class="empty">暂无数据集</section>
-    {% endif %}
+
+              {% if dataset.building %}
+                <div class="dataset-build-status">
+                  <div>
+                    <span>{{ dataset.build_status }}</span>
+                    <strong>{{ dataset.build_progress }}%</strong>
+                  </div>
+                  {% if dataset.build_error or dataset.deploy_error %}<p>{{ dataset.build_error or dataset.deploy_error }}</p>{% endif %}
+                </div>
+              {% elif dataset.deploying %}
+                <div class="dataset-deploy-status">
+                  <div>
+                    <span>部署 {{ dataset.deploy_status }}</span>
+                    <strong>{{ dataset.deploy_progress }}%</strong>
+                  </div>
+                  <div class="dataset-build-progress"><span style="width: {{ dataset.deploy_progress }}%"></span></div>
+                  {% if dataset.deploy_error %}<p>{{ dataset.deploy_error }}</p>{% endif %}
+                </div>
+              {% else %}
+                <div class="dataset-footer">
+                  <button class="delete-button" type="button" data-delete-dataset data-project="{{ dataset.project_dir }}" data-name="{{ dataset.name }}" data-has-remote="{{ '1' if dataset.location_label and dataset.location_label != '本地' else '0' }}">删除</button>
+                  <a class="view-button" href="/dataset/{{ dataset.project_dir }}/{{ dataset.name }}">查看</a>
+                  <a class="download-button" href="/dataset/{{ dataset.project_dir }}/{{ dataset.name }}/download">下载</a>
+                  <a class="download-button train-button" href="/model/{{ dataset.project_dir }}/train/new?dataset={{ dataset.name }}">本地训练</a>
+                  <a class="download-button deploy-button" href="/dataset/{{ dataset.project_dir }}/deploy/{{ dataset.name }}">部署</a>
+                </div>
+              {% endif %}
+            </article>
+          {% endfor %}
+        </section>
+      {% else %}
+        <section class="empty">暂无数据集</section>
+      {% endif %}
+    </div>
   </main>
 
   {% set footer_id = "stats" %}
@@ -90,10 +101,6 @@
         <h2>新建数据集</h2>
         <button type="button" id="closeDatasetDialog" class="dataset-dialog-close" aria-label="关闭">×</button>
       </div>
-      <label>
-        <span>当前项目</span>
-        <input type="text" value="{{ current_project or '未选择项目' }}" disabled>
-      </label>
       <div class="dataset-name-row">
         <label class="dataset-icon-random">
           <span>图标</span>
@@ -102,17 +109,62 @@
         </label>
         <label class="dataset-name-field"><span>数据集名称</span><input name="name" type="text" autocomplete="off" required></label>
       </div>
-      <label class="dataset-range-control">
-        <span>val 数据 <b data-range-value="val_percent">20%</b></span>
-        <input name="val_percent" type="range" min="0" max="80" step="5" value="20" required data-range-input="val_percent">
-      </label>
-      <label class="dataset-range-control">
-        <span>test 数据 <b data-range-value="test_percent">0%</b></span>
-        <input name="test_percent" type="range" min="0" max="80" step="5" value="0" required data-range-input="test_percent">
-      </label>
+      <div class="dataset-split-row">
+        <label class="dataset-range-control">
+          <span>val 数据 <b data-range-value="val_percent">20%</b></span>
+          <input name="val_percent" type="range" min="0" max="80" step="5" value="20" required data-range-input="val_percent">
+        </label>
+        <label class="dataset-range-control">
+          <span>test 数据 <b data-range-value="test_percent">0%</b></span>
+          <input name="test_percent" type="range" min="0" max="80" step="5" value="0" required data-range-input="test_percent">
+        </label>
+      </div>
+      <section class="dataset-deploy-options">
+        <div class="dataset-deploy-inline">
+          <label class="dataset-deploy-toggle">
+            <input type="checkbox" name="deploy_enabled" value="1" data-dataset-deploy-toggle>
+            <span>数据集部署</span>
+          </label>
+        </div>
+        <div class="dataset-deploy-fields" data-dataset-deploy-fields hidden>
+          <label>
+            <span>算力服务器</span>
+            <select name="resource_id" {% if not resources %}disabled{% endif %}>
+              {% for resource in resources %}
+                <option value="{{ resource.id }}">{{ resource.name }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <div class="deploy-methods deploy-mode-segment dataset-deploy-mode" role="radiogroup" aria-label="部署方式" data-create-mode-segment data-dataset-deploy-mode data-mode="sync">
+            <label><input type="radio" name="deploy_mode" value="full"> <span>全量</span></label>
+            <label><input type="radio" name="deploy_mode" value="sync" checked> <span>同步</span></label>
+          </div>
+          {% if not resources %}
+            <p class="dataset-deploy-empty">暂无算力服务器，请先在算力页添加。</p>
+          {% endif %}
+        </div>
+      </section>
       <div class="dataset-dialog-actions">
         <button type="button" id="cancelDatasetDialog">取消</button>
         <button type="submit">确认</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="deleteDatasetDialog" class="dataset-dialog dataset-confirm-dialog">
+    <form method="dialog">
+      <div class="dataset-dialog-head">
+        <h2>删除数据集</h2>
+        <button type="button" class="dataset-dialog-close" data-cancel-delete-dataset aria-label="关闭">×</button>
+      </div>
+      <p class="dataset-confirm-message">确认删除 <strong data-delete-dataset-name></strong>？默认只删除本地数据集和本地任务记录，不会删除已部署到算力服务器上的远程数据。</p>
+      <label class="dataset-delete-remote" data-delete-remote-row hidden>
+        <input type="checkbox" data-delete-remote>
+        <span>删除远程数据集</span>
+      </label>
+      <div class="dataset-dialog-actions">
+        <button type="button" data-cancel-delete-dataset>取消</button>
+        <button type="button" data-confirm-delete-dataset>确认</button>
       </div>
     </form>
   </dialog>
@@ -125,6 +177,15 @@
       const datasetIcons = {{ dataset_icons | list | tojson }};
       const iconInput = document.querySelector("[data-dataset-icon-value]");
       const iconButton = document.querySelector("[data-random-dataset-icon]");
+      const deployToggle = document.querySelector("[data-dataset-deploy-toggle]");
+      const deployFields = document.querySelector("[data-dataset-deploy-fields]");
+      const deployMode = document.querySelector("[data-dataset-deploy-mode]");
+      const deleteDialog = document.getElementById("deleteDatasetDialog");
+      const deleteName = document.querySelector("[data-delete-dataset-name]");
+      const deleteRemoteRow = document.querySelector("[data-delete-remote-row]");
+      const deleteRemoteInput = document.querySelector("[data-delete-remote]");
+      let deleteTarget = null;
+      let datasetPollTimer = null;
       const close = () => dialog?.close();
       function randomIcon() {
         if (!iconInput || !iconButton || !datasetIcons.length) return;
@@ -141,15 +202,55 @@
         syncRange(input);
       });
       iconButton?.addEventListener("click", randomIcon);
+      function syncDeployFields() {
+        if (!deployFields || !deployToggle) return;
+        const enabled = deployToggle.checked;
+        deployFields.hidden = !enabled;
+      }
+      deployToggle?.addEventListener("change", syncDeployFields);
+      syncDeployFields();
+      document.querySelectorAll("[data-create-mode-segment]").forEach(segment => {
+        segment.querySelectorAll("label").forEach(label => {
+          label.addEventListener("click", () => {
+            const input = label.querySelector("input[name='deploy_mode']");
+            if (!input) return;
+            input.checked = true;
+            segment.dataset.mode = input.value;
+          });
+        });
+      });
       openButton?.addEventListener("click", () => {
         randomIcon();
+        if (deployToggle) deployToggle.checked = false;
+        syncDeployFields();
         dialog?.showModal();
       });
       document.getElementById("closeDatasetDialog")?.addEventListener("click", close);
       document.getElementById("cancelDatasetDialog")?.addEventListener("click", close);
+      function hasActiveDatasetTasks() {
+        return Boolean(document.querySelector("[data-building='true'], [data-deploying='true']"));
+      }
+      function scheduleDatasetRefresh() {
+        if (datasetPollTimer) clearTimeout(datasetPollTimer);
+        if (hasActiveDatasetTasks()) {
+          datasetPollTimer = setTimeout(refreshDatasetList, 1200);
+        }
+      }
+      async function refreshDatasetList() {
+        const region = document.querySelector("[data-dataset-list]");
+        if (!region) return;
+        const response = await fetch(window.location.href, {cache: "no-store"});
+        const html = await response.text();
+        const doc = new DOMParser().parseFromString(html, "text/html");
+        const next = doc.querySelector("[data-dataset-list]");
+        if (next) region.innerHTML = next.innerHTML;
+        scheduleDatasetRefresh();
+      }
       form?.addEventListener("submit", async event => {
         event.preventDefault();
-        const data = Object.fromEntries(new FormData(form).entries());
+        const formData = new FormData(form);
+        const data = Object.fromEntries(formData.entries());
+        data.deploy_enabled = Boolean(formData.get("deploy_enabled"));
         const response = await fetch("/dataset", {
           method: "POST",
           headers: {"Content-Type": "application/json"},
@@ -160,11 +261,43 @@
           alert(payload.error || "创建数据集失败");
           return;
         }
-        location.href = "/dataset{% if current_project %}/{{ current_project }}{% endif %}";
+        close();
+        form.reset();
+        randomIcon();
+        await refreshDatasetList();
       });
-      if (document.querySelector("[data-building='true']")) {
-        setTimeout(() => location.reload(), 1200);
-      }
+      document.addEventListener("click", event => {
+        const button = event.target.closest("[data-delete-dataset]");
+        if (!button) return;
+        deleteTarget = {project: button.dataset.project || "", name: button.dataset.name || "", hasRemote: button.dataset.hasRemote === "1"};
+        if (deleteName) deleteName.textContent = deleteTarget.name;
+        if (deleteRemoteInput) deleteRemoteInput.checked = false;
+        if (deleteRemoteRow) deleteRemoteRow.hidden = !deleteTarget.hasRemote;
+        deleteDialog?.showModal();
+      });
+      document.querySelectorAll("[data-cancel-delete-dataset]").forEach(button => {
+        button.addEventListener("click", () => {
+          deleteTarget = null;
+          deleteDialog?.close();
+        });
+      });
+      document.querySelector("[data-confirm-delete-dataset]")?.addEventListener("click", async () => {
+        if (!deleteTarget?.project || !deleteTarget?.name) return;
+        const response = await fetch(`/dataset/${encodeURIComponent(deleteTarget.project)}/${encodeURIComponent(deleteTarget.name)}/delete`, {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({delete_remote: Boolean(deleteRemoteInput?.checked)}),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || !payload.ok) {
+          alert(payload.error || "删除数据集失败");
+          return;
+        }
+        deleteTarget = null;
+        deleteDialog?.close();
+        await refreshDatasetList();
+      });
+      scheduleDatasetRefresh();
     })();
   </script>
 {% endblock %}

@@ -143,19 +143,33 @@ def dataset_meta_path(dataset_path: Path):
 def read_dataset_meta(dataset_path: Path):
     path = dataset_meta_path(dataset_path)
     if not path.is_file():
-        return {"icon": DEFAULT_DATASET_ICON}
+        return {"icon": DEFAULT_DATASET_ICON, "created_at": ""}
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        return {"icon": DEFAULT_DATASET_ICON}
-    return {"icon": dataset_icon(str(data.get("icon") or ""))}
+        return {"icon": DEFAULT_DATASET_ICON, "created_at": ""}
+    return {
+        "icon": dataset_icon(str(data.get("icon") or "")),
+        "created_at": str(data.get("created_at") or ""),
+    }
 
 
-def write_dataset_meta(dataset_path: Path, icon: str):
+def write_dataset_meta(dataset_path: Path, icon: str, created_at: str = ""):
+    created_at = created_at or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     dataset_meta_path(dataset_path).write_text(
-        json.dumps({"icon": dataset_icon(icon)}, ensure_ascii=False, indent=2),
+        json.dumps({"icon": dataset_icon(icon), "created_at": created_at}, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+
+
+def datetime_sort_value(value: str, fallback: float = 0):
+    value = (value or "").strip()
+    if not value:
+        return fallback
+    try:
+        return datetime.fromisoformat(value.replace(" ", "T")).timestamp()
+    except ValueError:
+        return fallback
 
 
 def build_tasks_file(project_path: Path):
@@ -201,6 +215,15 @@ def active_build_tasks(project_path: Path):
             continue
         tasks.append(task)
     return tasks
+
+
+def latest_dataset_deploy_task(project_path: Path, dataset_name: str):
+    tasks = [
+        task
+        for task in read_deploy_tasks(project_path)
+        if str(task.get("dataset") or "") == dataset_name
+    ]
+    return tasks[0] if tasks else None
 
 
 def deploy_mode_icon(mode: str):
@@ -292,13 +315,33 @@ def run_build_dataset_task(project_path: Path, task: dict):
         classes_file = project_classes_file(project_path)
         if classes_file:
             shutil.copy2(classes_file, dataset_path / "classes.txt")
-        write_dataset_meta(dataset_path, icon)
+        write_dataset_meta(dataset_path, icon, str(task.get("created_at") or ""))
         update_build_task(project_path, task_id, status="完成", progress=100, error="")
+        if task.get("deploy_enabled"):
+            deploy_form = {
+                "resource_id": str(task.get("resource_id") or ""),
+                "mode": str(task.get("deploy_mode") or "sync"),
+                "target_path": str(task.get("target_path") or f"~/datasets/{name}"),
+            }
+            deploy_task, deploy_error = create_deploy_task(project_path, dataset_path, name, deploy_form)
+            if deploy_error:
+                update_build_task(project_path, task_id, deploy_error=deploy_error)
+            elif deploy_task:
+                update_build_task(project_path, task_id, deploy_task_id=deploy_task["id"])
     except Exception as error:
         update_build_task(project_path, task_id, status="失败", progress=100, error=str(error))
 
 
-def create_build_task(project_path: Path, name: str, val_percent: int, test_percent: int, icon: str):
+def create_build_task(
+    project_path: Path,
+    name: str,
+    val_percent: int,
+    test_percent: int,
+    icon: str,
+    deploy_enabled: bool = False,
+    deploy_mode: str = "sync",
+    resource_id: str = "",
+):
     name = (name or "").strip()
     if not name or not DATASET_NAME_PATTERN.match(name):
         return None, "数据集名称只能包含字母、数字、点、下划线和连字符"
@@ -309,6 +352,11 @@ def create_build_task(project_path: Path, name: str, val_percent: int, test_perc
         return None, "数据集已存在"
     if any(task.get("name") == name and task.get("status") in {"排队中", "创建中"} for task in read_build_tasks(project_path)):
         return None, "数据集正在创建"
+    if deploy_enabled:
+        if deploy_mode not in {"full", "sync"}:
+            return None, "部署方式不正确"
+        if find_resource(workspace_path(), resource_id) is None:
+            return None, "请选择算力服务器"
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     task = {
         "id": datetime.now().strftime("%Y%m%d%H%M%S") + "-" + uuid.uuid4().hex[:8],
@@ -319,6 +367,10 @@ def create_build_task(project_path: Path, name: str, val_percent: int, test_perc
         "status": "排队中",
         "progress": 0,
         "error": "",
+        "deploy_enabled": bool(deploy_enabled),
+        "deploy_mode": deploy_mode if deploy_mode in {"full", "sync"} else "sync",
+        "resource_id": resource_id if deploy_enabled else "",
+        "target_path": f"~/datasets/{name}" if deploy_enabled else "",
         "created_at": now,
         "updated_at": now,
     }
@@ -533,6 +585,39 @@ def remote_prepare(resource: dict, target_path: str, overwrite: bool):
         return ""
     except Exception as error:
         return f"准备远程目录失败：{error}"
+    finally:
+        client.close()
+
+
+def remote_delete_path(resource: dict, target_path: str):
+    try:
+        import paramiko
+        from routes.resources import ssh_connect_kwargs
+    except ImportError:
+        return "当前 Python 环境未安装 paramiko，无法删除远程数据集。"
+    client = paramiko.SSHClient()
+    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    try:
+        client.connect(
+            hostname=resource["host"],
+            port=resource["port"],
+            username=resource["username"],
+            timeout=8,
+            banner_timeout=8,
+            auth_timeout=8,
+            look_for_keys=False,
+            allow_agent=False,
+            **ssh_connect_kwargs(resource),
+        )
+        command = f"rm -rf {remote_shell_path(target_path)}"
+        _, stdout, stderr = client.exec_command(command, timeout=60)
+        exit_status = stdout.channel.recv_exit_status()
+        if exit_status != 0:
+            error = stderr.read().decode("utf-8", errors="replace").strip()
+            return error or f"远程删除失败，退出码 {exit_status}"
+        return ""
+    except Exception as error:
+        return f"删除远程数据集失败：{error}"
     finally:
         client.close()
 
@@ -812,14 +897,19 @@ def dataset_items(workspace: Path, project: str = ""):
         active_tasks = active_build_tasks(project_dir) if project_dir.is_dir() else []
         active_names = {str(task.get("name", "")) for task in active_tasks if task.get("status") in {"排队中", "创建中", "失败"}}
         for task in active_tasks:
+            created_at = str(task.get("created_at") or task.get("updated_at") or "")
+            created_sort = datetime_sort_value(created_at, time.time())
             datasets.append(
                 {
                     "name": task.get("name", ""),
                     "icon": dataset_icon(str(task.get("icon") or "")),
                     "path": project_dir / "datasets" / str(task.get("name", "")),
-                    "updated_at": time.time(),
+                    "created_at": created_at,
+                    "created_sort": created_sort,
+                    "updated_at": created_sort,
                     "updated_date": task.get("updated_at", ""),
                     "project": project_name(project_dir),
+                    "location_label": "本地",
                     "project_dir": project_dir.name,
                     "splits": {
                         "train": {"images": 0, "labels": 0},
@@ -834,6 +924,10 @@ def dataset_items(workspace: Path, project: str = ""):
                     "build_status": task.get("status", ""),
                     "build_progress": int(task.get("progress") or 0),
                     "build_error": task.get("error", ""),
+                    "deploying": False,
+                    "deploy_progress": 0,
+                    "deploy_status": "",
+                    "deploy_error": task.get("deploy_error", ""),
                 }
             )
         if not project_dir.is_dir() or not datasets_dir.is_dir():
@@ -841,6 +935,9 @@ def dataset_items(workspace: Path, project: str = ""):
         for dataset_dir in sorted(datasets_dir.iterdir(), key=lambda item: item.name.lower()):
             if not dataset_dir.is_dir() or dataset_dir.name in active_names:
                 continue
+            meta = read_dataset_meta(dataset_dir)
+            fallback_created = dataset_dir.stat().st_ctime
+            created_sort = datetime_sort_value(meta.get("created_at", ""), fallback_created)
             splits = {
                 "train": count_dataset_split(dataset_dir, "train"),
                 "val": count_dataset_split(dataset_dir, "val"),
@@ -856,6 +953,11 @@ def dataset_items(workspace: Path, project: str = ""):
                 train_percent = val_percent = test_percent = 0
             train_end = train_percent
             val_end = train_percent + val_percent
+            deploy_task = latest_dataset_deploy_task(project_dir, dataset_dir.name)
+            deploy_status = str(deploy_task.get("status") or "") if deploy_task else ""
+            deploy_progress = int(deploy_task.get("progress") or 0) if deploy_task else 0
+            deploying = bool(deploy_task) and deploy_status != "完成"
+            location_label = str(deploy_task.get("resource_name") or "算力服务器") if deploy_task else "本地"
             chart_style = (
                 f"conic-gradient(#1667c7 0 {train_end:.2f}%, "
                 f"#16a34a {train_end:.2f}% {val_end:.2f}%, "
@@ -866,11 +968,14 @@ def dataset_items(workspace: Path, project: str = ""):
             datasets.append(
                 {
                     "name": dataset_dir.name,
-                    "icon": read_dataset_meta(dataset_dir)["icon"],
+                    "icon": meta["icon"],
                     "path": dataset_dir,
-                    "updated_at": dataset_dir.stat().st_mtime,
-                    "updated_date": datetime.fromtimestamp(dataset_dir.stat().st_mtime).strftime("%Y-%m-%d %H:%M"),
+                    "created_at": meta.get("created_at", ""),
+                    "created_sort": created_sort,
+                    "updated_at": created_sort,
+                    "updated_date": datetime.fromtimestamp(created_sort).strftime("%Y-%m-%d %H:%M"),
                     "project": project_name(project_dir),
+                    "location_label": location_label,
                     "project_dir": project_dir.name,
                     "splits": splits,
                     "total_images": total_images,
@@ -881,9 +986,15 @@ def dataset_items(workspace: Path, project: str = ""):
                         {"name": "val", "count": splits["val"]["images"], "percent": round(val_percent)},
                         {"name": "test", "count": splits["test"]["images"], "percent": round(test_percent)},
                     ],
+                    "building": False,
+                    "build_progress": 100,
+                    "deploying": deploying,
+                    "deploy_progress": 100 if deploy_status == "完成" else deploy_progress,
+                    "deploy_status": deploy_status,
+                    "deploy_error": deploy_task.get("error", "") if deploy_task else "",
                 }
             )
-    return datasets
+    return sorted(datasets, key=lambda item: (item.get("created_sort", 0), item.get("name", "")), reverse=True)
 
 
 def dataset_summary(path: Path, project: str, name: str):
@@ -926,6 +1037,7 @@ def dataset(request: Request, project: str = ""):
             "current_project": "",
             "current_project_name": "",
             "dataset_icons": DATASET_ICONS,
+            "resources": read_resources(workspace),
             **header_context(request, workspace),
         },
     )
@@ -947,6 +1059,7 @@ def dataset_with_project(request: Request, project: str):
             "current_project": project,
             "current_project_name": project_name(current_project_path) if current_project_path and current_project_path.is_dir() else project,
             "dataset_icons": DATASET_ICONS,
+            "resources": read_resources(workspace),
             **header_context(request, workspace),
         },
     )
@@ -1087,6 +1200,37 @@ def dataset_deploy_task_log(project: str, task_id: str):
     }
 
 
+@router.post("/dataset/{project}/{name}/delete")
+async def delete_dataset(request: Request, project: str, name: str):
+    workspace = workspace_path()
+    current_project_path = project_dir(workspace, project)
+    path = dataset_dir(workspace, project, name)
+    if current_project_path is None or not current_project_path.is_dir() or path is None:
+        return JSONResponse({"ok": False, "error": "数据集不存在"}, status_code=404)
+    payload = await request.json()
+    delete_remote = bool(payload.get("delete_remote"))
+    deploy_tasks = [task for task in read_deploy_tasks(current_project_path) if task.get("dataset") == name]
+    if delete_remote:
+        for task in deploy_tasks:
+            if task.get("target_type") != "remote":
+                continue
+            resource = find_resource(workspace, str(task.get("resource_id") or ""))
+            target_path = str(task.get("target_path") or "")
+            if resource is None or not target_path:
+                return JSONResponse({"ok": False, "error": "远程部署记录缺少算力服务器或部署路径"}, status_code=400)
+            error = remote_delete_path(resource, target_path)
+            if error:
+                return JSONResponse({"ok": False, "error": error}, status_code=400)
+    shutil.rmtree(path)
+    with build_lock:
+        build_tasks = [task for task in read_build_tasks(current_project_path) if task.get("name") != name]
+        write_build_tasks(current_project_path, build_tasks)
+    with deploy_lock:
+        next_deploy_tasks = [task for task in read_deploy_tasks(current_project_path) if task.get("dataset") != name]
+        write_deploy_tasks(current_project_path, next_deploy_tasks)
+    return {"ok": True}
+
+
 @router.get("/dataset/{project}/{name}")
 def dataset_detail(request: Request, project: str, name: str):
     workspace = workspace_path()
@@ -1140,6 +1284,9 @@ async def create_dataset(request: Request):
             int(payload.get("val_percent", 0) or 0),
             int(payload.get("test_percent", 0) or 0),
             str(payload.get("icon", "")),
+            bool(payload.get("deploy_enabled")),
+            str(payload.get("deploy_mode", "sync") or "sync"),
+            str(payload.get("resource_id", "") or ""),
         )
         if error:
             return JSONResponse({"ok": False, "error": error}, status_code=400)

@@ -3,7 +3,7 @@
 {% block title %}{% if project_name %}项目 {{ project_name }} 预测{% else %}预测{% endif %}{% endblock %}
 
 {% block styles %}
-  <link rel="stylesheet" href="/static/css/val.css?v=20260514-predict">
+  <link rel="stylesheet" href="/static/css/val.css?v=20260514-predict-runs">
 {% endblock %}
 
 {% block content %}
@@ -27,11 +27,11 @@
         </div>
         <label>
           <span>模型</span>
-          <select name="model" required {% if not models %}disabled{% endif %}>
-            {% for model in models %}
-              <option value="{{ model.relative_path }}">{{ model.filename }} · {{ model.source }}</option>
-            {% endfor %}
-          </select>
+            <select name="model" required {% if not models %}disabled{% endif %}>
+              {% for model in models %}
+                <option value="{{ model.relative_path }}">{{ model.name }}</option>
+              {% endfor %}
+            </select>
         </label>
         {% if not models %}
           <div class="empty compact">当前项目没有可用模型，请先训练或上传模型。</div>

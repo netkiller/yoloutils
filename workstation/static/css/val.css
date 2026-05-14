@@ -91,6 +91,47 @@
   max-width: none;
 }
 
+.validate-model-upload input[type="file"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.validate-drop-zone {
+  min-height: 76px;
+  display: grid;
+  place-items: center;
+  gap: 4px;
+  padding: 14px;
+  border: 1px dashed #9fb3c8;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: var(--text);
+  cursor: pointer;
+  text-align: center;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.validate-drop-zone strong {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+}
+
+.validate-drop-zone small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.validate-drop-zone.drag-over {
+  border-color: var(--accent);
+  background: #eef6ff;
+}
+
 .validate-run-panel code {
   color: var(--muted);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -216,6 +257,8 @@
   border: 1px solid var(--line);
   background: #ffffff;
   color: var(--text);
+  border-radius: 6px;
+  font-weight: 650;
 }
 
 .status {

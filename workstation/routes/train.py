@@ -147,11 +147,15 @@ def remote_dataset_dirs(project: str = ""):
         for task in read_deploy_tasks(project_dir):
             if task.get("status") != COMPLETE_STATUS:
                 continue
+            if task.get("target_type") != "remote":
+                continue
             dataset_name = str(task.get("dataset") or "")
             if not dataset_name:
                 continue
             resource_id = str(task.get("resource_id") or "")
             remote_path = str(task.get("target_path") or "")
+            if not resource_id or not remote_path:
+                continue
             items.append(
                 {
                     "key": f"{resource_id}:{dataset_name}:{remote_path}",
