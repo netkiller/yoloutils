@@ -1,6 +1,0 @@
-<nav class="model-subnav" aria-label="模型子导航">
-  <a class="{% if model_active == 'overview' %}active{% endif %}" href="/model{% if current_project %}/{{ current_project }}{% endif %}">模型概览</a>
-  <a class="{% if model_active == 'train' %}active{% endif %}" href="{% if current_project %}/model/{{ current_project }}/train{% else %}/model/train{% endif %}">训练</a>
-  <a class="{% if model_active == 'val' %}active{% endif %}" href="{% if current_project %}/model/{{ current_project }}/val{% else %}/model/val{% endif %}">验证</a>
-  <a class="{% if model_active == 'predict' %}active{% endif %}" href="{% if current_project %}/model/{{ current_project }}/predict{% else %}/model/predict{% endif %}">预测</a>
-</nav>
