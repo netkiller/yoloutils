@@ -12,7 +12,7 @@ Environment="WORKSPACE=/opt/yoloutils" "PORT=8087" "HOST=127.0.0.1"
 WorkingDirectory=/srv/yoloutils
 User=nobody
 Type=idle
-ExecStart=source ${WorkingDirectory}/.venv/bin/activate && yoloutils workstation -p ${PORT} -w ${WORKSPACE} --demo"
+ExecStart=${WorkingDirectory}/.venv/bin/yoloutils workstation -p ${PORT} -w ${WORKSPACE} --demo"
 Restart=always
 RestartSec=10s
 StartLimitInterval=0
