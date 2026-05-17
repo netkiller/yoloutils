@@ -1,0 +1,21 @@
+[Unit]
+Description=Yolo workstation service
+#Requires=docker.service
+Wants=network-online.target
+#After=docker.service network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Environment="WORKSPACE=/opt/yoloutils" "PORT=8087" "HOST=127.0.0.1"
+#EnvironmentFile=-/etc/default/yoloutils
+WorkingDirectory=/srv/yoloutils
+User=nobody
+Type=idle
+ExecStart=yoloutils workstation -p ${PORT} -w ${WORKSPACE} --demo"
+Restart=always
+RestartSec=10s
+StartLimitInterval=0
+
+[Install]
+WantedBy=multi-user.target
